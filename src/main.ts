@@ -306,7 +306,7 @@ function drawMap() {
     const pts = pathPoints(route.stops, w, h);
     const a = planeAnim(plane.id);
     const pos = posAlongPath(pts, a.t);
-    drawPlaneSprite(pos.x, pos.y, pos.angle + (a.dir === -1 ? Math.PI : 0));
+    drawPlaneSprite(pos.x, pos.y, pos.angle + (a.dir === -1 ? Math.PI : 0), plane.typeId);
   }
 
   // Staged selection path.
@@ -398,21 +398,58 @@ function drawLegend(_w: number, h: number) {
   ctx.fillText('high', x + barW - 18, y + barH + 11);
 }
 
-function drawPlaneSprite(x: number, y: number, angle: number) {
+// Per-type sprite styling: color (the clearest cue at small size) + scale,
+// plus a distinct silhouette — turboprops fly straight wings, jets are swept.
+const PLANE_STYLE: Record<string, { color: string; scale: number }> = {
+  turboprop: { color: '#f5a623', scale: 1.7 },
+  regionaljet: { color: '#3fd0c9', scale: 2.0 },
+  cityjet: { color: '#f4f8ff', scale: 2.6 },
+};
+
+function drawPlaneSprite(x: number, y: number, angle: number, typeId: string) {
+  const style = PLANE_STYLE[typeId] ?? { color: '#f4f8ff', scale: 1 };
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
-  ctx.fillStyle = '#f4f8ff';
+  ctx.scale(style.scale, style.scale);
+  ctx.fillStyle = style.color;
   ctx.strokeStyle = '#0b1622';
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1 / style.scale; // keep the outline ~1px regardless of scale
   ctx.beginPath();
-  ctx.moveTo(7, 0);
-  ctx.lineTo(-5, 4);
-  ctx.lineTo(-2, 0);
-  ctx.lineTo(-5, -4);
+  if (typeId === 'turboprop') {
+    // Straight-wing prop silhouette (wings perpendicular to the fuselage).
+    ctx.moveTo(6, 0);
+    ctx.lineTo(0.5, -1);
+    ctx.lineTo(0.5, -5.5);
+    ctx.lineTo(-1, -5.5);
+    ctx.lineTo(-1, -1.2);
+    ctx.lineTo(-4.5, -1.2);
+    ctx.lineTo(-5.5, 0);
+    ctx.lineTo(-4.5, 1.2);
+    ctx.lineTo(-1, 1.2);
+    ctx.lineTo(-1, 5.5);
+    ctx.lineTo(0.5, 5.5);
+    ctx.lineTo(0.5, 1);
+  } else {
+    // Swept-wing jet dart.
+    ctx.moveTo(7, 0);
+    ctx.lineTo(-5, 5);
+    ctx.lineTo(-2, 0);
+    ctx.lineTo(-5, -5);
+  }
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
+  // City jet gets a little tail fin so the biggest plane reads distinctly.
+  if (typeId === 'cityjet') {
+    ctx.beginPath();
+    ctx.moveTo(-4, 0);
+    ctx.lineTo(-7, 2.2);
+    ctx.lineTo(-5.5, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
