@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "concurrently -k -n vite,electron -c cyan,magenta \"vite\" \"wait-on tcp:5173 && cross-env ELECTRON_ENABLE_LOGGING=1 electron .\"",
     "build": "vite build",
-    "start": "electron ."
+    "start": "electron .",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
@@ -15,6 +17,7 @@
     "electron": "^33.2.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
+    "vitest": "^3.2.6",
     "wait-on": "^8.0.1"
   }
 }
