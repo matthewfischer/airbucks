@@ -587,10 +587,11 @@ function buyCard(): string {
     .map((t) => {
       const afford = game.cash >= t.price;
       const label = afford ? `Buy · ${money(t.price)}` : `Need ${money(t.price)}`;
+      const owned = game.fleet.filter((p) => p.typeId === t.id).length;
       return `<div class="plane-line">
         <div class="row"><strong>${t.name}</strong>
           <button class="${afford ? 'primary' : ''}" data-act="buy" data-type="${t.id}" ${afford ? '' : 'disabled'}>${label}</button></div>
-        <div class="type-stats">${t.capacity} seats · ${t.range.toLocaleString()} km range · ${t.speed} km/h · $${t.costPerKm}/km · ${money(t.weeklyUpkeep)}/wk upkeep</div>
+        <div class="type-stats">${t.capacity} seats · ${t.range.toLocaleString()} km range · ${t.speed} km/h · $${t.costPerKm}/km · ${money(t.weeklyUpkeep)}/wk upkeep · <span class="owned">${owned} owned</span></div>
       </div>`;
     })
     .join('');
