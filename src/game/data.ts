@@ -11,6 +11,16 @@ export const AIRPORTS: Airport[] = [
   { id: 'cmh', code: 'CMH', city: 'Columbus', lat: 40.0, lon: -82.89, size: 3 },
   { id: 'ric', code: 'RIC', city: 'Richmond', lat: 37.51, lon: -77.32, size: 2 },
   { id: 'roa', code: 'ROA', city: 'Roanoke', lat: 37.32, lon: -79.97, size: 1 },
+  { id: 'hts', code: 'HTS', city: 'Huntington', lat: 38.37, lon: -82.56, size: 1 },
+  { id: 'lex', code: 'LEX', city: 'Lexington', lat: 38.04, lon: -84.61, size: 2 },
+  { id: 'sdf', code: 'SDF', city: 'Louisville', lat: 38.17, lon: -85.74, size: 3 },
+  { id: 'tys', code: 'TYS', city: 'Knoxville', lat: 35.81, lon: -83.99, size: 2 },
+  { id: 'gso', code: 'GSO', city: 'Greensboro', lat: 36.1, lon: -79.94, size: 2 },
+  { id: 'rdu', code: 'RDU', city: 'Raleigh-Durham', lat: 35.88, lon: -78.79, size: 4 },
+  { id: 'orf', code: 'ORF', city: 'Norfolk', lat: 36.89, lon: -76.2, size: 2 },
+  { id: 'bwi', code: 'BWI', city: 'Baltimore', lat: 39.18, lon: -76.67, size: 4 },
+  { id: 'phl', code: 'PHL', city: 'Philadelphia', lat: 39.87, lon: -75.24, size: 5 },
+  { id: 'ind', code: 'IND', city: 'Indianapolis', lat: 39.72, lon: -86.29, size: 4 },
 ];
 
 // A right-sized regional fleet: short hops, modest seat counts.
