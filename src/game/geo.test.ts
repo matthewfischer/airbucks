@@ -9,6 +9,7 @@ const ap = (lat: number, lon: number): Airport => ({
   lat,
   lon,
   size: 1,
+  population: 100_000,
 });
 
 describe('distanceKm', () => {

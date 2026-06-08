@@ -11,6 +11,7 @@ import {
   buyPlane,
   closeRoute,
   creditLimit,
+  depositRate,
   distanceFactor,
   evaluateNetwork,
   evaluateRoute,
@@ -536,13 +537,42 @@ describe('cost right-sizing & multi-plane capacity', () => {
 describe('interest accrues through advanceDay', () => {
   it('a week of days with debt drains cash by ~the weekly interest', () => {
     borrow(g, 10_000_000); // within the base credit line
-    const cashAfterBorrow = g.cash;
+    g.cash = 0; // isolate debt interest from deposit interest on a cash balance
     const weeklyInterest = weeklyTotals(g).interest;
     for (let i = 0; i < 7; i++) advanceDay(g);
     expect(g.day).toBe(7);
     // Rate drifts slightly as cash falls, so allow a small tolerance.
-    expect(Math.abs(cashAfterBorrow - g.cash - weeklyInterest)).toBeLessThan(100);
+    expect(Math.abs(0 - g.cash - weeklyInterest)).toBeLessThan(100);
     expect(g.debt).toBe(10_000_000); // principal unchanged
+  });
+});
+
+// Task #21
+describe('interest earned on positive cash', () => {
+  it('pays deposit interest on a positive balance and nothing on zero/negative', () => {
+    g.debt = 0;
+    g.cash = 100_000_000;
+    expect(weeklyTotals(g).interestEarned).toBeCloseTo(
+      100_000_000 * depositRate() * (7 / 365),
+      5,
+    );
+    g.cash = 0;
+    expect(weeklyTotals(g).interestEarned).toBe(0);
+    g.cash = -5_000_000;
+    expect(weeklyTotals(g).interestEarned).toBe(0);
+  });
+
+  it('a debt-free week of days grows idle cash by ~the deposit interest', () => {
+    g.debt = 0;
+    const start = g.cash;
+    const earned = weeklyTotals(g).interestEarned;
+    for (let i = 0; i < 7; i++) advanceDay(g);
+    expect(g.cash - start).toBeCloseTo(earned, -1); // grows toward year-end
+    expect(g.cash).toBeGreaterThan(start);
+  });
+
+  it('the deposit rate sits below the loan floor — parking cash never beats repaying', () => {
+    expect(depositRate()).toBeLessThan(interestRate(g));
   });
 });
 

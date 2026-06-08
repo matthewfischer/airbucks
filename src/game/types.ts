@@ -7,6 +7,8 @@ export interface Airport {
   lon: number;
   /** Relative market size, 1 (small) .. 5 (huge). Drives passenger demand. */
   size: number;
+  /** Metro-area population (people). Shown as context; demand is driven by size. */
+  population: number;
   /** True for the player's home base. */
   home?: boolean;
   /** True for big out-of-region national hubs (drawn as edge "gateways"). */

@@ -42,6 +42,9 @@ const LOAN_MAX_CREDIT = 400_000_000;
 // Interest rate: a floor for a solvent airline, rising with leverage and losses.
 const LOAN_BASE_RATE = 0.04;
 const LOAN_MAX_RATE = 0.16;
+// Deposit rate: what the bank pays on positive cash balances. Below the loan
+// floor, so parking cash earns a little but never beats paying down debt.
+const DEPOSIT_RATE = 0.02;
 
 // Landing rights: an airport's slots become available once the airline is big
 // enough (reputation = number of airports held), and cost a fee by size. The
@@ -526,9 +529,19 @@ export interface WeeklyTotals {
   revenue: number;
   cost: number;
   pax: number;
+  /** Debt interest paid this week (a cost). */
   interest: number;
+  /** Deposit interest earned on positive cash this week (income). */
+  interestEarned: number;
   net: number;
 }
+
+/** Annual rate the bank pays on a positive cash balance. */
+export const depositRate = (): number => DEPOSIT_RATE;
+
+/** Weekly deposit interest the airline earns on its current positive cash. */
+export const cashInterestWeekly = (g: GameState): number =>
+  Math.max(0, g.cash) * DEPOSIT_RATE * (7 / 365);
 
 /** Current weekly run-rate across the whole airline (a snapshot, not accrued). */
 export function weeklyTotals(g: GameState): WeeklyTotals {
@@ -539,12 +552,14 @@ export function weeklyTotals(g: GameState): WeeklyTotals {
     if (plane.routeId === null) cost += typeById(g, plane.typeId).weeklyUpkeep;
   }
   const interest = g.debt * interestRate(g) * (7 / 365);
+  const interestEarned = cashInterestWeekly(g);
   return {
     revenue: net.revenue,
     cost,
     pax: net.passengers,
     interest,
-    net: net.revenue - cost - interest,
+    interestEarned,
+    net: net.revenue - cost - interest + interestEarned,
   };
 }
 

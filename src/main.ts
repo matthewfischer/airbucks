@@ -7,8 +7,11 @@ import {
   assignPlane,
   borrow,
   buyPlane,
+  cashInterestWeekly,
   closeRoute,
   creditLimit,
+  depositRate,
+  distanceFactor,
   evaluateNetwork,
   evaluateRoute,
   holdsRights,
@@ -77,6 +80,14 @@ const hud = document.getElementById('hud')!;
 const sidebar = document.getElementById('sidebar')!;
 const logEl = document.getElementById('log')!;
 const playBtn = document.getElementById('play') as HTMLButtonElement;
+
+const mapWrap = document.getElementById('map-wrap')!;
+const popover = document.createElement('div');
+popover.id = 'airport-pop';
+popover.style.display = 'none';
+mapWrap.appendChild(popover);
+/** Airport currently shown in the popover, if any. */
+let popAirport: string | null = null;
 
 // ---- Geographic projection ------------------------------------------------
 
@@ -358,8 +369,11 @@ function drawMap() {
     const isStop = positions.length > 0;
     const v = demandValue(ap);
     const r = 5 + ap.size;
-    // Airports without landing rights are dimmed (you can't operate there yet).
-    ctx.globalAlpha = holdsRights(game, ap.id) ? 1 : 0.4;
+    // Three states: held (full), acquirable (dimmed + green "buy" ring you can
+    // click on the map), and locked (faint, needs a bigger network).
+    const held = holdsRights(game, ap.id);
+    const acquirable = !held && rightsAvailable(game, ap.id);
+    ctx.globalAlpha = held ? 1 : acquirable ? 0.7 : 0.28;
 
     if (ap.national) {
       // Gateway: a violet rounded square pinned to the edge, labelled inward.
@@ -370,6 +384,7 @@ function drawMap() {
       ctx.lineWidth = isStop ? 3 : 2;
       ctx.strokeStyle = isStop ? '#ffffff' : '#0b1622';
       ctx.stroke();
+      if (acquirable) acquireRing(p.x, p.y, r + 2, true);
 
       const below = p.y < h * 0.7;
       const ly = below ? p.y + r + 12 : p.y - r - 6;
@@ -401,6 +416,7 @@ function drawMap() {
     ctx.lineWidth = isStop ? 3 : 2;
     ctx.strokeStyle = isStop ? '#ffffff' : '#0b1622';
     ctx.stroke();
+    if (acquirable) acquireRing(p.x, p.y, r + 3, false);
 
     ctx.fillStyle = '#e8eef6';
     ctx.font = 'bold 13px system-ui';
@@ -423,6 +439,20 @@ function drawMap() {
 }
 
 /** Small gold badge listing a staged stop's position(s) on the route. */
+/** A dashed green ring marking an airport whose rights you can buy by clicking it. */
+function acquireRing(x: number, y: number, r: number, square: boolean) {
+  ctx.save();
+  ctx.globalAlpha = 0.95;
+  ctx.setLineDash([3, 3]);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#4ade80';
+  ctx.beginPath();
+  if (square) ctx.roundRect(x - r, y - r, r * 2, r * 2, 4);
+  else ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawOrderBadge(px: number, py: number, r: number, positions: number[]) {
   if (positions.length === 0) return;
   const text = positions.join(',');
@@ -565,15 +595,18 @@ canvas.addEventListener('click', (e) => {
     const p = airportScreen(ap.id, w, h);
     if (Math.hypot(p.x - mx, p.y - my) <= 14) {
       if (holdsRights(game, ap.id)) {
+        hideAirportPopover();
         addStop(ap.id);
       } else if (rightsAvailable(game, ap.id)) {
-        flash(`Acquire landing rights at ${ap.code} (${money(rightsFee(ap))}) in the Landing Rights panel.`);
+        showAirportPopover(ap, p.x, p.y);
       } else {
+        hideAirportPopover();
         flash(`${ap.code} is locked — grow to a ${requiredReputation(ap)}-airport network to unlock it.`);
       }
       return;
     }
   }
+  hideAirportPopover(); // clicked empty map
 });
 
 // ---- Pan & zoom -----------------------------------------------------------
@@ -593,6 +626,7 @@ canvas.addEventListener('wheel', (e) => {
   const rect = canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
+  hideAirportPopover();
   const newScale = clampScale(view.scale * Math.exp(-e.deltaY * 0.005));
   const k = newScale / view.scale;
   view.offsetX = mx - (mx - view.offsetX) * k;
@@ -618,6 +652,7 @@ window.addEventListener('mousemove', (e) => {
   const dy = e.clientY - dragStart.y;
   if (!dragMoved && Math.hypot(dx, dy) > 3) dragMoved = true;
   if (dragMoved) {
+    hideAirportPopover();
     view.offsetX = dragStart.ox + dx;
     view.offsetY = dragStart.oy + dy;
     canvas.style.cursor = 'grabbing';
@@ -640,6 +675,79 @@ function addStop(id: string) {
   selected = [...selected, id];
   render();
 }
+
+// ---- Airport popover (acquire rights from the map) ------------------------
+
+const formatPop = (n: number): string =>
+  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : `${Math.round(n / 1000)}K`;
+
+/**
+ * Weekly O&D passenger pool this airport would exchange with the airports you
+ * already serve — i.e. how much traffic acquiring it would feed your network.
+ */
+function networkDemand(ap: Airport): number {
+  let total = 0;
+  for (const other of game.airports) {
+    if (other.id === ap.id || !holdsRights(game, other.id)) continue;
+    total += pairDemand(ap, other) * distanceFactor(distanceKm(ap, other));
+  }
+  return total;
+}
+
+function hideAirportPopover() {
+  popAirport = null;
+  popover.style.display = 'none';
+}
+
+/** Show the acquire popover beside an airport at its screen position (px, py). */
+function showAirportPopover(ap: Airport, px: number, py: number) {
+  popAirport = ap.id;
+  const fee = rightsFee(ap);
+  const afford = game.cash >= fee;
+  const demand = Math.round(networkDemand(ap));
+  const tier = '●'.repeat(ap.size) + '○'.repeat(6 - ap.size);
+  popover.innerHTML = `
+    <div class="pop-head">
+      <span><strong>${ap.code}</strong> · ${ap.city}${ap.national ? ' <span class="muted">· gateway</span>' : ''}</span>
+      <button class="pop-x" data-pop="close" title="Close">✕</button>
+    </div>
+    <div class="pop-row"><span class="muted">Population</span><span>${formatPop(ap.population)}</span></div>
+    <div class="pop-row"><span class="muted">Market tier</span><span class="tier">${tier}</span></div>
+    <div class="pop-row"><span class="muted">Demand to your network</span><span>${demand.toLocaleString()}/wk</span></div>
+    <div class="pop-row"><span class="muted">Landing-rights fee</span><span class="${afford ? '' : 'bad'}">${money(fee)}</span></div>
+    <button class="pop-buy ${afford ? 'primary' : ''}" data-pop="buy" ${afford ? '' : 'disabled'}>
+      ${afford ? `Acquire · ${money(fee)}` : `Need ${money(fee)}`}</button>`;
+
+  // Place to the right of the dot, flipping left / clamping to stay on-map.
+  popover.style.display = 'block';
+  const wrapW = mapWrap.clientWidth;
+  const wrapH = mapWrap.clientHeight;
+  const pw = popover.offsetWidth;
+  const ph = popover.offsetHeight;
+  let x = px + 18;
+  if (x + pw > wrapW - 8) x = px - 18 - pw;
+  x = Math.max(8, Math.min(x, wrapW - pw - 8));
+  let y = py - ph / 2;
+  y = Math.max(8, Math.min(y, wrapH - ph - 8));
+  popover.style.left = `${x}px`;
+  popover.style.top = `${y}px`;
+}
+
+popover.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest('[data-pop]') as HTMLElement | null;
+  if (!btn) return;
+  if (btn.dataset.pop === 'close') {
+    hideAirportPopover();
+  } else if (btn.dataset.pop === 'buy' && popAirport) {
+    flash(acquireRights(game, popAirport));
+    hideAirportPopover();
+    render();
+  }
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hideAirportPopover();
+});
 
 // ---- HUD + sidebar --------------------------------------------------------
 
@@ -670,6 +778,19 @@ function renderHud() {
     <div class="stat"><span class="label">Fleet</span><span class="value">${game.fleet.length}</span></div>
     <div class="stat"><span class="label">Routes</span><span class="value">${game.routes.length}</span></div>
   `;
+}
+
+// Cards the player has collapsed. Persists across re-renders so a game tick
+// doesn't pop a card back open.
+const collapsedCards = new Set<string>();
+
+/** A titled card whose body collapses when its header is clicked. */
+function collapsibleCard(id: string, title: string, body: string): string {
+  const open = !collapsedCards.has(id);
+  return `<div class="card">
+    <h3 class="card-head" data-act="toggle-card" data-card="${id}">
+      <span class="chev">${open ? '▾' : '▸'}</span>${title}</h3>
+    ${open ? body : ''}</div>`;
 }
 
 function renderSidebar() {
@@ -720,38 +841,34 @@ function buyCard(): string {
       </div>`;
     })
     .join('');
-  return `<div class="card"><h3>Buy Aircraft</h3>${rows}</div>`;
+  return collapsibleCard('buy', 'Buy Aircraft', rows);
 }
 
 function rightsCard(): string {
   const rep = reputation(game);
   const notHeld = game.airports.filter((a) => !holdsRights(game, a.id));
-  const available = notHeld
-    .filter((a) => rightsAvailable(game, a.id))
-    .sort((a, b) => b.size - a.size || a.code.localeCompare(b.code));
-  const lockedCount = notHeld.length - available.length;
+  const available = notHeld.filter((a) => rightsAvailable(game, a.id));
+  const locked = notHeld.filter((a) => !rightsAvailable(game, a.id));
 
-  const rows = available
-    .map((a) => {
-      const fee = rightsFee(a);
-      const afford = game.cash >= fee;
-      return `<div class="route-line">
-        <div class="row"><span><strong>${a.code}</strong> <span class="muted">${a.city}${a.national ? ' · gateway' : ''}</span></span>
-          <button class="${afford ? 'primary' : ''}" data-act="acquire" data-air="${a.id}" ${afford ? '' : 'disabled'}>${money(fee)}</button></div>
-      </div>`;
-    })
-    .join('');
+  let next: string;
+  if (available.length) {
+    // The cheapest airport you could light up next.
+    const a = [...available].sort((x, y) => rightsFee(x) - rightsFee(y) || y.size - x.size)[0];
+    const afford = game.cash >= rightsFee(a);
+    next = `<div class="tiny">Next: <strong>${a.code}</strong> ${a.city} · <span class="${afford ? 'good' : 'bad'}">${money(rightsFee(a))}</span> <span class="muted">— click it on the map</span></div>`;
+  } else if (locked.length) {
+    const a = [...locked].sort((x, y) => requiredReputation(x) - requiredReputation(y))[0];
+    next = `<div class="tiny muted">Next unlock: <strong>${a.code}</strong> at a ${requiredReputation(a)}-airport network.</div>`;
+  } else {
+    next = `<div class="tiny good">You hold rights everywhere.</div>`;
+  }
 
-  const body = available.length
-    ? rows
-    : '<div class="muted">No new airports available right now — grow your network to unlock bigger ones.</div>';
-  const lockedNote = lockedCount
-    ? `<div class="tiny" style="margin-top:8px">🔒 ${lockedCount} airport${lockedCount === 1 ? '' : 's'} still locked (need a larger network).</div>`
-    : '';
-  return `<div class="card"><h3>Landing Rights</h3>
+  const lockedNote = locked.length ? ` <span class="muted">· 🔒 ${locked.length} still locked.</span>` : '';
+  const body = `
     <div class="row"><span class="muted">Network</span><strong>${rep} airport${rep === 1 ? '' : 's'}</strong></div>
-    <div class="tiny" style="margin:6px 0">Acquire rights to operate at a new airport:</div>
-    ${body}${lockedNote}</div>`;
+    <div class="tiny" style="margin:6px 0">Click a <span class="good">green-ringed</span> airport on the map to acquire its rights.${lockedNote}</div>
+    ${next}`;
+  return collapsibleCard('rights', 'Landing Rights', body);
 }
 
 function bankCard(): string {
@@ -759,6 +876,8 @@ function bankCard(): string {
   const credit = Math.max(0, limit - game.debt);
   const rate = interestRate(game);
   const weeklyInterest = game.debt * rate * (7 / 365);
+  const earnRate = depositRate();
+  const weeklyEarned = cashInterestWeekly(game);
   // Right-size the buttons so the label matches what actually happens.
   const borrowAmt = Math.min(5_000_000, credit);
   const repayAmt = Math.min(game.cash < 5_000_000 ? 1_000_000 : 5_000_000, game.debt);
@@ -766,6 +885,7 @@ function bankCard(): string {
     <div class="row"><span class="muted">Debt</span><strong>${money(game.debt)}</strong></div>
     <div class="row"><span class="muted">Credit line</span><span>${money(credit)} of ${money(limit)}</span></div>
     <div class="row"><span class="muted">Rate</span><span>${(rate * 100).toFixed(1)}%/yr · <span class="bad">-${money(weeklyInterest)}/wk</span></span></div>
+    <div class="row"><span class="muted">Cash earns</span><span>${(earnRate * 100).toFixed(1)}%/yr · <span class="good">+${money(weeklyEarned)}/wk</span></span></div>
     <div class="row" style="margin-top:10px">
       <button data-act="borrow" data-amt="${borrowAmt}" ${credit > 0 ? '' : 'disabled'}>Borrow ${money(borrowAmt)}</button>
       <button data-act="repay" data-amt="${repayAmt}" ${game.debt > 0 && game.cash > 0 ? '' : 'disabled'}>Repay ${money(repayAmt)}</button>
@@ -774,7 +894,7 @@ function bankCard(): string {
 
 function routesCard(): string {
   if (game.routes.length === 0)
-    return `<div class="card"><h3>Routes</h3><div class="muted">No routes yet.</div></div>`;
+    return collapsibleCard('routes', 'Routes', '<div class="muted">No routes yet.</div>');
   const net = evaluateNetwork(game);
   const rows = game.routes
     .map((r) => {
@@ -803,12 +923,12 @@ function routesCard(): string {
       </div>`;
     })
     .join('');
-  return `<div class="card"><h3>Routes</h3>${rows}</div>`;
+  return collapsibleCard('routes', `Routes (${game.routes.length})`, rows);
 }
 
 function fleetCard(): string {
   if (game.fleet.length === 0)
-    return `<div class="card"><h3>Fleet</h3><div class="muted">No aircraft. Buy one above.</div></div>`;
+    return collapsibleCard('fleet', 'Fleet', '<div class="muted">No aircraft. Buy one above.</div>');
   const rows = game.fleet
     .map((plane) => {
       const t = typeById(game, plane.typeId);
@@ -827,7 +947,7 @@ function fleetCard(): string {
       </div>`;
     })
     .join('');
-  return `<div class="card"><h3>Fleet (${game.fleet.length})</h3>${rows}</div>`;
+  return collapsibleCard('fleet', `Fleet (${game.fleet.length})`, rows);
 }
 
 function renderLog() {
@@ -879,10 +999,13 @@ sidebar.addEventListener('click', (e) => {
       repay(game, Number(btn.dataset.amt));
       render();
       break;
-    case 'acquire':
-      flash(acquireRights(game, btn.dataset.air!));
-      render();
+    case 'toggle-card': {
+      const id = btn.dataset.card!;
+      if (collapsedCards.has(id)) collapsedCards.delete(id);
+      else collapsedCards.add(id);
+      renderSidebar();
       break;
+    }
     case 'close-route':
       closeRoute(game, btn.dataset.route!);
       render();
@@ -981,10 +1104,11 @@ document.getElementById('speeds')!.addEventListener('click', (e) => {
 
 function logWeekly() {
   const w = weeklyTotals(game);
+  const netInterest = w.interestEarned - w.interest; // +earned, −paid
   game.log.unshift(
     `Week ${weekNumber(game) - 1}: ${Math.round(w.pax).toLocaleString()} pax · ` +
       `rev ${money(w.revenue)} · cost ${money(w.cost)} · ` +
-      `int ${money(w.interest)} · net ${w.net >= 0 ? '+' : ''}${money(w.net)}.`,
+      `int ${netInterest >= 0 ? '+' : ''}${money(netInterest)} · net ${w.net >= 0 ? '+' : ''}${money(w.net)}.`,
   );
   renderLog();
 }
