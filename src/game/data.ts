@@ -21,6 +21,14 @@ export const AIRPORTS: Airport[] = [
   { id: 'bwi', code: 'BWI', city: 'Baltimore', lat: 39.18, lon: -76.67, size: 4 },
   { id: 'phl', code: 'PHL', city: 'Philadelphia', lat: 39.87, lon: -75.24, size: 5 },
   { id: 'ind', code: 'IND', city: 'Indianapolis', lat: 39.72, lon: -86.29, size: 4 },
+  // National gateways — big out-of-region hubs the regional network feeds into.
+  { id: 'bos', code: 'BOS', city: 'Boston', lat: 42.36, lon: -71.01, size: 5, national: true },
+  { id: 'jfk', code: 'JFK', city: 'New York', lat: 40.64, lon: -73.78, size: 6, national: true },
+  { id: 'atl', code: 'ATL', city: 'Atlanta', lat: 33.64, lon: -84.43, size: 6, national: true },
+  { id: 'mia', code: 'MIA', city: 'Miami', lat: 25.79, lon: -80.29, size: 5, national: true },
+  { id: 'ord', code: 'ORD', city: 'Chicago', lat: 41.98, lon: -87.9, size: 6, national: true },
+  { id: 'den', code: 'DEN', city: 'Denver', lat: 39.86, lon: -104.67, size: 4, national: true },
+  { id: 'lax', code: 'LAX', city: 'Los Angeles', lat: 33.94, lon: -118.41, size: 6, national: true },
 ];
 
 // A right-sized regional fleet: short hops, modest seat counts.

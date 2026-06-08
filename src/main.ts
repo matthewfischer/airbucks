@@ -74,8 +74,11 @@ const playBtn = document.getElementById('play') as HTMLButtonElement;
 
 // ---- Geographic projection ------------------------------------------------
 
-const lats = game.airports.map((a) => a.lat);
-const lons = game.airports.map((a) => a.lon);
+// The map is fit to the REGIONAL airports only; national gateways are pinned
+// to the edges so they don't blow up the bounding box.
+const regionalAirports = game.airports.filter((a) => !a.national);
+const lats = regionalAirports.map((a) => a.lat);
+const lons = regionalAirports.map((a) => a.lon);
 const bounds = {
   minLat: Math.min(...lats),
   maxLat: Math.max(...lats),
@@ -84,6 +87,8 @@ const bounds = {
 };
 const lonScale = Math.cos((((bounds.minLat + bounds.maxLat) / 2) * Math.PI) / 180);
 const MAP_PAD = 0.12;
+/** Inset (px) at which national gateways sit on the map edge. */
+const EDGE_INSET = 30;
 
 function projectPoint(lat: number, lon: number, w: number, h: number) {
   const dataW = (bounds.maxLon - bounds.minLon) * lonScale;
@@ -101,7 +106,16 @@ function projectPoint(lat: number, lon: number, w: number, h: number) {
 
 const airportScreen = (id: string, w: number, h: number) => {
   const a = airportById(game, id);
-  return projectPoint(a.lat, a.lon, w, h);
+  const p = projectPoint(a.lat, a.lon, w, h);
+  if (!a.national) return p;
+  // Pin a national gateway to the map edge along its real compass direction.
+  const dx = p.x - w / 2;
+  const dy = p.y - h / 2;
+  const hx = w / 2 - EDGE_INSET;
+  const hy = h / 2 - EDGE_INSET;
+  if (Math.abs(dx) <= hx && Math.abs(dy) <= hy) return p;
+  const s = Math.min(hx / Math.max(Math.abs(dx), 1e-6), hy / Math.max(Math.abs(dy), 1e-6));
+  return { x: w / 2 + dx * s, y: h / 2 + dy * s };
 };
 
 // ---- Demand signal (airport coloring) -------------------------------------
@@ -322,13 +336,39 @@ function drawMap() {
     ctx.setLineDash([]);
   }
 
-  // Airports, colored by the demand signal.
+  // Airports, colored by the demand signal. National gateways sit on the edges.
   for (const ap of game.airports) {
     const p = airportScreen(ap.id, w, h);
     const positions = selected.flatMap((s, i) => (s === ap.id ? [i + 1] : []));
     const isStop = positions.length > 0;
     const v = demandValue(ap);
     const r = 5 + ap.size;
+
+    if (ap.national) {
+      // Gateway: a violet rounded square pinned to the edge, labelled inward.
+      ctx.beginPath();
+      ctx.roundRect(p.x - r, p.y - r, r * 2, r * 2, 3);
+      ctx.fillStyle = '#a78bfa';
+      ctx.fill();
+      ctx.lineWidth = isStop ? 3 : 2;
+      ctx.strokeStyle = isStop ? '#ffffff' : '#0b1622';
+      ctx.stroke();
+
+      const below = p.y < h * 0.7;
+      const ly = below ? p.y + r + 12 : p.y - r - 6;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#e8eef6';
+      ctx.font = 'bold 12px system-ui';
+      ctx.fillText(ap.code, p.x, ly);
+      if (selected.length > 0 && v !== null) {
+        ctx.fillStyle = heat(v);
+        ctx.font = 'bold 10px system-ui';
+        ctx.fillText(`${formatPax(v * MAX_PAIR_DEMAND)}/wk`, p.x, below ? ly + 12 : ly - 12);
+      }
+      ctx.textAlign = 'left';
+      drawOrderBadge(p.x, p.y, r, positions);
+      continue;
+    }
 
     if (ap.home) {
       ctx.beginPath();
@@ -358,27 +398,30 @@ function drawMap() {
       ctx.font = 'bold 11px system-ui';
       ctx.fillText(`${formatPax(v * MAX_PAIR_DEMAND)}/wk`, p.x + 10, p.y + 31);
     }
-    // Order badge for staged stops (lists every position if revisited).
-    if (isStop) {
-      const text = positions.join(',');
-      ctx.font = 'bold 11px system-ui';
-      const bw = Math.max(16, ctx.measureText(text).width + 8);
-      const bx = p.x - r - 2 - bw / 2;
-      const by = p.y - r - 4;
-      ctx.fillStyle = '#f5a623';
-      ctx.beginPath();
-      ctx.roundRect(bx - bw / 2, by - 8, bw, 16, 8);
-      ctx.fill();
-      ctx.fillStyle = '#2a1c02';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(text, bx, by);
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'alphabetic';
-    }
+    drawOrderBadge(p.x, p.y, r, positions);
   }
 
   drawLegend(w, h);
+}
+
+/** Small gold badge listing a staged stop's position(s) on the route. */
+function drawOrderBadge(px: number, py: number, r: number, positions: number[]) {
+  if (positions.length === 0) return;
+  const text = positions.join(',');
+  ctx.font = 'bold 11px system-ui';
+  const bw = Math.max(16, ctx.measureText(text).width + 8);
+  const bx = px - r - 2 - bw / 2;
+  const by = py - r - 4;
+  ctx.fillStyle = '#f5a623';
+  ctx.beginPath();
+  ctx.roundRect(bx - bw / 2, by - 8, bw, 16, 8);
+  ctx.fill();
+  ctx.fillStyle = '#2a1c02';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, bx, by);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
 }
 
 function drawLegend(_w: number, h: number) {

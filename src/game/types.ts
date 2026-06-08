@@ -9,6 +9,8 @@ export interface Airport {
   size: number;
   /** True for the player's home base. */
   home?: boolean;
+  /** True for big out-of-region national hubs (drawn as edge "gateways"). */
+  national?: boolean;
 }
 
 export interface AircraftType {

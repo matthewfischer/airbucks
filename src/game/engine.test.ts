@@ -598,3 +598,24 @@ describe('determinism', () => {
     }
   });
 });
+
+describe('national gateways', () => {
+  it('the data includes flagged national gateway airports', () => {
+    expect(AIRPORTS.some((a) => a.national)).toBe(true);
+  });
+
+  it('feeds a far national gateway from a regional spoke via a hub', () => {
+    addRoute(['crw', 'clt']); // regional feeder
+    addRoute(['clt', 'lax'], 'cityjet'); // long-haul to a national gateway
+    // CRW travelers reach LAX by connecting at CLT.
+    expect(evaluateNetwork(g).connectingPassengers).toBeGreaterThan(0);
+  });
+
+  it('adding onward feed improves a feeder spoke (fair fare attribution)', () => {
+    const spoke = addRoute(['crw', 'clt']);
+    const alone = evaluateRoute(g, spoke).profit;
+    addRoute(['clt', 'lax'], 'cityjet'); // CLT now feeds onward; CRW carries CRW->LAX
+    const fed = evaluateRoute(g, spoke).profit;
+    expect(fed).toBeGreaterThan(alone);
+  });
+});

@@ -336,11 +336,17 @@ export function evaluateNetwork(g: GameState): NetworkResult {
     revenue += carried * m.fare;
     passengers += carried;
     if (m.path.connections > 0) connectingPassengers += carried;
+    // Split the itinerary fare across legs by each leg's standalone reference
+    // fare. This gives short feeder legs a fair base share (vs. distance, which
+    // would hand almost the whole long-haul fare to the longest leg), so a
+    // spoke is credited enough to cover the connecting traffic it carries.
+    let refSum = 0;
+    for (const key of m.path.legKeys) refSum += referenceFare(legs.get(key)!.distance);
     for (const key of m.path.legKeys) {
       remaining.set(key, remaining.get(key)! - carried);
       legCarried.set(key, (legCarried.get(key) ?? 0) + carried);
       const li = legs.get(key)!;
-      const legFareShare = m.fare * (li.distance / m.path.pathDist);
+      const legFareShare = m.fare * (referenceFare(li.distance) / refSum);
       for (const [rid, rcap] of li.routeCap) {
         const share = rcap / li.capacity;
         const rs = summaries.get(rid)!;
