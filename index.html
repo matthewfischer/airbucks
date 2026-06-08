@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Air Bucks</title>
+    <link rel="stylesheet" href="/src/ui/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header id="topbar">
+        <div class="brand">✈ AIR BUCKS</div>
+        <div id="hud"></div>
+        <div id="controls">
+          <div id="speeds">
+            <button data-speed="1" class="speed active">1×</button>
+            <button data-speed="2" class="speed">2×</button>
+            <button data-speed="4" class="speed">4×</button>
+          </div>
+          <button id="play" class="primary">▶ Play</button>
+        </div>
+      </header>
+      <main id="stage">
+        <canvas id="map"></canvas>
+        <aside id="sidebar"></aside>
+      </main>
+      <footer id="log"></footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
