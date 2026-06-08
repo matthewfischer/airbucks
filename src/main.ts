@@ -589,7 +589,11 @@ function routesCard(): string {
         <div class="row"><strong>${routeLabel(game, r)}</strong>
           <span class="row" style="gap:6px"><span class="pill ${cls}">${res.profit >= 0 ? '+' : ''}${money(res.profit)}/wk</span>
           <button class="close-x" data-act="close-route" data-route="${r.id}" title="Close route">✕</button></span></div>
-        <div class="tiny">${dist.toLocaleString()} km · ${r.stops.length - 1} legs · ${n} plane${n === 1 ? '' : 's'} · ${Math.round(res.passengers).toLocaleString()}/${res.demand.toLocaleString()} pax · ${load}% load${premTag}</div>
+        <div class="tiny">${dist.toLocaleString()} km · ${r.stops.length - 1} legs · ${n} plane${n === 1 ? '' : 's'} · ${Math.round(res.passengers).toLocaleString()}/${Math.round(res.demand).toLocaleString()} pax · ${load}% load${premTag}${
+          res.connectingPassengers >= 1
+            ? ` · <span class="good">${Math.round(res.connectingPassengers).toLocaleString()} connecting</span>`
+            : ''
+        }</div>
         <div class="row" style="margin-top:6px">
           <span class="muted">Fare <input type="number" min="20" max="300" step="5" value="${Math.round(r.fareFactor * 100)}" data-act="fare" data-route="${r.id}">%</span>
         </div>

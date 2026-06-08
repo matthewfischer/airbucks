@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { GameState } from './types';
 import { AIRCRAFT_TYPES, AIRPORTS, STARTING_CASH } from './data';
+import { distanceKm } from './geo';
 import {
   advanceDay,
   airportById,
@@ -8,6 +9,7 @@ import {
   borrow,
   buyPlane,
   closeRoute,
+  distanceFactor,
   evaluateRoute,
   LOAN_ANNUAL_RATE,
   LOAN_LIMIT,
@@ -20,6 +22,7 @@ import {
   repay,
   routeDistance,
   routeLegs,
+  routeMarkets,
   routeMaxLeg,
   setFareFactor,
   tripsPerWeek,
@@ -59,6 +62,13 @@ describe('referenceFare & pairDemand', () => {
     const crw = airportById(g, 'crw'); // size 1
     const clt = airportById(g, 'clt'); // size 5
     expect(pairDemand(crw, clt)).toBe(1 * 5 * 90);
+  });
+
+  it('distance factor is 1 at the reference distance and shrinks for longer markets', () => {
+    expect(distanceFactor(400)).toBeCloseTo(1, 5);
+    expect(distanceFactor(200)).toBeGreaterThan(1); // short markets are denser
+    expect(distanceFactor(1600)).toBeLessThan(1); // long markets are thinner
+    expect(distanceFactor(50)).toBeLessThanOrEqual(1.6); // clamped
   });
 });
 
@@ -201,14 +211,47 @@ describe('evaluateRoute', () => {
     expect(r.passengers).toBeCloseTo(Math.min(r.demand, r.seatsOffered), 5);
   });
 
-  it('a multi-stop route aggregates demand across all legs', () => {
-    const route = withRoute(['crw', 'clt', 'dca']);
+  it('serves connecting markets in addition to adjacent legs', () => {
+    openRoute(g, ['dca', 'crw', 'cvg']);
+    const markets = routeMarkets(g, lastRoute(g));
+    const pairs = markets.map((m) => [m.fromId, m.toId].sort().join('-')).sort();
+    // DCA-CRW and CRW-CVG (nonstop) plus the connecting DCA-CVG market.
+    expect(pairs).toEqual(['crw-cvg', 'crw-dca', 'cvg-dca']);
+    const through = markets.find((m) => [m.fromId, m.toId].sort().join('-') === 'cvg-dca')!;
+    expect(through.connections).toBe(1);
+  });
+
+  it('discounts a connecting market relative to a nonstop in the same pair', () => {
+    const a = airportById(g, 'dca');
+    const b = airportById(g, 'cvg');
+    openRoute(g, ['dca', 'cvg']); // nonstop
+    openRoute(g, ['dca', 'crw', 'cvg']); // one-stop
+    const nonstop = routeMarkets(g, g.routes[0]).find(
+      (m) => [m.fromId, m.toId].sort().join('-') === 'cvg-dca',
+    )!;
+    const connect = routeMarkets(g, g.routes[1]).find(
+      (m) => [m.fromId, m.toId].sort().join('-') === 'cvg-dca',
+    )!;
+    expect(connect.baseDemand).toBeCloseTo(nonstop.baseDemand * 0.6, 5);
+    // Same direct distance and pair either way.
+    expect(connect.distance).toBe(distanceKm(a, b));
+  });
+
+  it('reports connecting passengers carried on a multi-stop route', () => {
+    const route = withRoute(['dca', 'crw', 'cvg'], 'regionaljet');
     const r = evaluateRoute(g, route);
-    const crw = airportById(g, 'crw');
-    const clt = airportById(g, 'clt');
-    const dca = airportById(g, 'dca');
-    // No planes => demand multiplier 1, so demand is the raw pair sum.
-    expect(r.demand).toBe(pairDemand(crw, clt) + pairDemand(clt, dca));
+    expect(r.connectingPassengers).toBeGreaterThan(0);
+    expect(r.connectingPassengers).toBeLessThan(r.passengers);
+  });
+
+  it('keeps only the most direct itinerary when a hub is revisited', () => {
+    openRoute(g, ['dca', 'cvg', 'dca', 'pit']);
+    const markets = routeMarkets(g, lastRoute(g));
+    const dcaPit = markets.filter(
+      (m) => [m.fromId, m.toId].sort().join('-') === 'dca-pit',
+    );
+    expect(dcaPit).toHaveLength(1);
+    expect(dcaPit[0].connections).toBe(0); // the nonstop DCA-PIT leg, not the long way
   });
 
   it('demand falls as the fare factor rises (price elasticity)', () => {

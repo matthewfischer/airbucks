@@ -89,6 +89,70 @@ export function tripsPerWeek(
 
 /** Cruise speed at which travelers neither pay a premium nor a discount. */
 const BASELINE_SPEED = 700;
+/** Distance (km) at which the distance factor is exactly 1. */
+const REF_DISTANCE = 400;
+/** Fraction of through-travelers willing to accept each extra connection. */
+const CONNECTION_PENALTY = 0.6;
+
+/**
+ * How a market's size scales with distance: shorter markets have more
+ * travelers, longer ones fewer (but they pay a higher, distance-based fare).
+ */
+export const distanceFactor = (distance: number): number =>
+  Math.max(0.4, Math.min(1.6, Math.sqrt(REF_DISTANCE / Math.max(1, distance))));
+
+/** An origin-destination market served by a route (possibly via connections). */
+export interface ODMarket {
+  fromId: string;
+  toId: string;
+  /** Stop indices along the route's path (fromIndex < toIndex). */
+  fromIndex: number;
+  toIndex: number;
+  /** Direct distance between the two airports. */
+  distance: number;
+  /** Intermediate stops on this itinerary (0 = nonstop on this route). */
+  connections: number;
+  /** Weekly travelers, both directions, before price elasticity. */
+  baseDemand: number;
+}
+
+/**
+ * Every O&D market a route serves: each pair of stops, including non-adjacent
+ * ones reached via connections. If the same city pair appears more than once
+ * (e.g. a revisited hub), only the most direct itinerary is kept.
+ */
+export function routeMarkets(g: GameState, route: Route): ODMarket[] {
+  const best = new Map<string, ODMarket>();
+  const stops = route.stops;
+  for (let i = 0; i < stops.length; i++) {
+    for (let j = i + 1; j < stops.length; j++) {
+      const a = airportById(g, stops[i]);
+      const b = airportById(g, stops[j]);
+      if (a.id === b.id) continue; // degenerate (revisit of the same airport)
+      const connections = j - i - 1;
+      const distance = distanceKm(a, b);
+      const baseDemand =
+        pairDemand(a, b) *
+        distanceFactor(distance) *
+        CONNECTION_PENALTY ** connections;
+      const key = [a.id, b.id].sort().join('-');
+      const existing = best.get(key);
+      // Prefer the itinerary with the fewest connections for a given city pair.
+      if (!existing || connections < existing.connections) {
+        best.set(key, {
+          fromId: a.id,
+          toId: b.id,
+          fromIndex: i,
+          toIndex: j,
+          distance,
+          connections,
+          baseDemand,
+        });
+      }
+    }
+  }
+  return [...best.values()];
+}
 
 export interface RouteResult {
   passengers: number;
@@ -97,6 +161,8 @@ export interface RouteResult {
   revenue: number;
   cost: number;
   profit: number;
+  /** Of the carried passengers, how many are connecting (non-adjacent O&D). */
+  connectingPassengers: number;
   /** Fare-tolerance multiplier from the assigned fleet's speed (1 = neutral). */
   speedPremium: number;
 }
@@ -126,28 +192,37 @@ export function evaluateRoute(g: GameState, route: Route): RouteResult {
   const speedPremium = Math.max(0.85, Math.min(1.2, avgSpeed / BASELINE_SPEED));
   const demandMult = Math.max(0.1, Math.min(1.5, 2 - route.fareFactor / speedPremium));
 
-  // Per-leg demand, then size frequency to satisfy the busiest leg (no more).
-  let totalDemand = 0;
-  let maxLegDemand = 0;
-  const legDemands = legs.map((leg) => {
-    const dem = Math.round(
-      pairDemand(airportById(g, leg.fromId), airportById(g, leg.toId)) * demandMult,
-    );
-    totalDemand += dem;
-    maxLegDemand = Math.max(maxLegDemand, dem);
-    return dem;
-  });
+  // Price-adjusted demand for every O&D market the route serves.
+  const markets = routeMarkets(g, route).map((m) => ({
+    ...m,
+    demand: m.baseDemand * demandMult,
+  }));
+  const totalDemand = markets.reduce((s, m) => s + m.demand, 0);
 
-  const utilization = seatsPerLeg > 0 ? Math.min(1, maxLegDemand / seatsPerLeg) : 0;
+  // How much demand crosses each leg (a connecting itinerary loads every leg
+  // it spans), then size frequency to satisfy the busiest leg — no more.
+  const crossing = legs.map(() => 0);
+  for (const m of markets)
+    for (let L = m.fromIndex; L < m.toIndex; L++) crossing[L] += m.demand;
+  const maxCrossing = crossing.reduce((mx, c) => Math.max(mx, c), 0);
+  const utilization = seatsPerLeg > 0 ? Math.min(1, maxCrossing / seatsPerLeg) : 0;
   const seatsFlownPerLeg = utilization * seatsPerLeg;
+  const legFill = crossing.map((c) =>
+    c > 0 ? Math.min(1, seatsFlownPerLeg / c) : 1,
+  );
 
+  // Each market is bottlenecked by its fullest leg.
   let passengers = 0;
+  let connectingPassengers = 0;
   let revenue = 0;
-  legs.forEach((leg, i) => {
-    const pax = Math.min(legDemands[i], seatsFlownPerLeg);
-    passengers += pax;
-    revenue += pax * route.fareFactor * referenceFare(leg.distance);
-  });
+  for (const m of markets) {
+    let fill = 1;
+    for (let L = m.fromIndex; L < m.toIndex; L++) fill = Math.min(fill, legFill[L]);
+    const carried = m.demand * fill;
+    passengers += carried;
+    if (m.connections > 0) connectingPassengers += carried;
+    revenue += carried * route.fareFactor * referenceFare(m.distance);
+  }
 
   const cost = utilization * fullCircuitCost + upkeep;
   return {
@@ -157,6 +232,7 @@ export function evaluateRoute(g: GameState, route: Route): RouteResult {
     revenue,
     cost,
     profit: revenue - cost,
+    connectingPassengers,
     speedPremium,
   };
 }
