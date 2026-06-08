@@ -41,6 +41,8 @@ if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
       selected = ids;
       render();
     },
+    screenOf: (id: string) =>
+      airportScreen(id, canvas.clientWidth, canvas.clientHeight),
     evaluate: (r: string) =>
       evaluateRoute(game, game.routes.find((x) => x.id === r)!),
   };
@@ -320,7 +322,8 @@ function drawMap() {
   // Airports, colored by the demand signal.
   for (const ap of game.airports) {
     const p = airportScreen(ap.id, w, h);
-    const order = selected.indexOf(ap.id);
+    const positions = selected.flatMap((s, i) => (s === ap.id ? [i + 1] : []));
+    const isStop = positions.length > 0;
     const v = demandValue(ap);
     const r = 5 + ap.size;
 
@@ -335,8 +338,8 @@ function drawMap() {
     ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
     ctx.fillStyle = v === null ? '#f5a623' : heat(v);
     ctx.fill();
-    ctx.lineWidth = order >= 0 ? 3 : 2;
-    ctx.strokeStyle = order >= 0 ? '#ffffff' : '#0b1622';
+    ctx.lineWidth = isStop ? 3 : 2;
+    ctx.strokeStyle = isStop ? '#ffffff' : '#0b1622';
     ctx.stroke();
 
     ctx.fillStyle = '#e8eef6';
@@ -352,17 +355,21 @@ function drawMap() {
       ctx.font = 'bold 11px system-ui';
       ctx.fillText(`${formatPax(v * MAX_PAIR_DEMAND)}/wk`, p.x + 10, p.y + 31);
     }
-    // Order badge for staged stops.
-    if (order >= 0) {
+    // Order badge for staged stops (lists every position if revisited).
+    if (isStop) {
+      const text = positions.join(',');
+      ctx.font = 'bold 11px system-ui';
+      const bw = Math.max(16, ctx.measureText(text).width + 8);
+      const bx = p.x - r - 2 - bw / 2;
+      const by = p.y - r - 4;
       ctx.fillStyle = '#f5a623';
       ctx.beginPath();
-      ctx.arc(p.x - r - 4, p.y - r - 4, 8, 0, Math.PI * 2);
+      ctx.roundRect(bx - bw / 2, by - 8, bw, 16, 8);
       ctx.fill();
       ctx.fillStyle = '#2a1c02';
-      ctx.font = 'bold 11px system-ui';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(String(order + 1), p.x - r - 4, p.y - r - 4);
+      ctx.fillText(text, bx, by);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
     }
@@ -455,15 +462,17 @@ canvas.addEventListener('click', (e) => {
   for (const ap of game.airports) {
     const p = airportScreen(ap.id, w, h);
     if (Math.hypot(p.x - mx, p.y - my) <= 14) {
-      toggleSelect(ap.id);
+      addStop(ap.id);
       return;
     }
   }
 });
 
-function toggleSelect(id: string) {
-  if (selected.includes(id)) selected = selected.filter((s) => s !== id);
-  else selected = [...selected, id];
+/** Append a stop to the staged path, allowing revisits (hub-and-spoke). */
+function addStop(id: string) {
+  // Ignore a double-click on the current endpoint (no zero-length leg).
+  if (selected.length && selected[selected.length - 1] === id) return;
+  selected = [...selected, id];
   render();
 }
 
@@ -514,16 +523,17 @@ function newRouteCard(): string {
   let canOpen = false;
   if (selected.length >= 2) {
     info = `<div class="row"><strong>${names}</strong><span class="pill">${stagedDistance().toLocaleString()} km</span></div>
-      <div class="tiny">${selected.length - 1} leg${selected.length - 1 === 1 ? '' : 's'} · click more airports to add stops</div>`;
+      <div class="tiny">${selected.length - 1} leg${selected.length - 1 === 1 ? '' : 's'} · click more stops (you can revisit a hub)</div>`;
     canOpen = true;
   } else if (selected.length === 1) {
     info = `<div class="muted">Start: <strong>${names}</strong>. Click the next stop.</div>`;
   } else {
     info =
-      '<div class="muted">Click airports in order to chain stops. Brighter dots = more demand.</div>';
+      '<div class="muted">Click airports in order to chain stops — revisit an airport for hub-and-spoke. Brighter dots = more demand.</div>';
   }
   return `<div class="card"><h3>New Route</h3>${info}
-    <div class="row" style="margin-top:10px">
+    <div class="row" style="margin-top:10px; gap:8px">
+      <button data-act="undo-sel" ${selected.length ? '' : 'disabled'}>↶ Undo</button>
       <button data-act="clear-sel" ${selected.length ? '' : 'disabled'}>Clear</button>
       <button class="primary" data-act="open-route" ${canOpen ? '' : 'disabled'}>Open Route</button>
     </div></div>`;
@@ -633,6 +643,10 @@ sidebar.addEventListener('click', (e) => {
   const btn = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
   if (!btn) return;
   switch (btn.dataset.act) {
+    case 'undo-sel':
+      selected = selected.slice(0, -1);
+      render();
+      break;
     case 'clear-sel':
       selected = [];
       render();
