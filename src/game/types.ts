@@ -51,6 +51,8 @@ export interface GameState {
   cash: number;
   /** Outstanding loan principal. */
   debt: number;
+  /** Airport ids where the airline holds landing rights (can operate). */
+  rights: string[];
   airports: Airport[];
   aircraftTypes: AircraftType[];
   fleet: Plane[];

@@ -18,6 +18,7 @@ beforeEach(() => {
 function playedGame(): GameState {
   const x = newGame();
   x.cash = 1_000_000_000;
+  x.rights = ['crw', 'clt', 'dca']; // hold rights for the route below
   openRoute(x, ['crw', 'clt', 'dca']);
   setFareFactor(x, x.routes[0].id, 1.2);
   buyPlane(x, 'regionaljet');
@@ -73,7 +74,7 @@ describe('applySave', () => {
     const src = playedGame(); // its route id is e.g. route-N
     applySave(g, deserialize(serialize(src))!);
     const existing = new Set(g.routes.map((r) => r.id));
-    openRoute(g, ['pit', 'cvg']);
+    openRoute(g, ['crw', 'dca']); // airports whose rights the save restored
     const newId = g.routes[g.routes.length - 1].id;
     expect(existing.has(newId)).toBe(false);
   });

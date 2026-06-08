@@ -43,11 +43,18 @@ const LOAN_MAX_CREDIT = 400_000_000;
 const LOAN_BASE_RATE = 0.04;
 const LOAN_MAX_RATE = 0.16;
 
+// Landing rights: an airport's slots only become available once the airline is
+// big enough (reputation = number of airports held), and cost a fee by size.
+// Indexed by airport size (1..6).
+const RIGHTS_REQUIRED_REP = [0, 0, 0, 3, 5, 8, 11];
+const RIGHTS_FEE = [0, 2_000_000, 3_000_000, 8_000_000, 15_000_000, 25_000_000, 40_000_000];
+
 export function newGame(): GameState {
   return {
     day: 0,
     cash: STARTING_CASH,
     debt: 0,
+    rights: AIRPORTS.filter((a) => a.home).map((a) => a.id),
     airports: AIRPORTS,
     aircraftTypes: AIRCRAFT_TYPES,
     fleet: [],
@@ -421,10 +428,50 @@ export function buyPlane(g: GameState, typeId: string): string | null {
 export const routeLabel = (g: GameState, route: Route): string =>
   route.stops.map((id) => airportById(g, id).code).join(' → ');
 
+// ---- Landing rights -------------------------------------------------------
+
+/** Network size — how many airports the airline holds rights at. */
+export const reputation = (g: GameState): number => g.rights.length;
+
+/** Minimum reputation before an airport's rights become available to acquire. */
+export const requiredReputation = (a: Airport): number =>
+  RIGHTS_REQUIRED_REP[a.size] ?? 0;
+
+/** One-time fee to acquire landing rights at an airport. */
+export const rightsFee = (a: Airport): number => RIGHTS_FEE[a.size] ?? 0;
+
+export const holdsRights = (g: GameState, airportId: string): boolean =>
+  g.rights.includes(airportId);
+
+/** True if the airline can acquire this airport now (unlocked and not held). */
+export const rightsAvailable = (g: GameState, airportId: string): boolean =>
+  !holdsRights(g, airportId) &&
+  reputation(g) >= requiredReputation(airportById(g, airportId));
+
+/** Buy landing rights at an airport. Returns an error string, or null on success. */
+export function acquireRights(g: GameState, airportId: string): string | null {
+  const a = airportById(g, airportId);
+  if (holdsRights(g, airportId)) return `Already hold rights at ${a.code}.`;
+  const need = requiredReputation(a);
+  if (reputation(g) < need)
+    return `${a.code} is locked — needs a ${need}-airport network (you have ${reputation(g)}).`;
+  const fee = rightsFee(a);
+  if (g.cash < fee)
+    return `Not enough cash for rights at ${a.code} (${money(fee)}).`;
+  g.cash -= fee;
+  g.rights.push(airportId);
+  g.log.unshift(`Acquired landing rights at ${a.code} (${a.city}) for ${money(fee)}.`);
+  return null;
+}
+
 export function openRoute(g: GameState, stops: string[]): string | null {
   if (stops.length < 2) return 'Pick at least two airports.';
   for (let i = 1; i < stops.length; i++) {
     if (stops[i] === stops[i - 1]) return 'A route cannot stop at the same airport twice in a row.';
+  }
+  for (const s of stops) {
+    if (!holdsRights(g, s))
+      return `No landing rights at ${airportById(g, s).code} — acquire them first.`;
   }
   const key = (s: string[]) => s.join('>');
   const norm = key(stops);

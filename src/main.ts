@@ -1,6 +1,7 @@
 import './ui/styles.css';
 import type { Airport, GameState } from './game/types';
 import {
+  acquireRights,
   advanceDay,
   airportById,
   assignPlane,
@@ -10,6 +11,7 @@ import {
   creditLimit,
   evaluateNetwork,
   evaluateRoute,
+  holdsRights,
   interestRate,
   money,
   newGame,
@@ -17,6 +19,10 @@ import {
   pairDemand,
   planesOnRoute,
   repay,
+  reputation,
+  requiredReputation,
+  rightsAvailable,
+  rightsFee,
   routeDistance,
   routeLabel,
   routeMaxLeg,
@@ -352,6 +358,8 @@ function drawMap() {
     const isStop = positions.length > 0;
     const v = demandValue(ap);
     const r = 5 + ap.size;
+    // Airports without landing rights are dimmed (you can't operate there yet).
+    ctx.globalAlpha = holdsRights(game, ap.id) ? 1 : 0.4;
 
     if (ap.national) {
       // Gateway: a violet rounded square pinned to the edge, labelled inward.
@@ -409,6 +417,7 @@ function drawMap() {
     }
     drawOrderBadge(p.x, p.y, r, positions);
   }
+  ctx.globalAlpha = 1;
 
   drawLegend(w, h);
 }
@@ -555,7 +564,13 @@ canvas.addEventListener('click', (e) => {
   for (const ap of game.airports) {
     const p = airportScreen(ap.id, w, h);
     if (Math.hypot(p.x - mx, p.y - my) <= 14) {
-      addStop(ap.id);
+      if (holdsRights(game, ap.id)) {
+        addStop(ap.id);
+      } else if (rightsAvailable(game, ap.id)) {
+        flash(`Acquire landing rights at ${ap.code} (${money(rightsFee(ap))}) in the Landing Rights panel.`);
+      } else {
+        flash(`${ap.code} is locked — grow to a ${requiredReputation(ap)}-airport network to unlock it.`);
+      }
       return;
     }
   }
@@ -659,7 +674,7 @@ function renderHud() {
 
 function renderSidebar() {
   sidebar.innerHTML =
-    newRouteCard() + buyCard() + bankCard() + routesCard() + fleetCard();
+    newRouteCard() + rightsCard() + buyCard() + bankCard() + routesCard() + fleetCard();
 }
 
 /** Distance of the staged path through the currently selected airports. */
@@ -706,6 +721,37 @@ function buyCard(): string {
     })
     .join('');
   return `<div class="card"><h3>Buy Aircraft</h3>${rows}</div>`;
+}
+
+function rightsCard(): string {
+  const rep = reputation(game);
+  const notHeld = game.airports.filter((a) => !holdsRights(game, a.id));
+  const available = notHeld
+    .filter((a) => rightsAvailable(game, a.id))
+    .sort((a, b) => b.size - a.size || a.code.localeCompare(b.code));
+  const lockedCount = notHeld.length - available.length;
+
+  const rows = available
+    .map((a) => {
+      const fee = rightsFee(a);
+      const afford = game.cash >= fee;
+      return `<div class="route-line">
+        <div class="row"><span><strong>${a.code}</strong> <span class="muted">${a.city}${a.national ? ' · gateway' : ''}</span></span>
+          <button class="${afford ? 'primary' : ''}" data-act="acquire" data-air="${a.id}" ${afford ? '' : 'disabled'}>${money(fee)}</button></div>
+      </div>`;
+    })
+    .join('');
+
+  const body = available.length
+    ? rows
+    : '<div class="muted">No new airports available right now — grow your network to unlock bigger ones.</div>';
+  const lockedNote = lockedCount
+    ? `<div class="tiny" style="margin-top:8px">🔒 ${lockedCount} airport${lockedCount === 1 ? '' : 's'} still locked (need a larger network).</div>`
+    : '';
+  return `<div class="card"><h3>Landing Rights</h3>
+    <div class="row"><span class="muted">Network</span><strong>${rep} airport${rep === 1 ? '' : 's'}</strong></div>
+    <div class="tiny" style="margin:6px 0">Acquire rights to operate at a new airport:</div>
+    ${body}${lockedNote}</div>`;
 }
 
 function bankCard(): string {
@@ -831,6 +877,10 @@ sidebar.addEventListener('click', (e) => {
       break;
     case 'repay':
       repay(game, Number(btn.dataset.amt));
+      render();
+      break;
+    case 'acquire':
+      flash(acquireRights(game, btn.dataset.air!));
       render();
       break;
     case 'close-route':

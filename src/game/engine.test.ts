@@ -7,6 +7,7 @@ import {
   airportById,
   assignPlane,
   borrow,
+  acquireRights,
   buyPlane,
   closeRoute,
   creditLimit,
@@ -18,10 +19,15 @@ import {
   money,
   newGame,
   openRoute,
+  holdsRights,
   pairDemand,
   planesOnRoute,
   referenceFare,
   repay,
+  reputation,
+  requiredReputation,
+  rightsAvailable,
+  rightsFee,
   routeDistance,
   routeLabel,
   routeLegs,
@@ -41,6 +47,8 @@ const lastPlane = (g: GameState) => g.fleet[g.fleet.length - 1];
 let g: GameState;
 beforeEach(() => {
   g = newGame();
+  // Most tests aren't about landing rights — grant them everywhere by default.
+  g.rights = AIRPORTS.map((a) => a.id);
 });
 
 /** Open a route and staff it with `count` planes of `planeType`. Returns the route. */
@@ -614,6 +622,56 @@ describe('determinism', () => {
       expect(b.routes.get(id)!.revenue).toBe(ra.revenue);
       expect(b.routes.get(id)!.cost).toBe(ra.cost);
     }
+  });
+});
+
+describe('landing rights', () => {
+  it('a new game holds rights only at its home base', () => {
+    const fresh = newGame();
+    expect(fresh.rights).toEqual(['crw']);
+    expect(reputation(fresh)).toBe(1);
+  });
+
+  it('locks big airports until the network is large enough', () => {
+    g.rights = ['crw']; // reset to a fresh-airline footprint
+    expect(rightsAvailable(g, 'roa')).toBe(true); // size 1, open from day 1
+    expect(rightsAvailable(g, 'lax')).toBe(false); // size 6, needs rep 11
+    expect(requiredReputation(airportById(g, 'lax'))).toBe(11);
+  });
+
+  it('acquiring rights costs the fee, adds the airport, and raises reputation', () => {
+    g.rights = ['crw'];
+    g.cash = 1_000_000_000;
+    const before = reputation(g);
+    expect(acquireRights(g, 'roa')).toBeNull();
+    expect(holdsRights(g, 'roa')).toBe(true);
+    expect(reputation(g)).toBe(before + 1);
+    expect(g.cash).toBe(1_000_000_000 - rightsFee(airportById(g, 'roa')));
+  });
+
+  it('refuses to acquire a locked airport, and refuses when broke', () => {
+    g.rights = ['crw'];
+    g.cash = 1_000_000_000;
+    expect(acquireRights(g, 'lax')).toMatch(/locked/i);
+    g.cash = 1000;
+    expect(acquireRights(g, 'roa')).toMatch(/not enough cash/i);
+    expect(holdsRights(g, 'roa')).toBe(false);
+  });
+
+  it('bootstraps: acquiring small airports unlocks bigger ones', () => {
+    g.rights = ['crw'];
+    g.cash = 1_000_000_000;
+    expect(rightsAvailable(g, 'pit')).toBe(false); // size 3 needs rep 3
+    acquireRights(g, 'roa');
+    acquireRights(g, 'lex'); // now reputation 3
+    expect(rightsAvailable(g, 'pit')).toBe(true);
+  });
+
+  it('openRoute requires rights at every stop', () => {
+    g.rights = ['crw', 'clt'];
+    g.cash = 1_000_000_000;
+    expect(openRoute(g, ['crw', 'dca'])).toMatch(/no landing rights at DCA/i);
+    expect(openRoute(g, ['crw', 'clt'])).toBeNull(); // both held
   });
 });
 

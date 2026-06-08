@@ -10,6 +10,7 @@ export interface SaveData {
   day: number;
   cash: number;
   debt: number;
+  rights: string[];
   fleet: Plane[];
   routes: Route[];
   log: string[];
@@ -22,6 +23,7 @@ export function serialize(g: GameState): string {
     day: g.day,
     cash: g.cash,
     debt: g.debt,
+    rights: g.rights,
     fleet: g.fleet,
     routes: g.routes,
     log: g.log,
@@ -54,6 +56,7 @@ export function deserialize(json: string): SaveData | null {
     day: s.day,
     cash: s.cash,
     debt: s.debt,
+    rights: Array.isArray(s.rights) ? (s.rights as string[]) : [],
     fleet: s.fleet as Plane[],
     routes: s.routes as Route[],
     log: Array.isArray(s.log) ? (s.log as string[]) : [],
@@ -80,9 +83,14 @@ export function applySave(g: GameState, data: SaveData): void {
       routeId: p.routeId && routeIds.has(p.routeId) ? p.routeId : null,
     }));
 
+  // Keep only rights at airports that still exist; always include home bases.
+  const rights = new Set(data.rights.filter((id) => airportIds.has(id)));
+  for (const a of g.airports) if (a.home) rights.add(a.id);
+
   g.day = data.day;
   g.cash = data.cash;
   g.debt = data.debt;
+  g.rights = [...rights];
   g.routes = routes;
   g.fleet = fleet;
   g.log = data.log;
