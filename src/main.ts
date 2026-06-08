@@ -562,13 +562,16 @@ function buyCard(): string {
 function bankCard(): string {
   const credit = LOAN_LIMIT - game.debt;
   const weeklyInterest = game.debt * LOAN_ANNUAL_RATE * (7 / 365);
+  // Right-size the buttons so the label matches what actually happens.
+  const borrowAmt = Math.min(5_000_000, credit);
+  const repayAmt = Math.min(game.cash < 5_000_000 ? 1_000_000 : 5_000_000, game.debt);
   return `<div class="card"><h3>Bank</h3>
     <div class="row"><span class="muted">Debt</span><strong>${money(game.debt)}</strong></div>
     <div class="row"><span class="muted">Credit available</span><span>${money(credit)}</span></div>
     <div class="row"><span class="muted">Interest (${(LOAN_ANNUAL_RATE * 100).toFixed(0)}% / yr)</span><span class="bad">-${money(weeklyInterest)}/wk</span></div>
     <div class="row" style="margin-top:10px">
-      <button data-act="borrow" ${credit > 0 ? '' : 'disabled'}>Borrow $5M</button>
-      <button data-act="repay" ${game.debt > 0 ? '' : 'disabled'}>Repay $5M</button>
+      <button data-act="borrow" data-amt="${borrowAmt}" ${credit > 0 ? '' : 'disabled'}>Borrow ${money(borrowAmt)}</button>
+      <button data-act="repay" data-amt="${repayAmt}" ${game.debt > 0 && game.cash > 0 ? '' : 'disabled'}>Repay ${money(repayAmt)}</button>
     </div></div>`;
 }
 
@@ -672,11 +675,11 @@ sidebar.addEventListener('click', (e) => {
       render();
       break;
     case 'borrow':
-      borrow(game, 5_000_000);
+      borrow(game, Number(btn.dataset.amt));
       render();
       break;
     case 'repay':
-      repay(game, 5_000_000);
+      repay(game, Number(btn.dataset.amt));
       render();
       break;
     case 'close-route':
