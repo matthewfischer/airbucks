@@ -632,11 +632,13 @@ describe('landing rights', () => {
     expect(reputation(fresh)).toBe(1);
   });
 
-  it('locks big airports until the network is large enough', () => {
+  it('opens the regional network early but gates national gateways hard', () => {
     g.rights = ['crw']; // reset to a fresh-airline footprint
-    expect(rightsAvailable(g, 'roa')).toBe(true); // size 1, open from day 1
-    expect(rightsAvailable(g, 'lax')).toBe(false); // size 6, needs rep 11
-    expect(requiredReputation(airportById(g, 'lax'))).toBe(11);
+    expect(rightsAvailable(g, 'cvg')).toBe(true); // regional size 3, open day 1
+    expect(requiredReputation(airportById(g, 'clt'))).toBe(4); // regional hub
+    expect(requiredReputation(airportById(g, 'bos'))).toBe(10); // national size 5
+    expect(requiredReputation(airportById(g, 'lax'))).toBe(12); // national size 6
+    expect(rightsAvailable(g, 'lax')).toBe(false); // can't reach LAX on day 1
   });
 
   it('acquiring rights costs the fee, adds the airport, and raises reputation', () => {
@@ -658,13 +660,14 @@ describe('landing rights', () => {
     expect(holdsRights(g, 'roa')).toBe(false);
   });
 
-  it('bootstraps: acquiring small airports unlocks bigger ones', () => {
+  it('bootstraps: growing the network unlocks the bigger regional hubs', () => {
     g.rights = ['crw'];
     g.cash = 1_000_000_000;
-    expect(rightsAvailable(g, 'pit')).toBe(false); // size 3 needs rep 3
-    acquireRights(g, 'roa');
-    acquireRights(g, 'lex'); // now reputation 3
-    expect(rightsAvailable(g, 'pit')).toBe(true);
+    expect(rightsAvailable(g, 'clt')).toBe(false); // size 5 regional needs rep 4
+    acquireRights(g, 'cvg');
+    acquireRights(g, 'pit');
+    acquireRights(g, 'cmh'); // reputation now 4
+    expect(rightsAvailable(g, 'clt')).toBe(true);
   });
 
   it('openRoute requires rights at every stop', () => {
