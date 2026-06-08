@@ -7,6 +7,7 @@ import {
   borrow,
   buyPlane,
   closeRoute,
+  evaluateNetwork,
   evaluateRoute,
   LOAN_ANNUAL_RATE,
   LOAN_LIMIT,
@@ -279,9 +280,10 @@ function drawMap() {
   ctx.drawImage(ensureBaseMap(w, h, dpr), 0, 0, w, h);
 
   // Routes (multi-leg polylines).
+  const net = evaluateNetwork(game);
   for (const route of game.routes) {
     const pts = pathPoints(route.stops, w, h);
-    const res = evaluateRoute(game, route);
+    const res = net.routes.get(route.id)!;
     const hasPlanes = planesOnRoute(game, route.id).length > 0;
     ctx.strokeStyle = !hasPlanes
       ? '#3a5675'
@@ -495,9 +497,12 @@ function render() {
 
 function renderHud() {
   const cashClass = game.cash >= 0 ? 'good' : 'bad';
+  const net = weeklyTotals(game).net;
+  const netClass = net >= 0 ? 'good' : 'bad';
   hud.innerHTML = `
     <div class="stat"><span class="label">Date</span><span class="value">${dateStr()}</span></div>
     <div class="stat"><span class="label">Cash</span><span class="value ${cashClass}">${money(game.cash)}</span></div>
+    <div class="stat"><span class="label">Net / wk</span><span class="value ${netClass}">${net >= 0 ? '+' : ''}${money(net)}</span></div>
     <div class="stat"><span class="label">Debt</span><span class="value">${money(game.debt)}</span></div>
     <div class="stat"><span class="label">Fleet</span><span class="value">${game.fleet.length}</span></div>
     <div class="stat"><span class="label">Routes</span><span class="value">${game.routes.length}</span></div>
@@ -570,15 +575,13 @@ function bankCard(): string {
 function routesCard(): string {
   if (game.routes.length === 0)
     return `<div class="card"><h3>Routes</h3><div class="muted">No routes yet.</div></div>`;
+  const net = evaluateNetwork(game);
   const rows = game.routes
     .map((r) => {
       const dist = routeDistance(game, r);
-      const res = evaluateRoute(game, r);
+      const res = net.routes.get(r.id)!;
       const n = planesOnRoute(game, r.id).length;
-      const load =
-        res.seatsOffered > 0
-          ? Math.round((res.passengers / res.seatsOffered) * 100)
-          : 0;
+      const load = Math.round(res.loadFactor * 100);
       const cls = res.profit >= 0 ? 'good' : 'bad';
       const prem = Math.round((res.speedPremium - 1) * 100);
       const premTag =
@@ -589,7 +592,7 @@ function routesCard(): string {
         <div class="row"><strong>${routeLabel(game, r)}</strong>
           <span class="row" style="gap:6px"><span class="pill ${cls}">${res.profit >= 0 ? '+' : ''}${money(res.profit)}/wk</span>
           <button class="close-x" data-act="close-route" data-route="${r.id}" title="Close route">✕</button></span></div>
-        <div class="tiny">${dist.toLocaleString()} km · ${r.stops.length - 1} legs · ${n} plane${n === 1 ? '' : 's'} · ${Math.round(res.passengers).toLocaleString()}/${Math.round(res.demand).toLocaleString()} pax · ${load}% load${premTag}${
+        <div class="tiny">${dist.toLocaleString()} km · ${r.stops.length - 1} legs · ${n} plane${n === 1 ? '' : 's'} · ${Math.round(res.passengers).toLocaleString()} pax/wk · ${load}% load${premTag}${
           res.connectingPassengers >= 1
             ? ` · <span class="good">${Math.round(res.connectingPassengers).toLocaleString()} connecting</span>`
             : ''

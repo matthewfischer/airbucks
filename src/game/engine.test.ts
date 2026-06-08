@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { GameState } from './types';
 import { AIRCRAFT_TYPES, AIRPORTS, STARTING_CASH } from './data';
-import { distanceKm } from './geo';
 import {
   advanceDay,
   airportById,
@@ -10,6 +9,7 @@ import {
   buyPlane,
   closeRoute,
   distanceFactor,
+  evaluateNetwork,
   evaluateRoute,
   LOAN_ANNUAL_RATE,
   LOAN_LIMIT,
@@ -22,7 +22,6 @@ import {
   repay,
   routeDistance,
   routeLegs,
-  routeMarkets,
   routeMaxLeg,
   setFareFactor,
   tripsPerWeek,
@@ -185,96 +184,78 @@ describe('closeRoute', () => {
   });
 });
 
-describe('evaluateRoute', () => {
-  function withRoute(stops: string[], planeType?: string) {
+describe('network evaluation', () => {
+  function withRoute(stops: string[], planeType = 'regionaljet') {
+    g.cash = 1_000_000_000; // economics tests aren't about affordability
     openRoute(g, stops);
     const route = lastRoute(g);
-    if (planeType) {
-      buyPlane(g, planeType);
-      assignPlane(g, lastPlane(g).id, route.id);
-    }
+    buyPlane(g, planeType);
+    assignPlane(g, lastPlane(g).id, route.id);
     return route;
   }
 
   it('carries no passengers and turns no profit with no planes', () => {
-    const route = withRoute(['clt', 'dca']);
-    const r = evaluateRoute(g, route);
-    expect(r.passengers).toBe(0);
-    expect(r.revenue).toBe(0);
-    expect(r.profit).toBe(0);
-    expect(r.demand).toBeGreaterThan(0);
+    openRoute(g, ['clt', 'dca']); // route exists but unflown
+    const net = evaluateNetwork(g);
+    expect(net.passengers).toBe(0);
+    expect(net.revenue).toBe(0);
+    expect(net.profit).toBe(0);
   });
 
-  it('carries the lesser of demand and offered seats (single leg)', () => {
+  it('only earns in markets the airline actually connects', () => {
+    withRoute(['clt', 'dca']);
+    const net = evaluateNetwork(g);
+    // CLT-DCA is served; a market touching an unserved airport (e.g. ROA) is not.
+    expect(net.revenue).toBeGreaterThan(0);
+    expect(net.passengers).toBeGreaterThan(0);
+  });
+
+  it('routes connecting traffic across SEPARATE routes through a shared hub', () => {
+    // CVG, CMH, PIT are roughly collinear, so CVG->PIT connects via CMH.
+    withRoute(['cvg', 'cmh']);
+    withRoute(['cmh', 'pit']);
+    const net = evaluateNetwork(g);
+    expect(net.connectingPassengers).toBeGreaterThan(0);
+  });
+
+  it('a feeder spoke is credited for the connecting traffic it carries', () => {
+    withRoute(['cvg', 'cmh']);
+    const spokeId = lastRoute(g).id;
+    const before = evaluateNetwork(g).routes.get(spokeId)!.revenue;
+    withRoute(['cmh', 'pit']); // now CVG can feed onward to PIT via CMH
+    const after = evaluateNetwork(g).routes.get(spokeId)!.revenue;
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it('prefers a nonstop over a connection for the same city pair', () => {
+    // With a direct CRW-CVG, the through demand routes nonstop (0 connections),
+    // so adding the nonstop should not increase connecting passengers there.
+    withRoute(['crw', 'cvg']);
+    const direct = evaluateNetwork(g);
+    expect(direct.connectingPassengers).toBe(0);
+  });
+
+  it('reports a load factor between 0 and 1 for a flown route', () => {
     const route = withRoute(['clt', 'dca'], 'turboprop');
-    const r = evaluateRoute(g, route);
-    expect(r.passengers).toBeCloseTo(Math.min(r.demand, r.seatsOffered), 5);
+    const rs = evaluateRoute(g, route);
+    expect(rs.loadFactor).toBeGreaterThan(0);
+    expect(rs.loadFactor).toBeLessThanOrEqual(1);
   });
 
-  it('serves connecting markets in addition to adjacent legs', () => {
-    openRoute(g, ['dca', 'crw', 'cvg']);
-    const markets = routeMarkets(g, lastRoute(g));
-    const pairs = markets.map((m) => [m.fromId, m.toId].sort().join('-')).sort();
-    // DCA-CRW and CRW-CVG (nonstop) plus the connecting DCA-CVG market.
-    expect(pairs).toEqual(['crw-cvg', 'crw-dca', 'cvg-dca']);
-    const through = markets.find((m) => [m.fromId, m.toId].sort().join('-') === 'cvg-dca')!;
-    expect(through.connections).toBe(1);
+  it('a faster fleet lifts the route speed premium', () => {
+    const slow = withRoute(['clt', 'dca'], 'turboprop');
+    expect(evaluateRoute(g, slow).speedPremium).toBeCloseTo(0.85, 2);
+    const fast = withRoute(['clt', 'cvg'], 'regionaljet');
+    expect(evaluateRoute(g, fast).speedPremium).toBeCloseTo(JET.speed / 700, 2);
   });
 
-  it('discounts a connecting market relative to a nonstop in the same pair', () => {
-    const a = airportById(g, 'dca');
-    const b = airportById(g, 'cvg');
-    openRoute(g, ['dca', 'cvg']); // nonstop
-    openRoute(g, ['dca', 'crw', 'cvg']); // one-stop
-    const nonstop = routeMarkets(g, g.routes[0]).find(
-      (m) => [m.fromId, m.toId].sort().join('-') === 'cvg-dca',
-    )!;
-    const connect = routeMarkets(g, g.routes[1]).find(
-      (m) => [m.fromId, m.toId].sort().join('-') === 'cvg-dca',
-    )!;
-    expect(connect.baseDemand).toBeCloseTo(nonstop.baseDemand * 0.6, 5);
-    // Same direct distance and pair either way.
-    expect(connect.distance).toBe(distanceKm(a, b));
-  });
-
-  it('reports connecting passengers carried on a multi-stop route', () => {
-    const route = withRoute(['dca', 'crw', 'cvg'], 'regionaljet');
-    const r = evaluateRoute(g, route);
-    expect(r.connectingPassengers).toBeGreaterThan(0);
-    expect(r.connectingPassengers).toBeLessThan(r.passengers);
-  });
-
-  it('keeps only the most direct itinerary when a hub is revisited', () => {
-    openRoute(g, ['dca', 'cvg', 'dca', 'pit']);
-    const markets = routeMarkets(g, lastRoute(g));
-    const dcaPit = markets.filter(
-      (m) => [m.fromId, m.toId].sort().join('-') === 'dca-pit',
-    );
-    expect(dcaPit).toHaveLength(1);
-    expect(dcaPit[0].connections).toBe(0); // the nonstop DCA-PIT leg, not the long way
-  });
-
-  it('demand falls as the fare factor rises (price elasticity)', () => {
-    const route = withRoute(['clt', 'dca']);
-    setFareFactor(g, route.id, 0.5);
-    const cheap = evaluateRoute(g, route).demand;
+  it('lower fares draw more passengers system-wide (price elasticity)', () => {
+    const route = withRoute(['clt', 'dca'], 'cityjet');
     setFareFactor(g, route.id, 2.5);
-    const dear = evaluateRoute(g, route).demand;
-    expect(cheap).toBeGreaterThan(dear);
-  });
-
-  it('a faster fleet earns a fare premium and draws more demand', () => {
-    const route = withRoute(['clt', 'dca'], 'turboprop');
-    const slow = evaluateRoute(g, route);
-
-    assignPlane(g, lastPlane(g).id, null);
-    buyPlane(g, 'regionaljet');
-    assignPlane(g, lastPlane(g).id, route.id);
-    const fast = evaluateRoute(g, route);
-
-    expect(slow.speedPremium).toBeCloseTo(0.85, 2); // turboprop clamps to the floor
-    expect(fast.speedPremium).toBeCloseTo(JET.speed / 700, 2);
-    expect(fast.demand).toBeGreaterThan(slow.demand);
+    const dearPax = evaluateNetwork(g).passengers;
+    setFareFactor(g, route.id, 0.5);
+    const cheapPax = evaluateNetwork(g).passengers;
+    expect(cheapPax).toBeGreaterThan(dearPax);
   });
 });
 

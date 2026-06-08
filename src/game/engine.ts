@@ -101,140 +101,281 @@ const CONNECTION_PENALTY = 0.6;
 export const distanceFactor = (distance: number): number =>
   Math.max(0.4, Math.min(1.6, Math.sqrt(REF_DISTANCE / Math.max(1, distance))));
 
-/** An origin-destination market served by a route (possibly via connections). */
-export interface ODMarket {
-  fromId: string;
-  toId: string;
-  /** Stop indices along the route's path (fromIndex < toIndex). */
-  fromIndex: number;
-  toIndex: number;
-  /** Direct distance between the two airports. */
+/** Maximum intermediate stops a traveler will accept on a connecting itinerary. */
+const MAX_CONNECTIONS = 2;
+/** A connecting path may be at most this much longer than the direct distance. */
+const MAX_DETOUR = 1.4;
+
+const legKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+/** Aggregate weekly capacity the airline flies over one airport-pair leg. */
+interface LegInfo {
+  a: string;
+  b: string;
   distance: number;
-  /** Intermediate stops on this itinerary (0 = nonstop on this route). */
-  connections: number;
-  /** Weekly travelers, both directions, before price elasticity. */
-  baseDemand: number;
+  capacity: number; // weekly seats, both directions, across all routes
+  speedCapSum: number; // Σ speed×capacity, for a capacity-weighted mean
+  fareCapSum: number; // Σ fareFactor×capacity
+  routeCap: Map<string, number>; // capacity contributed per route
 }
 
-/**
- * Every O&D market a route serves: each pair of stops, including non-adjacent
- * ones reached via connections. If the same city pair appears more than once
- * (e.g. a revisited hub), only the most direct itinerary is kept.
- */
-export function routeMarkets(g: GameState, route: Route): ODMarket[] {
-  const best = new Map<string, ODMarket>();
-  const stops = route.stops;
-  for (let i = 0; i < stops.length; i++) {
-    for (let j = i + 1; j < stops.length; j++) {
-      const a = airportById(g, stops[i]);
-      const b = airportById(g, stops[j]);
-      if (a.id === b.id) continue; // degenerate (revisit of the same airport)
-      const connections = j - i - 1;
-      const distance = distanceKm(a, b);
-      const baseDemand =
-        pairDemand(a, b) *
-        distanceFactor(distance) *
-        CONNECTION_PENALTY ** connections;
-      const key = [a.id, b.id].sort().join('-');
-      const existing = best.get(key);
-      // Prefer the itinerary with the fewest connections for a given city pair.
-      if (!existing || connections < existing.connections) {
-        best.set(key, {
-          fromId: a.id,
-          toId: b.id,
-          fromIndex: i,
-          toIndex: j,
-          distance,
-          connections,
-          baseDemand,
-        });
-      }
-    }
-  }
-  return [...best.values()];
-}
-
-export interface RouteResult {
+/** A route's slice of the network result. */
+export interface RouteSummary {
+  routeId: string;
+  /** Passenger-legs carried on this route's legs (attributed by capacity share). */
   passengers: number;
-  seatsOffered: number;
-  demand: number;
+  connectingPassengers: number;
+  /** This route's attributed share of fares on the legs it flies. */
   revenue: number;
   cost: number;
   profit: number;
-  /** Of the carried passengers, how many are connecting (non-adjacent O&D). */
-  connectingPassengers: number;
-  /** Fare-tolerance multiplier from the assigned fleet's speed (1 = neutral). */
+  /** Busiest-leg load factor (0..1). */
+  loadFactor: number;
   speedPremium: number;
 }
 
-/** Project a route's weekly economics given its currently assigned planes. */
-export function evaluateRoute(g: GameState, route: Route): RouteResult {
-  const legs = routeLegs(g, route);
-  const pathLength = legs.reduce((sum, l) => sum + l.distance, 0);
-  const planes = planesOnRoute(g, route.id);
+/** Airline-wide weekly economics, with a per-route breakdown. */
+export interface NetworkResult {
+  revenue: number;
+  /** Flying cost + upkeep of assigned planes (idle upkeep handled separately). */
+  cost: number;
+  profit: number;
+  passengers: number;
+  connectingPassengers: number;
+  routes: Map<string, RouteSummary>;
+}
 
-  // Every circuit covers every leg, so each leg is offered the same seat pool.
-  let seatsPerLeg = 0; // weekly seats both directions on each leg
-  let fullCircuitCost = 0; // flying cost if every possible circuit were flown
-  let upkeep = 0;
-  let totalSpeed = 0;
-  for (const plane of planes) {
-    const type = typeById(g, plane.typeId);
-    const circuits = tripsPerWeek(type, pathLength, legs.length);
-    seatsPerLeg += circuits * 2 * type.capacity;
-    fullCircuitCost += circuits * 2 * pathLength * type.costPerKm;
-    upkeep += type.weeklyUpkeep;
-    totalSpeed += type.speed;
+interface NetPath {
+  legKeys: string[];
+  pathDist: number;
+  connections: number;
+}
+
+/** The airline's best itinerary between two airports: fewest stops, then shortest. */
+function bestPath(
+  legs: Map<string, LegInfo>,
+  adj: Map<string, Set<string>>,
+  from: string,
+  to: string,
+  directDist: number,
+): NetPath | null {
+  let best: NetPath | null = null;
+  const maxLegs = MAX_CONNECTIONS + 1;
+  const visited = new Set<string>([from]);
+  const keys: string[] = [];
+  const walk = (node: string, dist: number) => {
+    for (const next of adj.get(node) ?? []) {
+      if (visited.has(next)) continue;
+      const key = legKey(node, next);
+      const nd = dist + legs.get(key)!.distance;
+      if (nd > directDist * MAX_DETOUR + 1) continue;
+      keys.push(key);
+      if (next === to) {
+        const connections = keys.length - 1;
+        if (
+          !best ||
+          connections < best.connections ||
+          (connections === best.connections && nd < best.pathDist)
+        ) {
+          best = { legKeys: [...keys], pathDist: nd, connections };
+        }
+      } else if (keys.length < maxLegs) {
+        visited.add(next);
+        walk(next, nd);
+        visited.delete(next);
+      }
+      keys.pop();
+    }
+  };
+  walk(from, 0);
+  return best;
+}
+
+/**
+ * Evaluate the whole airline as a network: pool all flying into legs, route
+ * every O&D market over the best path the airline offers (nonstop or
+ * connecting), and let each leg earn from every passenger flow crossing it —
+ * so feeder spokes are paid for the connecting traffic they carry.
+ */
+export function evaluateNetwork(g: GameState): NetworkResult {
+  const legs = new Map<string, LegInfo>();
+  const routeFly = new Map<string, number>(); // full-frequency flying cost
+  const routeUp = new Map<string, number>();
+  const summaries = new Map<string, RouteSummary>();
+
+  // 1) Build leg capacities and per-route flying cost / upkeep.
+  for (const route of g.routes) {
+    summaries.set(route.id, {
+      routeId: route.id,
+      passengers: 0,
+      connectingPassengers: 0,
+      revenue: 0,
+      cost: 0,
+      profit: 0,
+      loadFactor: 0,
+      speedPremium: 1,
+    });
+    const rlegs = routeLegs(g, route);
+    const pathLength = rlegs.reduce((s, l) => s + l.distance, 0);
+    let fly = 0;
+    let up = 0;
+    for (const plane of planesOnRoute(g, route.id)) {
+      const type = typeById(g, plane.typeId);
+      const circuits = tripsPerWeek(type, pathLength, rlegs.length);
+      const cap = circuits * 2 * type.capacity;
+      fly += circuits * 2 * pathLength * type.costPerKm;
+      up += type.weeklyUpkeep;
+      for (const l of rlegs) {
+        const key = legKey(l.fromId, l.toId);
+        let info = legs.get(key);
+        if (!info) {
+          info = {
+            a: l.fromId,
+            b: l.toId,
+            distance: l.distance,
+            capacity: 0,
+            speedCapSum: 0,
+            fareCapSum: 0,
+            routeCap: new Map(),
+          };
+          legs.set(key, info);
+        }
+        info.capacity += cap;
+        info.speedCapSum += type.speed * cap;
+        info.fareCapSum += route.fareFactor * cap;
+        info.routeCap.set(route.id, (info.routeCap.get(route.id) ?? 0) + cap);
+      }
+    }
+    routeFly.set(route.id, fly);
+    routeUp.set(route.id, up);
   }
 
-  // Faster service lets the route command a higher fare before demand falls off.
-  const avgSpeed = planes.length ? totalSpeed / planes.length : BASELINE_SPEED;
-  const speedPremium = Math.max(0.85, Math.min(1.2, avgSpeed / BASELINE_SPEED));
-  const demandMult = Math.max(0.1, Math.min(1.5, 2 - route.fareFactor / speedPremium));
+  // Adjacency over served legs.
+  const adj = new Map<string, Set<string>>();
+  for (const info of legs.values()) {
+    (adj.get(info.a) ?? adj.set(info.a, new Set()).get(info.a)!).add(info.b);
+    (adj.get(info.b) ?? adj.set(info.b, new Set()).get(info.b)!).add(info.a);
+  }
 
-  // Price-adjusted demand for every O&D market the route serves.
-  const markets = routeMarkets(g, route).map((m) => ({
-    ...m,
-    demand: m.baseDemand * demandMult,
-  }));
-  const totalDemand = markets.reduce((s, m) => s + m.demand, 0);
+  // 2) Build every O&D market the airline can serve, with a routed path.
+  interface Mkt {
+    path: NetPath;
+    demand: number;
+    fare: number;
+  }
+  const markets: Mkt[] = [];
+  const aps = g.airports;
+  for (let i = 0; i < aps.length; i++) {
+    for (let j = i + 1; j < aps.length; j++) {
+      const A = aps[i];
+      const B = aps[j];
+      if (!adj.has(A.id) || !adj.has(B.id)) continue;
+      const directDist = distanceKm(A, B);
+      const path = bestPath(legs, adj, A.id, B.id, directDist);
+      if (!path) continue;
+      let wSpeed = 0;
+      let wFare = 0;
+      let wSum = 0;
+      for (const key of path.legKeys) {
+        const li = legs.get(key)!;
+        wSpeed += (li.speedCapSum / li.capacity) * li.distance;
+        wFare += (li.fareCapSum / li.capacity) * li.distance;
+        wSum += li.distance;
+      }
+      const speedPremium = Math.max(0.85, Math.min(1.2, wSpeed / wSum / BASELINE_SPEED));
+      const fareFactor = wFare / wSum;
+      const demandMult = Math.max(0.1, Math.min(1.5, 2 - fareFactor / speedPremium));
+      const demand =
+        pairDemand(A, B) *
+        distanceFactor(directDist) *
+        CONNECTION_PENALTY ** path.connections *
+        demandMult;
+      markets.push({ path, demand, fare: referenceFare(directDist) * fareFactor });
+    }
+  }
 
-  // How much demand crosses each leg (a connecting itinerary loads every leg
-  // it spans), then size frequency to satisfy the busiest leg — no more.
-  const crossing = legs.map(() => 0);
-  for (const m of markets)
-    for (let L = m.fromIndex; L < m.toIndex; L++) crossing[L] += m.demand;
-  const maxCrossing = crossing.reduce((mx, c) => Math.max(mx, c), 0);
-  const utilization = seatsPerLeg > 0 ? Math.min(1, maxCrossing / seatsPerLeg) : 0;
-  const seatsFlownPerLeg = utilization * seatsPerLeg;
-  const legFill = crossing.map((c) =>
-    c > 0 ? Math.min(1, seatsFlownPerLeg / c) : 1,
+  // 3) Allocate seats: highest yield-per-seat first, bottlenecked by each
+  //    path's fullest leg. A connecting passenger consumes a seat on every leg.
+  markets.sort(
+    (m1, m2) => m2.fare / m2.path.legKeys.length - m1.fare / m1.path.legKeys.length,
   );
+  const remaining = new Map<string, number>();
+  for (const [k, info] of legs) remaining.set(k, info.capacity);
+  const legCarried = new Map<string, number>();
 
-  // Each market is bottlenecked by its fullest leg.
+  let revenue = 0;
   let passengers = 0;
   let connectingPassengers = 0;
-  let revenue = 0;
   for (const m of markets) {
-    let fill = 1;
-    for (let L = m.fromIndex; L < m.toIndex; L++) fill = Math.min(fill, legFill[L]);
-    const carried = m.demand * fill;
+    let avail = Infinity;
+    for (const key of m.path.legKeys) avail = Math.min(avail, remaining.get(key)!);
+    const carried = Math.min(m.demand, Math.max(0, avail));
+    if (carried <= 0) continue;
+    revenue += carried * m.fare;
     passengers += carried;
-    if (m.connections > 0) connectingPassengers += carried;
-    revenue += carried * route.fareFactor * referenceFare(m.distance);
+    if (m.path.connections > 0) connectingPassengers += carried;
+    for (const key of m.path.legKeys) {
+      remaining.set(key, remaining.get(key)! - carried);
+      legCarried.set(key, (legCarried.get(key) ?? 0) + carried);
+      const li = legs.get(key)!;
+      const legFareShare = m.fare * (li.distance / m.path.pathDist);
+      for (const [rid, rcap] of li.routeCap) {
+        const share = rcap / li.capacity;
+        const rs = summaries.get(rid)!;
+        rs.revenue += carried * legFareShare * share;
+        rs.passengers += carried * share;
+        if (m.path.connections > 0) rs.connectingPassengers += carried * share;
+      }
+    }
   }
 
-  const cost = utilization * fullCircuitCost + upkeep;
+  // 4) Per-route cost: fly only enough circuits to cover the busiest leg's load.
+  let totalCost = 0;
+  for (const route of g.routes) {
+    const rs = summaries.get(route.id)!;
+    let maxLF = 0;
+    let wSpeed = 0;
+    let wDist = 0;
+    for (const l of routeLegs(g, route)) {
+      const key = legKey(l.fromId, l.toId);
+      const li = legs.get(key);
+      if (!li || li.capacity <= 0) continue;
+      maxLF = Math.max(maxLF, (legCarried.get(key) ?? 0) / li.capacity);
+      wSpeed += (li.speedCapSum / li.capacity) * l.distance;
+      wDist += l.distance;
+    }
+    rs.loadFactor = maxLF;
+    rs.speedPremium =
+      wDist > 0 ? Math.max(0.85, Math.min(1.2, wSpeed / wDist / BASELINE_SPEED)) : 1;
+    rs.cost = maxLF * (routeFly.get(route.id) ?? 0) + (routeUp.get(route.id) ?? 0);
+    rs.profit = rs.revenue - rs.cost;
+    totalCost += rs.cost;
+  }
+
   return {
-    passengers,
-    seatsOffered: seatsPerLeg * legs.length,
-    demand: totalDemand,
     revenue,
-    cost,
-    profit: revenue - cost,
+    cost: totalCost,
+    profit: revenue - totalCost,
+    passengers,
     connectingPassengers,
-    speedPremium,
+    routes: summaries,
   };
+}
+
+const EMPTY_SUMMARY = (routeId: string): RouteSummary => ({
+  routeId,
+  passengers: 0,
+  connectingPassengers: 0,
+  revenue: 0,
+  cost: 0,
+  profit: 0,
+  loadFactor: 0,
+  speedPremium: 1,
+});
+
+/** A single route's slice of the latest network evaluation (convenience). */
+export function evaluateRoute(g: GameState, route: Route): RouteSummary {
+  return evaluateNetwork(g).routes.get(route.id) ?? EMPTY_SUMMARY(route.id);
 }
 
 // ---- Player actions -------------------------------------------------------
@@ -314,21 +455,20 @@ export interface WeeklyTotals {
 
 /** Current weekly run-rate across the whole airline (a snapshot, not accrued). */
 export function weeklyTotals(g: GameState): WeeklyTotals {
-  let revenue = 0;
-  let cost = 0;
-  let pax = 0;
-  for (const route of g.routes) {
-    const r = evaluateRoute(g, route);
-    revenue += r.revenue;
-    cost += r.cost;
-    pax += r.passengers;
-  }
+  const net = evaluateNetwork(g);
+  let cost = net.cost;
   // Idle planes still cost upkeep.
   for (const plane of g.fleet) {
     if (plane.routeId === null) cost += typeById(g, plane.typeId).weeklyUpkeep;
   }
   const interest = g.debt * LOAN_ANNUAL_RATE * (7 / 365);
-  return { revenue, cost, pax, interest, net: revenue - cost - interest };
+  return {
+    revenue: net.revenue,
+    cost,
+    pax: net.passengers,
+    interest,
+    net: net.revenue - cost - interest,
+  };
 }
 
 /** Advance the simulation one day: accrue 1/7 of the weekly run-rate. */
