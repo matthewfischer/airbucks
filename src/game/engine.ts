@@ -15,6 +15,21 @@ const TURNAROUND_HOURS = 4;
 
 let nextId = 1;
 const makeId = (prefix: string) => `${prefix}-${nextId++}`;
+const idNum = (id: string) => {
+  const n = Number(id.split('-')[1]);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/**
+ * Advance the id counter past every id already in the game, so ids minted
+ * after loading a save can't collide with the loaded ones.
+ */
+export function reseedIds(g: GameState): void {
+  let max = 0;
+  for (const r of g.routes) max = Math.max(max, idNum(r.id));
+  for (const p of g.fleet) max = Math.max(max, idNum(p.id));
+  nextId = Math.max(nextId, max + 1);
+}
 
 /** Resale/book value of an aircraft as a fraction of its purchase price. */
 const PLANE_RESALE_FRACTION = 0.6;

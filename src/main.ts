@@ -26,6 +26,7 @@ import {
   weekNumber,
 } from './game/engine';
 import { distanceKm } from './game/geo';
+import { applySave, deserialize, serialize } from './game/persist';
 
 const game: GameState = newGame();
 (window as unknown as { game: GameState }).game = game;
@@ -750,9 +751,10 @@ playBtn.addEventListener('click', () => {
   playBtn.classList.toggle('paused', playing);
 });
 
-/** Reset to a fresh airline in place (keeps the same game object reference). */
-function resetGame() {
-  Object.assign(game, newGame());
+const SAVE_KEY = 'airbucks-save';
+
+/** Shared cleanup after the game state is swapped out (reset or load). */
+function afterStateSwap() {
   selected = [];
   anim.clear();
   playing = false;
@@ -760,11 +762,51 @@ function resetGame() {
   lastTs = 0;
   playBtn.textContent = '▶ Play';
   playBtn.classList.remove('paused');
+}
+
+/** Reset to a fresh airline in place (keeps the same game object reference). */
+function resetGame() {
+  Object.assign(game, newGame());
+  afterStateSwap();
   render();
+}
+
+function saveGame(announce = false) {
+  try {
+    localStorage.setItem(SAVE_KEY, serialize(game));
+    if (announce) {
+      game.log.unshift('Game saved.');
+      renderLog();
+    }
+  } catch {
+    // localStorage unavailable / full — ignore.
+  }
+}
+
+/** Load the last save into the live game. Returns false if there's nothing valid. */
+function loadGame(): boolean {
+  const json = localStorage.getItem(SAVE_KEY);
+  if (!json) return false;
+  const data = deserialize(json);
+  if (!data) return false;
+  applySave(game, data);
+  afterStateSwap();
+  return true;
 }
 
 document.getElementById('new-game')!.addEventListener('click', () => {
   if (confirm('Start a new game? This wipes your current airline.')) resetGame();
+});
+
+document.getElementById('save-game')!.addEventListener('click', () => saveGame(true));
+
+document.getElementById('load-game')!.addEventListener('click', () => {
+  if (loadGame()) {
+    game.log.unshift('Game loaded.');
+    render();
+  } else {
+    flash('No saved game found.');
+  }
 });
 
 document.getElementById('speeds')!.addEventListener('click', (e) => {
@@ -804,6 +846,11 @@ function frame(ts: number) {
 }
 
 window.addEventListener('resize', resizeCanvas);
+
+// Persistence: resume the last session, autosave periodically, save on exit.
+loadGame();
+window.addEventListener('beforeunload', () => saveGame());
+setInterval(() => saveGame(), 5000);
 
 loadMap();
 resizeCanvas();
