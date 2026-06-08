@@ -37,10 +37,10 @@ export interface Plane {
 
 export interface Route {
   id: string;
-  fromId: string;
-  toId: string;
-  /** Ticket price per passenger, set by the player. */
-  fare: number;
+  /** Ordered airport ids (length ≥ 2). The plane flies the path out and back. */
+  stops: string[];
+  /** Fare level as a multiple of each leg's distance-based reference fare. */
+  fareFactor: number;
 }
 
 export interface GameState {

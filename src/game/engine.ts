@@ -40,27 +40,51 @@ export const airportById = (g: GameState, id: string): Airport =>
 export const typeById = (g: GameState, id: string): AircraftType =>
   g.aircraftTypes.find((t) => t.id === id)!;
 
+export interface Leg {
+  fromId: string;
+  toId: string;
+  distance: number;
+}
+
+/** Forward legs of a route's path (one entry per consecutive pair of stops). */
+export function routeLegs(g: GameState, route: Route): Leg[] {
+  const legs: Leg[] = [];
+  for (let i = 0; i < route.stops.length - 1; i++) {
+    const a = airportById(g, route.stops[i]);
+    const b = airportById(g, route.stops[i + 1]);
+    legs.push({ fromId: a.id, toId: b.id, distance: distanceKm(a, b) });
+  }
+  return legs;
+}
+
+/** Total one-way length of the route's path. */
 export const routeDistance = (g: GameState, route: Route): number =>
-  distanceKm(airportById(g, route.fromId), airportById(g, route.toId));
+  routeLegs(g, route).reduce((sum, l) => sum + l.distance, 0);
+
+/** Longest single leg — what limits which aircraft can fly the route. */
+export const routeMaxLeg = (g: GameState, route: Route): number =>
+  routeLegs(g, route).reduce((max, l) => Math.max(max, l.distance), 0);
 
 export const planesOnRoute = (g: GameState, routeId: string): Plane[] =>
   g.fleet.filter((p) => p.routeId === routeId);
 
-/** A sensible default fare for a route of the given distance. */
+/** A sensible fare for a single leg of the given distance. */
 export const referenceFare = (distance: number): number =>
   Math.round(40 + 0.08 * distance);
 
-/** Weekly passenger pool between two airports before fare effects. */
-export function baseDemand(g: GameState, route: Route): number {
-  const a = airportById(g, route.fromId);
-  const b = airportById(g, route.toId);
-  return a.size * b.size * 90;
-}
+/** Weekly passenger pool (both directions) between two markets, before fares. */
+export const pairDemand = (a: Airport, b: Airport): number =>
+  a.size * b.size * 90;
 
-/** Round trips a single plane of this type can fly per week on the route. */
-export function tripsPerWeek(type: AircraftType, distance: number): number {
-  const roundTripHours = (2 * distance) / type.speed + TURNAROUND_HOURS;
-  return Math.max(1, Math.floor(WEEKLY_FLY_HOURS / roundTripHours));
+/** Round-trip circuits a plane can fly per week over a path of the given shape. */
+export function tripsPerWeek(
+  type: AircraftType,
+  pathLength: number,
+  legCount: number,
+): number {
+  const circuitHours =
+    (2 * pathLength) / type.speed + TURNAROUND_HOURS * legCount;
+  return Math.max(1, Math.floor(WEEKLY_FLY_HOURS / circuitHours));
 }
 
 /** Cruise speed at which travelers neither pay a premium nor a discount. */
@@ -79,19 +103,20 @@ export interface RouteResult {
 
 /** Project a route's weekly economics given its currently assigned planes. */
 export function evaluateRoute(g: GameState, route: Route): RouteResult {
-  const distance = routeDistance(g, route);
+  const legs = routeLegs(g, route);
+  const pathLength = legs.reduce((sum, l) => sum + l.distance, 0);
   const planes = planesOnRoute(g, route.id);
 
-  let seatsOffered = 0; // max weekly seats both directions if fully utilized
-  let maxFlightCost = 0; // flying cost if every possible trip were flown
+  // Every circuit covers every leg, so each leg is offered the same seat pool.
+  let seatsPerLeg = 0; // weekly seats both directions on each leg
+  let fullCircuitCost = 0; // flying cost if every possible circuit were flown
   let upkeep = 0;
   let totalSpeed = 0;
   for (const plane of planes) {
     const type = typeById(g, plane.typeId);
-    const trips = tripsPerWeek(type, distance);
-    // Each round trip sells seats in both directions.
-    seatsOffered += trips * 2 * type.capacity;
-    maxFlightCost += trips * 2 * distance * type.costPerKm;
+    const circuits = tripsPerWeek(type, pathLength, legs.length);
+    seatsPerLeg += circuits * 2 * type.capacity;
+    fullCircuitCost += circuits * 2 * pathLength * type.costPerKm;
     upkeep += type.weeklyUpkeep;
     totalSpeed += type.speed;
   }
@@ -99,21 +124,36 @@ export function evaluateRoute(g: GameState, route: Route): RouteResult {
   // Faster service lets the route command a higher fare before demand falls off.
   const avgSpeed = planes.length ? totalSpeed / planes.length : BASELINE_SPEED;
   const speedPremium = Math.max(0.85, Math.min(1.2, avgSpeed / BASELINE_SPEED));
-  const ref = referenceFare(distance) * speedPremium;
-  const fareRatio = route.fare / ref;
-  const demandMult = Math.max(0.1, Math.min(1.5, 2 - fareRatio));
-  const demand = Math.round(baseDemand(g, route) * demandMult);
+  const demandMult = Math.max(0.1, Math.min(1.5, 2 - route.fareFactor / speedPremium));
 
-  const passengers = Math.min(demand, seatsOffered);
-  // Right-size frequency: only fly enough trips to carry the passengers we
-  // actually have, so short, lightly-used routes don't burn fuel on empty seats.
-  const utilization = seatsOffered > 0 ? passengers / seatsOffered : 0;
-  const cost = utilization * maxFlightCost + upkeep;
-  const revenue = passengers * route.fare;
+  // Per-leg demand, then size frequency to satisfy the busiest leg (no more).
+  let totalDemand = 0;
+  let maxLegDemand = 0;
+  const legDemands = legs.map((leg) => {
+    const dem = Math.round(
+      pairDemand(airportById(g, leg.fromId), airportById(g, leg.toId)) * demandMult,
+    );
+    totalDemand += dem;
+    maxLegDemand = Math.max(maxLegDemand, dem);
+    return dem;
+  });
+
+  const utilization = seatsPerLeg > 0 ? Math.min(1, maxLegDemand / seatsPerLeg) : 0;
+  const seatsFlownPerLeg = utilization * seatsPerLeg;
+
+  let passengers = 0;
+  let revenue = 0;
+  legs.forEach((leg, i) => {
+    const pax = Math.min(legDemands[i], seatsFlownPerLeg);
+    passengers += pax;
+    revenue += pax * route.fareFactor * referenceFare(leg.distance);
+  });
+
+  const cost = utilization * fullCircuitCost + upkeep;
   return {
     passengers,
-    seatsOffered,
-    demand,
+    seatsOffered: seatsPerLeg * legs.length,
+    demand: totalDemand,
     revenue,
     cost,
     profit: revenue - cost,
@@ -132,41 +172,35 @@ export function buyPlane(g: GameState, typeId: string): string | null {
   return null;
 }
 
-export function openRoute(
-  g: GameState,
-  fromId: string,
-  toId: string,
-): string | null {
-  if (fromId === toId) return 'Pick two different airports.';
-  const exists = g.routes.some(
-    (r) =>
-      (r.fromId === fromId && r.toId === toId) ||
-      (r.fromId === toId && r.toId === fromId),
-  );
-  if (exists) return 'That route already exists.';
-  const distance = distanceKm(airportById(g, fromId), airportById(g, toId));
-  const route: Route = {
-    id: makeId('route'),
-    fromId,
-    toId,
-    fare: referenceFare(distance),
-  };
+/** Human-readable path, e.g. "CRW → CLT → DCA". */
+export const routeLabel = (g: GameState, route: Route): string =>
+  route.stops.map((id) => airportById(g, id).code).join(' → ');
+
+export function openRoute(g: GameState, stops: string[]): string | null {
+  if (stops.length < 2) return 'Pick at least two airports.';
+  for (let i = 1; i < stops.length; i++) {
+    if (stops[i] === stops[i - 1]) return 'A route cannot stop at the same airport twice in a row.';
+  }
+  const key = (s: string[]) => s.join('>');
+  const norm = key(stops);
+  const rev = key([...stops].reverse());
+  if (g.routes.some((r) => key(r.stops) === norm || key(r.stops) === rev))
+    return 'That route already exists.';
+
+  const route: Route = { id: makeId('route'), stops: [...stops], fareFactor: 1 };
   g.routes.push(route);
-  const a = airportById(g, fromId);
-  const b = airportById(g, toId);
-  g.log.unshift(`Opened route ${a.code} ⇆ ${b.code} (${distance.toLocaleString()} km).`);
+  g.log.unshift(`Opened route ${routeLabel(g, route)}.`);
   return null;
 }
 
 export function closeRoute(g: GameState, routeId: string): void {
   const route = g.routes.find((r) => r.id === routeId);
   if (!route) return;
+  const label = routeLabel(g, route);
   // Send any assigned planes back to the hangar.
   for (const plane of g.fleet) if (plane.routeId === routeId) plane.routeId = null;
   g.routes = g.routes.filter((r) => r.id !== routeId);
-  const a = airportById(g, route.fromId);
-  const b = airportById(g, route.toId);
-  g.log.unshift(`Closed route ${a.code} ⇆ ${b.code}.`);
+  g.log.unshift(`Closed route ${label}.`);
 }
 
 export function assignPlane(
@@ -179,18 +213,19 @@ export function assignPlane(
   if (routeId) {
     const route = g.routes.find((r) => r.id === routeId)!;
     const type = typeById(g, plane.typeId);
-    const distance = routeDistance(g, route);
-    if (type.range < distance) {
-      return `${type.name} can't reach that far (range ${type.range} km, route ${distance} km).`;
+    const longest = routeMaxLeg(g, route);
+    if (type.range < longest) {
+      return `${type.name} can't reach that far (range ${type.range} km, longest leg ${longest} km).`;
     }
   }
   plane.routeId = routeId;
   return null;
 }
 
-export function setFare(g: GameState, routeId: string, fare: number): void {
+/** Set the route's fare level (1 = the reference fare). Clamped to a sane band. */
+export function setFareFactor(g: GameState, routeId: string, factor: number): void {
   const route = g.routes.find((r) => r.id === routeId);
-  if (route) route.fare = Math.max(0, Math.round(fare));
+  if (route) route.fareFactor = Math.max(0.2, Math.min(3, factor));
 }
 
 export interface WeeklyTotals {

@@ -1,5 +1,5 @@
 import './ui/styles.css';
-import type { GameState } from './game/types';
+import type { Airport, GameState } from './game/types';
 import {
   advanceDay,
   airportById,
@@ -13,10 +13,13 @@ import {
   money,
   newGame,
   openRoute,
+  pairDemand,
   planesOnRoute,
   repay,
   routeDistance,
-  setFare,
+  routeLabel,
+  routeMaxLeg,
+  setFareFactor,
   typeById,
   weeklyTotals,
   weekNumber,
@@ -24,23 +27,26 @@ import {
 import { distanceKm } from './game/geo';
 
 const game: GameState = newGame();
-// Expose for debugging from the DevTools console.
 (window as unknown as { game: GameState }).game = game;
 if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
   (window as unknown as { dbg: unknown }).dbg = {
     game,
-    openRoute: (a: string, b: string) => (openRoute(game, a, b), render()),
+    openRoute: (...stops: string[]) => (openRoute(game, stops), render()),
     buyPlane: (t: string) => (buyPlane(game, t), render()),
     assignPlane: (p: string, r: string | null) => (assignPlane(game, p, r), render()),
     advanceDay: () => (advanceDay(game), render()),
     borrow: (n: number) => (borrow(game, n), render()),
     repay: (n: number) => (repay(game, n), render()),
+    select: (...ids: string[]) => {
+      selected = ids;
+      render();
+    },
     evaluate: (r: string) =>
       evaluateRoute(game, game.routes.find((x) => x.id === r)!),
   };
 }
 
-/** Airports the player has clicked to stage a new route (max 2). */
+/** Ordered airports the player has clicked to stage a new (possibly multi-stop) route. */
 let selected: string[] = [];
 
 // Real-time clock state.
@@ -48,13 +54,11 @@ let playing = false;
 let speed = 1;
 let lastTs = 0;
 let dayAccumulator = 0;
-/** Real milliseconds per simulated day at 1× speed. */
 const DAY_MS = 900;
 const START_EPOCH = Date.UTC(2000, 0, 1);
-/** Real seconds (at 1×) to animate one flight-hour, for the moving plane sprites. */
 const HOURS_TO_SECONDS = 5;
 
-/** Per-plane animation: t = 0..1 along its route, dir = which way it's flying. */
+/** Per-plane animation: t = 0..1 along its route path, dir = travel direction. */
 const anim = new Map<string, { t: number; dir: 1 | -1 }>();
 
 const canvas = document.getElementById('map') as HTMLCanvasElement;
@@ -66,9 +70,6 @@ const playBtn = document.getElementById('play') as HTMLButtonElement;
 
 // ---- Geographic projection ------------------------------------------------
 
-// Bounding box of the regional network, computed once. We fit this box into
-// the canvas (preserving aspect) and correct longitude for latitude so the
-// region isn't stretched east-west.
 const lats = game.airports.map((a) => a.lat);
 const lons = game.airports.map((a) => a.lon);
 const bounds = {
@@ -99,9 +100,55 @@ const airportScreen = (id: string, w: number, h: number) => {
   return projectPoint(a.lat, a.lon, w, h);
 };
 
-// ---- Real US map geometry (loaded at runtime) -----------------------------
+// ---- Demand signal (airport coloring) -------------------------------------
 
-/** Flattened list of polygon rings; each ring is a list of [lon, lat] pairs. */
+/** Latent weekly demand summed from each airport to every other. */
+const airportPotential = new Map<string, number>();
+let maxPotential = 0;
+for (const a of game.airports) {
+  let total = 0;
+  for (const b of game.airports) if (a.id !== b.id) total += pairDemand(a, b);
+  airportPotential.set(a.id, total);
+  maxPotential = Math.max(maxPotential, total);
+}
+const MAX_PAIR_DEMAND = Math.max(...game.airports.map((a) => a.size)) ** 2 * 90;
+
+const HEAT: [number, [number, number, number]][] = [
+  [0.0, [51, 83, 107]],
+  [0.4, [63, 208, 201]],
+  [0.7, [245, 166, 35]],
+  [1.0, [255, 107, 107]],
+];
+
+function heat(v: number): string {
+  v = Math.max(0, Math.min(1, v));
+  for (let i = 0; i < HEAT.length - 1; i++) {
+    const [p0, c0] = HEAT[i];
+    const [p1, c1] = HEAT[i + 1];
+    if (v <= p1) {
+      const f = (v - p0) / (p1 - p0);
+      const c = c0.map((x, j) => Math.round(x + (c1[j] - x) * f));
+      return `rgb(${c[0]},${c[1]},${c[2]})`;
+    }
+  }
+  return `rgb(${HEAT[HEAT.length - 1][1].join(',')})`;
+}
+
+/** Demand-signal value (0..1) for an airport, given the current selection. */
+function demandValue(ap: Airport): number | null {
+  if (selected.length > 0) {
+    const last = airportById(game, selected[selected.length - 1]);
+    if (ap.id === last.id) return null; // the path's current endpoint
+    return pairDemand(last, ap) / MAX_PAIR_DEMAND;
+  }
+  return (airportPotential.get(ap.id) ?? 0) / maxPotential;
+}
+
+const formatPax = (n: number) =>
+  n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n)}`;
+
+// ---- Real US map geometry -------------------------------------------------
+
 let stateRings: [number, number][][] = [];
 
 async function loadMap() {
@@ -127,7 +174,7 @@ async function loadMap() {
   }
 }
 
-// ---- Cached base map (ocean + land), redrawn only on resize / data load ----
+// ---- Cached base map ------------------------------------------------------
 
 let baseCanvas: HTMLCanvasElement | null = null;
 let baseKey = '';
@@ -190,7 +237,37 @@ function drawBase(b: CanvasRenderingContext2D, w: number, h: number) {
   }
 }
 
-// ---- Foreground map (routes, airports, selection) -------------------------
+// ---- Foreground map -------------------------------------------------------
+
+const pathPoints = (stops: string[], w: number, h: number) =>
+  stops.map((id) => airportScreen(id, w, h));
+
+/** Position + heading at fraction t (0..1) along a screen-space polyline. */
+function posAlongPath(points: { x: number; y: number }[], t: number) {
+  const segs: number[] = [];
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const len = Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
+    segs.push(len);
+    total += len;
+  }
+  if (total === 0) return { x: points[0].x, y: points[0].y, angle: 0 };
+  let dist = t * total;
+  for (let i = 0; i < segs.length; i++) {
+    if (dist <= segs[i] || i === segs.length - 1) {
+      const f = segs[i] ? dist / segs[i] : 0;
+      const a = points[i];
+      const b = points[i + 1];
+      return {
+        x: a.x + (b.x - a.x) * f,
+        y: a.y + (b.y - a.y) * f,
+        angle: Math.atan2(b.y - a.y, b.x - a.x),
+      };
+    }
+    dist -= segs[i];
+  }
+  return { x: points[0].x, y: points[0].y, angle: 0 };
+}
 
 function drawMap() {
   const w = canvas.clientWidth;
@@ -199,10 +276,9 @@ function drawMap() {
   ctx.clearRect(0, 0, w, h);
   ctx.drawImage(ensureBaseMap(w, h, dpr), 0, 0, w, h);
 
-  // Routes.
+  // Routes (multi-leg polylines).
   for (const route of game.routes) {
-    const from = airportScreen(route.fromId, w, h);
-    const to = airportScreen(route.toId, w, h);
+    const pts = pathPoints(route.stops, w, h);
     const res = evaluateRoute(game, route);
     const hasPlanes = planesOnRoute(game, route.id).length > 0;
     ctx.strokeStyle = !hasPlanes
@@ -213,45 +289,41 @@ function drawMap() {
     ctx.lineWidth = 2;
     ctx.setLineDash(hasPlanes ? [] : [5, 5]);
     ctx.beginPath();
-    ctx.moveTo(from.x, from.y);
-    ctx.lineTo(to.x, to.y);
+    pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
     ctx.stroke();
     ctx.setLineDash([]);
   }
 
-  // Moving plane sprites along their routes.
+  // Moving plane sprites.
   for (const plane of game.fleet) {
     if (!plane.routeId) continue;
     const route = game.routes.find((r) => r.id === plane.routeId);
     if (!route) continue;
-    const from = airportScreen(route.fromId, w, h);
-    const to = airportScreen(route.toId, w, h);
+    const pts = pathPoints(route.stops, w, h);
     const a = planeAnim(plane.id);
-    const x = from.x + (to.x - from.x) * a.t;
-    const y = from.y + (to.y - from.y) * a.t;
-    const base = Math.atan2(to.y - from.y, to.x - from.x);
-    drawPlaneSprite(x, y, base + (a.dir === -1 ? Math.PI : 0));
+    const pos = posAlongPath(pts, a.t);
+    drawPlaneSprite(pos.x, pos.y, pos.angle + (a.dir === -1 ? Math.PI : 0));
   }
 
-  // Staged selection line.
-  if (selected.length === 2) {
-    const a = airportScreen(selected[0], w, h);
-    const b = airportScreen(selected[1], w, h);
+  // Staged selection path.
+  if (selected.length >= 2) {
+    const pts = pathPoints(selected, w, h);
     ctx.strokeStyle = 'rgba(245,166,35,0.9)';
     ctx.lineWidth = 2;
     ctx.setLineDash([3, 4]);
     ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
+    pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
     ctx.stroke();
     ctx.setLineDash([]);
   }
 
-  // Airports.
+  // Airports, colored by the demand signal.
   for (const ap of game.airports) {
     const p = airportScreen(ap.id, w, h);
-    const isSel = selected.includes(ap.id);
+    const order = selected.indexOf(ap.id);
+    const v = demandValue(ap);
     const r = 5 + ap.size;
+
     if (ap.home) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, r + 5, 0, Math.PI * 2);
@@ -261,10 +333,10 @@ function drawMap() {
     }
     ctx.beginPath();
     ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = isSel ? '#f5a623' : ap.home ? '#f5a623' : '#3fd0c9';
+    ctx.fillStyle = v === null ? '#f5a623' : heat(v);
     ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#0b1622';
+    ctx.lineWidth = order >= 0 ? 3 : 2;
+    ctx.strokeStyle = order >= 0 ? '#ffffff' : '#0b1622';
     ctx.stroke();
 
     ctx.fillStyle = '#e8eef6';
@@ -273,38 +345,48 @@ function drawMap() {
     ctx.fillStyle = '#93a7c0';
     ctx.font = '11px system-ui';
     ctx.fillText(ap.city, p.x + 10, p.y + 18);
-  }
-}
 
-function planeAnim(planeId: string) {
-  let a = anim.get(planeId);
-  if (!a) {
-    // Stagger starting positions so co-routed planes don't fly in lockstep.
-    a = { t: Math.random(), dir: Math.random() < 0.5 ? 1 : -1 };
-    anim.set(planeId, a);
-  }
-  return a;
-}
-
-/** Advance every active plane along its route; called only while playing. */
-function updateAnimations(dt: number) {
-  for (const plane of game.fleet) {
-    if (!plane.routeId) continue;
-    const route = game.routes.find((r) => r.id === plane.routeId);
-    if (!route) continue;
-    const type = typeById(game, plane.typeId);
-    const flightHours = routeDistance(game, route) / type.speed;
-    const traversalSec = Math.max(0.6, flightHours * HOURS_TO_SECONDS);
-    const a = planeAnim(plane.id);
-    a.t += a.dir * ((dt * speed) / 1000 / traversalSec);
-    if (a.t >= 1) {
-      a.t = 1;
-      a.dir = -1;
-    } else if (a.t <= 0) {
-      a.t = 0;
-      a.dir = 1;
+    // When staging a route, label prospective leg demand from the path's end.
+    if (selected.length > 0 && v !== null) {
+      ctx.fillStyle = heat(v);
+      ctx.font = 'bold 11px system-ui';
+      ctx.fillText(`${formatPax(v * MAX_PAIR_DEMAND)}/wk`, p.x + 10, p.y + 31);
+    }
+    // Order badge for staged stops.
+    if (order >= 0) {
+      ctx.fillStyle = '#f5a623';
+      ctx.beginPath();
+      ctx.arc(p.x - r - 4, p.y - r - 4, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#2a1c02';
+      ctx.font = 'bold 11px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(order + 1), p.x - r - 4, p.y - r - 4);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
     }
   }
+
+  drawLegend(w, h);
+}
+
+function drawLegend(_w: number, h: number) {
+  const x = 14;
+  const y = h - 30;
+  const barW = 120;
+  const barH = 8;
+  for (let i = 0; i <= barW; i++) {
+    ctx.fillStyle = heat(i / barW);
+    ctx.fillRect(x + i, y, 1, barH);
+  }
+  ctx.fillStyle = '#93a7c0';
+  ctx.font = '10px system-ui';
+  const label =
+    selected.length > 0 ? 'Leg demand from path end' : 'Airport market potential';
+  ctx.fillText(label, x, y - 5);
+  ctx.fillText('low', x, y + barH + 11);
+  ctx.fillText('high', x + barW - 18, y + barH + 11);
 }
 
 function drawPlaneSprite(x: number, y: number, angle: number) {
@@ -323,6 +405,35 @@ function drawPlaneSprite(x: number, y: number, angle: number) {
   ctx.fill();
   ctx.stroke();
   ctx.restore();
+}
+
+function planeAnim(planeId: string) {
+  let a = anim.get(planeId);
+  if (!a) {
+    a = { t: Math.random(), dir: Math.random() < 0.5 ? 1 : -1 };
+    anim.set(planeId, a);
+  }
+  return a;
+}
+
+function updateAnimations(dt: number) {
+  for (const plane of game.fleet) {
+    if (!plane.routeId) continue;
+    const route = game.routes.find((r) => r.id === plane.routeId);
+    if (!route) continue;
+    const type = typeById(game, plane.typeId);
+    const flightHours = routeDistance(game, route) / type.speed;
+    const traversalSec = Math.max(0.6, flightHours * HOURS_TO_SECONDS);
+    const a = planeAnim(plane.id);
+    a.t += a.dir * ((dt * speed) / 1000 / traversalSec);
+    if (a.t >= 1) {
+      a.t = 1;
+      a.dir = -1;
+    } else if (a.t <= 0) {
+      a.t = 0;
+      a.dir = 1;
+    }
+  }
 }
 
 function resizeCanvas() {
@@ -352,7 +463,7 @@ canvas.addEventListener('click', (e) => {
 
 function toggleSelect(id: string) {
   if (selected.includes(id)) selected = selected.filter((s) => s !== id);
-  else selected = [...selected, id].slice(-2);
+  else selected = [...selected, id];
   render();
 }
 
@@ -389,19 +500,27 @@ function renderSidebar() {
     newRouteCard() + buyCard() + bankCard() + routesCard() + fleetCard();
 }
 
+/** Distance of the staged path through the currently selected airports. */
+function stagedDistance(): number {
+  let d = 0;
+  for (let i = 1; i < selected.length; i++)
+    d += distanceKm(airportById(game, selected[i - 1]), airportById(game, selected[i]));
+  return d;
+}
+
 function newRouteCard(): string {
-  const names = selected.map((id) => airportById(game, id).code).join(' ⇆ ');
-  let info = '<div class="muted">Click two airports on the map.</div>';
+  const names = selected.map((id) => airportById(game, id).code).join(' → ');
+  let info: string;
   let canOpen = false;
-  if (selected.length === 2) {
-    const dist = distanceKm(
-      airportById(game, selected[0]),
-      airportById(game, selected[1]),
-    );
-    info = `<div class="row"><strong>${names}</strong><span class="pill">${dist.toLocaleString()} km</span></div>`;
+  if (selected.length >= 2) {
+    info = `<div class="row"><strong>${names}</strong><span class="pill">${stagedDistance().toLocaleString()} km</span></div>
+      <div class="tiny">${selected.length - 1} leg${selected.length - 1 === 1 ? '' : 's'} · click more airports to add stops</div>`;
     canOpen = true;
   } else if (selected.length === 1) {
-    info = `<div class="muted">Selected <strong>${names}</strong>. Pick one more.</div>`;
+    info = `<div class="muted">Start: <strong>${names}</strong>. Click the next stop.</div>`;
+  } else {
+    info =
+      '<div class="muted">Click airports in order to chain stops. Brighter dots = more demand.</div>';
   }
   return `<div class="card"><h3>New Route</h3>${info}
     <div class="row" style="margin-top:10px">
@@ -443,8 +562,6 @@ function routesCard(): string {
     return `<div class="card"><h3>Routes</h3><div class="muted">No routes yet.</div></div>`;
   const rows = game.routes
     .map((r) => {
-      const a = airportById(game, r.fromId);
-      const b = airportById(game, r.toId);
       const dist = routeDistance(game, r);
       const res = evaluateRoute(game, r);
       const n = planesOnRoute(game, r.id).length;
@@ -459,12 +576,12 @@ function routesCard(): string {
           ? ` · <span class="${prem > 0 ? 'good' : 'bad'}">⚡${prem > 0 ? '+' : ''}${prem}% fare</span>`
           : '';
       return `<div class="route-line">
-        <div class="row"><strong>${a.code} ⇆ ${b.code}</strong>
+        <div class="row"><strong>${routeLabel(game, r)}</strong>
           <span class="row" style="gap:6px"><span class="pill ${cls}">${res.profit >= 0 ? '+' : ''}${money(res.profit)}/wk</span>
           <button class="close-x" data-act="close-route" data-route="${r.id}" title="Close route">✕</button></span></div>
-        <div class="tiny">${dist.toLocaleString()} km · ${n} plane${n === 1 ? '' : 's'} · ${res.passengers.toLocaleString()}/${res.demand.toLocaleString()} pax · ${load}% load${premTag}</div>
+        <div class="tiny">${dist.toLocaleString()} km · ${r.stops.length - 1} legs · ${n} plane${n === 1 ? '' : 's'} · ${Math.round(res.passengers).toLocaleString()}/${res.demand.toLocaleString()} pax · ${load}% load${premTag}</div>
         <div class="row" style="margin-top:6px">
-          <span class="muted">Fare $<input type="number" min="0" step="10" value="${r.fare}" data-act="fare" data-route="${r.id}"></span>
+          <span class="muted">Fare <input type="number" min="20" max="300" step="5" value="${Math.round(r.fareFactor * 100)}" data-act="fare" data-route="${r.id}">%</span>
         </div>
       </div>`;
     })
@@ -481,12 +598,9 @@ function fleetCard(): string {
       const options = [`<option value="">Hangar (idle)</option>`]
         .concat(
           game.routes.map((r) => {
-            const a = airportById(game, r.fromId);
-            const b = airportById(game, r.toId);
-            const dist = routeDistance(game, r);
-            const tooFar = t.range < dist;
+            const tooFar = t.range < routeMaxLeg(game, r);
             const sel = plane.routeId === r.id ? 'selected' : '';
-            return `<option value="${r.id}" ${sel} ${tooFar ? 'disabled' : ''}>${a.code} ⇆ ${b.code}${tooFar ? ' (out of range)' : ''}</option>`;
+            return `<option value="${r.id}" ${sel} ${tooFar ? 'disabled' : ''}>${routeLabel(game, r)}${tooFar ? ' (out of range)' : ''}</option>`;
           }),
         )
         .join('');
@@ -524,7 +638,7 @@ sidebar.addEventListener('click', (e) => {
       render();
       break;
     case 'open-route': {
-      const err = openRoute(game, selected[0], selected[1]);
+      const err = openRoute(game, selected);
       if (err) flash(err);
       else {
         selected = [];
@@ -546,7 +660,6 @@ sidebar.addEventListener('click', (e) => {
       break;
     case 'close-route':
       closeRoute(game, btn.dataset.route!);
-      if (selected.length) selected = [];
       render();
       break;
   }
@@ -560,7 +673,7 @@ sidebar.addEventListener('change', (e) => {
     render();
   } else if (el.dataset.act === 'fare') {
     const input = el as unknown as HTMLInputElement;
-    setFare(game, el.dataset.route!, Number(input.value));
+    setFareFactor(game, el.dataset.route!, Number(input.value) / 100);
     render();
   }
 });
@@ -569,7 +682,7 @@ sidebar.addEventListener('change', (e) => {
 
 playBtn.addEventListener('click', () => {
   playing = !playing;
-  lastTs = 0; // avoid a big dt jump after a pause
+  lastTs = 0;
   playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
   playBtn.classList.toggle('paused', playing);
 });
