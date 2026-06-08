@@ -104,11 +104,20 @@ function projectPoint(lat: number, lon: number, w: number, h: number) {
   };
 }
 
+// Pan/zoom view applied on top of the fit-to-region projection.
+const view = { scale: 1, offsetX: 0, offsetY: 0 };
+const MIN_SCALE = 0.3;
+const MAX_SCALE = 8;
+const applyView = (p: { x: number; y: number }) => ({
+  x: p.x * view.scale + view.offsetX,
+  y: p.y * view.scale + view.offsetY,
+});
+
 const airportScreen = (id: string, w: number, h: number) => {
   const a = airportById(game, id);
-  const p = projectPoint(a.lat, a.lon, w, h);
+  const p = applyView(projectPoint(a.lat, a.lon, w, h));
   if (!a.national) return p;
-  // Pin a national gateway to the map edge along its real compass direction.
+  // Pin a national gateway to the viewport edge along its real direction.
   const dx = p.x - w / 2;
   const dy = p.y - h / 2;
   const hx = w / 2 - EDGE_INSET;
@@ -199,7 +208,7 @@ let baseKey = '';
 const invalidateBaseMap = () => (baseKey = '');
 
 function ensureBaseMap(w: number, h: number, dpr: number): HTMLCanvasElement {
-  const key = `${w}x${h}@${dpr}#${stateRings.length}`;
+  const key = `${w}x${h}@${dpr}#${stateRings.length}~${view.scale.toFixed(3)}_${Math.round(view.offsetX)}_${Math.round(view.offsetY)}`;
   if (key === baseKey && baseCanvas) return baseCanvas;
   baseKey = key;
   const c = baseCanvas ?? document.createElement('canvas');
@@ -227,7 +236,7 @@ function drawBase(b: CanvasRenderingContext2D, w: number, h: number) {
     for (const ring of stateRings) {
       b.beginPath();
       for (let i = 0; i < ring.length; i++) {
-        const p = projectPoint(ring[i][1], ring[i][0], w, h);
+        const p = applyView(projectPoint(ring[i][1], ring[i][0], w, h));
         if (i === 0) b.moveTo(p.x, p.y);
         else b.lineTo(p.x, p.y);
       }
@@ -537,6 +546,7 @@ function resizeCanvas() {
 }
 
 canvas.addEventListener('click', (e) => {
+  if (dragMoved) return; // a pan, not a click
   const rect = canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
@@ -550,6 +560,63 @@ canvas.addEventListener('click', (e) => {
     }
   }
 });
+
+// ---- Pan & zoom -----------------------------------------------------------
+
+const clampScale = (s: number) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
+
+function resetView() {
+  view.scale = 1;
+  view.offsetX = 0;
+  view.offsetY = 0;
+  drawMap();
+}
+
+// Wheel zoom, keeping the point under the cursor fixed.
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const newScale = clampScale(view.scale * Math.exp(-e.deltaY * 0.005));
+  const k = newScale / view.scale;
+  view.offsetX = mx - (mx - view.offsetX) * k;
+  view.offsetY = my - (my - view.offsetY) * k;
+  view.scale = newScale;
+  drawMap();
+}, { passive: false });
+
+// Drag to pan.
+let dragging = false;
+let dragMoved = false;
+let dragStart = { x: 0, y: 0, ox: 0, oy: 0 };
+
+canvas.addEventListener('mousedown', (e) => {
+  dragging = true;
+  dragMoved = false;
+  dragStart = { x: e.clientX, y: e.clientY, ox: view.offsetX, oy: view.offsetY };
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!dragging) return;
+  const dx = e.clientX - dragStart.x;
+  const dy = e.clientY - dragStart.y;
+  if (!dragMoved && Math.hypot(dx, dy) > 3) dragMoved = true;
+  if (dragMoved) {
+    view.offsetX = dragStart.ox + dx;
+    view.offsetY = dragStart.oy + dy;
+    canvas.style.cursor = 'grabbing';
+    drawMap();
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  dragging = false;
+  canvas.style.cursor = '';
+});
+
+canvas.addEventListener('dblclick', resetView);
+document.getElementById('reset-view')!.addEventListener('click', resetView);
 
 /** Append a stop to the staged path, allowing revisits (hub-and-spoke). */
 function addStop(id: string) {
