@@ -750,6 +750,23 @@ playBtn.addEventListener('click', () => {
   playBtn.classList.toggle('paused', playing);
 });
 
+/** Reset to a fresh airline in place (keeps the same game object reference). */
+function resetGame() {
+  Object.assign(game, newGame());
+  selected = [];
+  anim.clear();
+  playing = false;
+  dayAccumulator = 0;
+  lastTs = 0;
+  playBtn.textContent = '▶ Play';
+  playBtn.classList.remove('paused');
+  render();
+}
+
+document.getElementById('new-game')!.addEventListener('click', () => {
+  if (confirm('Start a new game? This wipes your current airline.')) resetGame();
+});
+
 document.getElementById('speeds')!.addEventListener('click', (e) => {
   const btn = (e.target as HTMLElement).closest('[data-speed]') as HTMLElement | null;
   if (!btn) return;
