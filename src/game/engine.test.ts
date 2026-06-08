@@ -418,6 +418,24 @@ describe('airport data integrity', () => {
     const ids = AIRPORTS.map((a) => a.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  it('no small airport (size ≤ 2) sits within 60 miles of a bigger-or-equal one', () => {
+    // Isolation = value: a tiny field is only worth a node if it has no
+    // larger-or-equal neighbor nearby (keeps a remote field, culls a redundant
+    // one next to a hub). Guards map clutter as the city list grows.
+    const MILES_KM = 1.60934;
+    const limitKm = 60 * MILES_KM;
+    const violations: string[] = [];
+    for (const a of AIRPORTS) {
+      if (a.size > 2) continue;
+      for (const b of AIRPORTS) {
+        if (a.id === b.id || b.size < a.size) continue;
+        const d = distanceKm(a, b);
+        if (d < limitKm) violations.push(`${a.code}↔${b.code} ${Math.round(d / MILES_KM)}mi`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
 });
 
 // Task #1

@@ -11,7 +11,6 @@ export const AIRPORTS: Airport[] = [
   { id: 'cmh', code: 'CMH', city: 'Columbus', lat: 40.0, lon: -82.89, size: 3 },
   { id: 'ric', code: 'RIC', city: 'Richmond', lat: 37.51, lon: -77.32, size: 2 },
   { id: 'roa', code: 'ROA', city: 'Roanoke', lat: 37.32, lon: -79.97, size: 1 },
-  { id: 'hts', code: 'HTS', city: 'Huntington', lat: 38.37, lon: -82.56, size: 1 },
   { id: 'lex', code: 'LEX', city: 'Lexington', lat: 38.04, lon: -84.61, size: 2 },
   { id: 'sdf', code: 'SDF', city: 'Louisville', lat: 38.17, lon: -85.74, size: 3 },
   { id: 'tys', code: 'TYS', city: 'Knoxville', lat: 35.81, lon: -83.99, size: 2 },
