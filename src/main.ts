@@ -7,10 +7,10 @@ import {
   borrow,
   buyPlane,
   closeRoute,
+  creditLimit,
   evaluateNetwork,
   evaluateRoute,
-  LOAN_ANNUAL_RATE,
-  LOAN_LIMIT,
+  interestRate,
   money,
   newGame,
   openRoute,
@@ -597,15 +597,17 @@ function buyCard(): string {
 }
 
 function bankCard(): string {
-  const credit = LOAN_LIMIT - game.debt;
-  const weeklyInterest = game.debt * LOAN_ANNUAL_RATE * (7 / 365);
+  const limit = creditLimit(game);
+  const credit = Math.max(0, limit - game.debt);
+  const rate = interestRate(game);
+  const weeklyInterest = game.debt * rate * (7 / 365);
   // Right-size the buttons so the label matches what actually happens.
   const borrowAmt = Math.min(5_000_000, credit);
   const repayAmt = Math.min(game.cash < 5_000_000 ? 1_000_000 : 5_000_000, game.debt);
   return `<div class="card"><h3>Bank</h3>
     <div class="row"><span class="muted">Debt</span><strong>${money(game.debt)}</strong></div>
-    <div class="row"><span class="muted">Credit available</span><span>${money(credit)}</span></div>
-    <div class="row"><span class="muted">Interest (${(LOAN_ANNUAL_RATE * 100).toFixed(0)}% / yr)</span><span class="bad">-${money(weeklyInterest)}/wk</span></div>
+    <div class="row"><span class="muted">Credit line</span><span>${money(credit)} of ${money(limit)}</span></div>
+    <div class="row"><span class="muted">Rate</span><span>${(rate * 100).toFixed(1)}%/yr · <span class="bad">-${money(weeklyInterest)}/wk</span></span></div>
     <div class="row" style="margin-top:10px">
       <button data-act="borrow" data-amt="${borrowAmt}" ${credit > 0 ? '' : 'disabled'}>Borrow ${money(borrowAmt)}</button>
       <button data-act="repay" data-amt="${repayAmt}" ${game.debt > 0 && game.cash > 0 ? '' : 'disabled'}>Repay ${money(repayAmt)}</button>

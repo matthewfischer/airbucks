@@ -9,11 +9,12 @@ import {
   borrow,
   buyPlane,
   closeRoute,
+  creditLimit,
   distanceFactor,
   evaluateNetwork,
   evaluateRoute,
-  LOAN_ANNUAL_RATE,
-  LOAN_LIMIT,
+  fleetValue,
+  interestRate,
   money,
   newGame,
   openRoute,
@@ -288,7 +289,7 @@ describe('weeklyTotals & advanceDay', () => {
   it('includes weekly interest on outstanding debt', () => {
     g.debt = 10_000_000;
     expect(weeklyTotals(g).interest).toBeCloseTo(
-      10_000_000 * LOAN_ANNUAL_RATE * (7 / 365),
+      10_000_000 * interestRate(g) * (7 / 365),
       5,
     );
   });
@@ -313,24 +314,73 @@ describe('weeklyTotals & advanceDay', () => {
 
 describe('loans', () => {
   it('borrowing adds to cash and debt and returns the amount taken', () => {
-    expect(borrow(g, 20_000_000)).toBe(20_000_000);
-    expect(g.debt).toBe(20_000_000);
-    expect(g.cash).toBe(STARTING_CASH + 20_000_000);
+    expect(borrow(g, 10_000_000)).toBe(10_000_000); // within the base credit line
+    expect(g.debt).toBe(10_000_000);
+    expect(g.cash).toBe(STARTING_CASH + 10_000_000);
   });
 
-  it('caps borrowing at the remaining credit line', () => {
-    borrow(g, LOAN_LIMIT);
-    expect(g.debt).toBe(LOAN_LIMIT);
+  it('caps borrowing at the (dynamic) remaining credit line', () => {
+    const limit = creditLimit(g);
+    expect(borrow(g, limit + 50_000_000)).toBe(limit);
+    expect(g.debt).toBe(limit);
     expect(borrow(g, 5_000_000)).toBe(0);
-    expect(g.debt).toBe(LOAN_LIMIT);
   });
 
   it('repaying cannot exceed debt or available cash', () => {
-    borrow(g, 20_000_000);
+    borrow(g, 10_000_000);
     g.cash = 5_000_000;
     expect(repay(g, 20_000_000)).toBe(5_000_000);
     expect(g.cash).toBe(0);
-    expect(g.debt).toBe(15_000_000);
+    expect(g.debt).toBe(5_000_000);
+  });
+});
+
+describe('dynamic credit line & interest rate', () => {
+  it('a startup airline gets only the base credit line', () => {
+    expect(creditLimit(g)).toBe(15_000_000); // no revenue, no fleet
+  });
+
+  it('credit grows with fleet collateral and revenue', () => {
+    const base = creditLimit(g);
+    g.cash = 1_000_000_000;
+    buyPlane(g, 'cityjet'); // adds fleet collateral
+    expect(creditLimit(g)).toBeGreaterThan(base);
+    const withFleet = creditLimit(g);
+    openRoute(g, ['clt', 'dca']); // now flying & earning revenue
+    assignPlane(g, g.fleet[g.fleet.length - 1].id, lastRoute(g).id);
+    expect(creditLimit(g)).toBeGreaterThan(withFleet);
+  });
+
+  it('a debt-free airline pays the base rate', () => {
+    expect(interestRate(g)).toBeCloseTo(0.04, 5);
+  });
+
+  it('the rate rises with leverage', () => {
+    g.debt = 5_000_000; // low leverage vs $40M starting cash
+    const low = interestRate(g);
+    g.debt = 35_000_000; // high leverage
+    const high = interestRate(g);
+    expect(high).toBeGreaterThan(low);
+  });
+
+  it('an over-leveraged, loss-making airline pays more than a solvent one', () => {
+    // Solvent: lots of assets, little debt.
+    g.cash = 500_000_000;
+    g.debt = 5_000_000;
+    const solvent = interestRate(g);
+    // Stressed: buy a plane (now idle => operating loss), then drain cash & pile on debt.
+    buyPlane(g, 'cityjet');
+    g.cash = 1_000_000;
+    g.debt = 30_000_000;
+    const stressed = interestRate(g);
+    expect(stressed).toBeGreaterThan(solvent);
+    expect(stressed).toBeLessThanOrEqual(0.16); // clamped
+  });
+
+  it('fleetValue depreciates the purchase price', () => {
+    buyPlane(g, 'regionaljet');
+    const price = AIRCRAFT_TYPES.find((t) => t.id === 'regionaljet')!.price;
+    expect(fleetValue(g)).toBeCloseTo(price * 0.6, 5);
   });
 });
 
@@ -459,13 +509,14 @@ describe('cost right-sizing & multi-plane capacity', () => {
 // Task #5
 describe('interest accrues through advanceDay', () => {
   it('a week of days with debt drains cash by ~the weekly interest', () => {
-    borrow(g, 20_000_000);
+    borrow(g, 10_000_000); // within the base credit line
     const cashAfterBorrow = g.cash;
     const weeklyInterest = weeklyTotals(g).interest;
     for (let i = 0; i < 7; i++) advanceDay(g);
     expect(g.day).toBe(7);
-    expect(g.cash).toBeCloseTo(cashAfterBorrow - weeklyInterest, 2);
-    expect(g.debt).toBe(20_000_000); // principal unchanged
+    // Rate drifts slightly as cash falls, so allow a small tolerance.
+    expect(Math.abs(cashAfterBorrow - g.cash - weeklyInterest)).toBeLessThan(100);
+    expect(g.debt).toBe(10_000_000); // principal unchanged
   });
 });
 

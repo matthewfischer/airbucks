@@ -16,10 +16,17 @@ const TURNAROUND_HOURS = 4;
 let nextId = 1;
 const makeId = (prefix: string) => `${prefix}-${nextId++}`;
 
-/** Total loan principal the bank will extend. */
-export const LOAN_LIMIT = 50_000_000;
-/** Annual interest rate on outstanding debt. */
-export const LOAN_ANNUAL_RATE = 0.08;
+/** Resale/book value of an aircraft as a fraction of its purchase price. */
+const PLANE_RESALE_FRACTION = 0.6;
+// Dynamic credit line: a base startup line, plus a multiple of annualized
+// revenue (cash-flow capacity) and a fraction of fleet value (collateral).
+const LOAN_BASE_CREDIT = 15_000_000;
+const LOAN_REVENUE_MULTIPLE = 1.0;
+const LOAN_COLLATERAL_FRACTION = 0.5;
+const LOAN_MAX_CREDIT = 400_000_000;
+// Interest rate: a floor for a solvent airline, rising with leverage and losses.
+const LOAN_BASE_RATE = 0.04;
+const LOAN_MAX_RATE = 0.16;
 
 export function newGame(): GameState {
   return {
@@ -461,7 +468,7 @@ export function weeklyTotals(g: GameState): WeeklyTotals {
   for (const plane of g.fleet) {
     if (plane.routeId === null) cost += typeById(g, plane.typeId).weeklyUpkeep;
   }
-  const interest = g.debt * LOAN_ANNUAL_RATE * (7 / 365);
+  const interest = g.debt * interestRate(g) * (7 / 365);
   return {
     revenue: net.revenue,
     cost,
@@ -480,9 +487,49 @@ export function advanceDay(g: GameState): void {
 
 export const weekNumber = (g: GameState): number => Math.floor(g.day / 7) + 1;
 
+/** Depreciated resale/book value of the whole fleet. */
+export function fleetValue(g: GameState): number {
+  return g.fleet.reduce(
+    (s, p) => s + PLANE_RESALE_FRACTION * typeById(g, p.typeId).price,
+    0,
+  );
+}
+
+/** Assets backing the airline: spare cash plus fleet book value. */
+export const airlineAssets = (g: GameState): number =>
+  Math.max(0, g.cash) + fleetValue(g);
+
+/** Weekly operating result before debt interest — used to price loan risk. */
+function operatingNet(g: GameState): number {
+  const net = evaluateNetwork(g);
+  let cost = net.cost;
+  for (const plane of g.fleet)
+    if (plane.routeId === null) cost += typeById(g, plane.typeId).weeklyUpkeep;
+  return net.revenue - cost;
+}
+
+/** The bank's credit line: scales with cash flow (revenue) and collateral (fleet). */
+export function creditLimit(g: GameState): number {
+  const annualRevenue = evaluateNetwork(g).revenue * 52;
+  const limit =
+    LOAN_BASE_CREDIT +
+    LOAN_REVENUE_MULTIPLE * annualRevenue +
+    LOAN_COLLATERAL_FRACTION * fleetValue(g);
+  return Math.min(LOAN_MAX_CREDIT, Math.round(limit));
+}
+
+/** Annual interest rate: lowest when solvent, rising with leverage and losses. */
+export function interestRate(g: GameState): number {
+  const assets = airlineAssets(g);
+  const leverage = assets > 0 ? g.debt / assets : g.debt > 0 ? 1 : 0;
+  let rate = LOAN_BASE_RATE + (LOAN_MAX_RATE - LOAN_BASE_RATE) * Math.min(1, leverage);
+  if (operatingNet(g) < 0) rate += 0.02; // a loss-making airline pays more
+  return Math.min(LOAN_MAX_RATE, rate);
+}
+
 /** Borrow from the bank, up to the remaining credit line. Returns amount taken. */
 export function borrow(g: GameState, amount: number): number {
-  const take = Math.min(amount, LOAN_LIMIT - g.debt);
+  const take = Math.min(amount, creditLimit(g) - g.debt);
   if (take <= 0) return 0;
   g.debt += take;
   g.cash += take;
