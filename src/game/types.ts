@@ -37,6 +37,8 @@ export interface Plane {
   typeId: string;
   /** Route this plane is assigned to, or null if idle in the hangar. */
   routeId: string | null;
+  /** Total km flown over the plane's lifetime — drives resale depreciation. */
+  kmFlown: number;
 }
 
 export interface Route {

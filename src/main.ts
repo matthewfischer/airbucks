@@ -29,6 +29,8 @@ import {
   routeDistance,
   routeLabel,
   routeMaxLeg,
+  planeResaleValue,
+  sellPlane,
   setFareFactor,
   typeById,
   weeklyTotals,
@@ -584,6 +586,30 @@ function resizeCanvas() {
   drawMap();
 }
 
+canvas.addEventListener('mousemove', (e) => {
+  if (dragging) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  let found: Airport | null = null;
+  let foundPx = 0, foundPy = 0;
+  for (const ap of game.airports) {
+    const p = airportScreen(ap.id, w, h);
+    if (Math.hypot(p.x - mx, p.y - my) <= 14) { found = ap; foundPx = p.x; foundPy = p.y; break; }
+  }
+  const foundId = found?.id ?? null;
+  if (foundId === lastHoveredAirport) return;
+  lastHoveredAirport = foundId;
+  if (found) {
+    showAirportInfo(found, foundPx, foundPy);
+  } else {
+    // Short delay so the user can move from the airport dot to the popover.
+    hidePopoverTimer = setTimeout(() => { hideAirportPopover(); }, 120);
+  }
+});
+
 canvas.addEventListener('click', (e) => {
   if (dragMoved) return; // a pan, not a click
   const rect = canvas.getBoundingClientRect();
@@ -598,7 +624,7 @@ canvas.addEventListener('click', (e) => {
         hideAirportPopover();
         addStop(ap.id);
       } else if (rightsAvailable(game, ap.id)) {
-        showAirportPopover(ap, p.x, p.y);
+        showAirportInfo(ap, p.x, p.y);
       } else {
         hideAirportPopover();
         flash(`${ap.code} is locked — grow to a ${requiredReputation(ap)}-airport network to unlock it.`);
@@ -694,31 +720,55 @@ function networkDemand(ap: Airport): number {
   return total;
 }
 
+let lastHoveredAirport: string | null = null;
+let hidePopoverTimer: ReturnType<typeof setTimeout> | null = null;
+
 function hideAirportPopover() {
+  if (hidePopoverTimer) { clearTimeout(hidePopoverTimer); hidePopoverTimer = null; }
   popAirport = null;
+  lastHoveredAirport = null;
   popover.style.display = 'none';
 }
 
-/** Show the acquire popover beside an airport at its screen position (px, py). */
-function showAirportPopover(ap: Airport, px: number, py: number) {
+/** Show airport info popover for any airport state (held, acquirable, locked). */
+function showAirportInfo(ap: Airport, px: number, py: number) {
+  if (hidePopoverTimer) { clearTimeout(hidePopoverTimer); hidePopoverTimer = null; }
   popAirport = ap.id;
+  const held = holdsRights(game, ap.id);
+  const acquirable = !held && rightsAvailable(game, ap.id);
   const fee = rightsFee(ap);
   const afford = game.cash >= fee;
   const demand = Math.round(networkDemand(ap));
-  const tier = '●'.repeat(ap.size) + '○'.repeat(6 - ap.size);
+  const tier = '●'.repeat(ap.size) + '○'.repeat(Math.max(0, 6 - ap.size));
+
+  let extra = '';
+  if (held) {
+    const routesHere = game.routes.filter((r) => r.stops.includes(ap.id)).length;
+    const planesHere = game.fleet.filter((p) => {
+      const r = game.routes.find((r) => r.id === p.routeId);
+      return r?.stops.includes(ap.id);
+    }).length;
+    extra = `<div class="pop-row"><span class="muted">Your operation</span><span>${routesHere} route${routesHere !== 1 ? 's' : ''} · ${planesHere} plane${planesHere !== 1 ? 's' : ''}</span></div>`;
+  } else if (acquirable) {
+    extra = `
+      <div class="pop-row"><span class="muted">Landing-rights fee</span><span class="${afford ? '' : 'bad'}">${money(fee)}</span></div>
+      <button class="pop-buy ${afford ? 'primary' : ''}" data-pop="buy" ${afford ? '' : 'disabled'}>
+        ${afford ? `Acquire · ${money(fee)}` : `Need ${money(fee)}`}</button>`;
+  } else {
+    const need = requiredReputation(ap);
+    extra = `<div class="tiny muted" style="margin-top:6px">Locked — needs a ${need}-airport network (you have ${reputation(game)})</div>`;
+  }
+
   popover.innerHTML = `
     <div class="pop-head">
-      <span><strong>${ap.code}</strong> · ${ap.city}${ap.national ? ' <span class="muted">· gateway</span>' : ''}</span>
+      <span><strong>${ap.code}</strong> · ${ap.city}${ap.national ? ' <span class="muted">· gateway</span>' : ''}${held ? ' <span class="good">✓</span>' : ''}</span>
       <button class="pop-x" data-pop="close" title="Close">✕</button>
     </div>
     <div class="pop-row"><span class="muted">Population</span><span>${formatPop(ap.population)}</span></div>
     <div class="pop-row"><span class="muted">Market tier</span><span class="tier">${tier}</span></div>
     <div class="pop-row"><span class="muted">Demand to your network</span><span>${demand.toLocaleString()}/wk</span></div>
-    <div class="pop-row"><span class="muted">Landing-rights fee</span><span class="${afford ? '' : 'bad'}">${money(fee)}</span></div>
-    <button class="pop-buy ${afford ? 'primary' : ''}" data-pop="buy" ${afford ? '' : 'disabled'}>
-      ${afford ? `Acquire · ${money(fee)}` : `Need ${money(fee)}`}</button>`;
+    ${extra}`;
 
-  // Place to the right of the dot, flipping left / clamping to stay on-map.
   popover.style.display = 'block';
   const wrapW = mapWrap.clientWidth;
   const wrapH = mapWrap.clientHeight;
@@ -732,6 +782,12 @@ function showAirportPopover(ap: Airport, px: number, py: number) {
   popover.style.left = `${x}px`;
   popover.style.top = `${y}px`;
 }
+
+// Keep the popover alive while the mouse is over it (so the user can click Acquire).
+popover.addEventListener('mouseenter', () => {
+  if (hidePopoverTimer) { clearTimeout(hidePopoverTimer); hidePopoverTimer = null; }
+});
+popover.addEventListener('mouseleave', () => { hideAirportPopover(); });
 
 popover.addEventListener('click', (e) => {
   const btn = (e.target as HTMLElement).closest('[data-pop]') as HTMLElement | null;
@@ -880,7 +936,7 @@ function bankCard(): string {
   const weeklyEarned = cashInterestWeekly(game);
   // Right-size the buttons so the label matches what actually happens.
   const borrowAmt = Math.min(5_000_000, credit);
-  const repayAmt = Math.min(game.cash < 5_000_000 ? 1_000_000 : 5_000_000, game.debt);
+  const repayAmt = Math.min(game.cash < 5_000_000 ? 1_000_000 : 5_000_000, game.debt, Math.max(0, game.cash));
   return `<div class="card"><h3>Bank</h3>
     <div class="row"><span class="muted">Debt</span><strong>${money(game.debt)}</strong></div>
     <div class="row"><span class="muted">Credit line</span><span>${money(credit)} of ${money(limit)}</span></div>
@@ -902,6 +958,7 @@ function routesCard(): string {
       const res = net.routes.get(r.id)!;
       const n = planesOnRoute(game, r.id).length;
       const load = Math.round(res.loadFactor * 100);
+      const loadCls = load >= 90 ? 'good' : load >= 75 ? 'warn' : 'bad';
       const cls = res.profit >= 0 ? 'good' : 'bad';
       const prem = Math.round((res.speedPremium - 1) * 100);
       const premTag =
@@ -912,7 +969,7 @@ function routesCard(): string {
         <div class="row"><strong>${routeLabel(game, r)}</strong>
           <span class="row" style="gap:6px"><span class="pill ${cls}">${res.profit >= 0 ? '+' : ''}${money(res.profit)}/wk</span>
           <button class="close-x" data-act="close-route" data-route="${r.id}" title="Close route">✕</button></span></div>
-        <div class="tiny">${dist.toLocaleString()} km · ${r.stops.length - 1} legs · ${n} plane${n === 1 ? '' : 's'} · ${Math.round(res.passengers).toLocaleString()} pax/wk · ${load}% load${premTag}${
+        <div class="tiny">${dist.toLocaleString()} km · ${r.stops.length - 1} legs · ${n} plane${n === 1 ? '' : 's'} · ${Math.round(res.passengers).toLocaleString()} pax/wk · <span class="${loadCls}">${load}% load</span>${premTag}${
           res.connectingPassengers >= 1
             ? ` · <span class="good">${Math.round(res.connectingPassengers).toLocaleString()} connecting</span>`
             : ''
@@ -941,9 +998,11 @@ function fleetCard(): string {
           }),
         )
         .join('');
+      const resale = planeResaleValue(game, plane);
       return `<div class="plane-line">
         <div class="row"><strong>${t.name.split(' (')[0]}</strong>
-          <select data-act="assign" data-plane="${plane.id}">${options}</select></div>
+          <button class="close-x" data-act="sell-plane" data-plane="${plane.id}" title="Sell for ${money(resale)}">Sell ${money(resale)}</button></div>
+        <select style="width:100%;margin-top:4px" data-act="assign" data-plane="${plane.id}">${options}</select>
       </div>`;
     })
     .join('');
@@ -1008,6 +1067,10 @@ sidebar.addEventListener('click', (e) => {
     }
     case 'close-route':
       closeRoute(game, btn.dataset.route!);
+      render();
+      break;
+    case 'sell-plane':
+      flash(sellPlane(game, btn.dataset.plane!));
       render();
       break;
   }
@@ -1116,16 +1179,19 @@ function logWeekly() {
 function frame(ts: number) {
   const dt = lastTs ? ts - lastTs : 0;
   lastTs = ts;
+  let sidebarDirty = false;
   if (playing) {
     dayAccumulator += (dt * speed) / DAY_MS;
     while (dayAccumulator >= 1) {
       dayAccumulator -= 1;
       advanceDay(game);
+      sidebarDirty = true;
       if (game.day % 7 === 0) logWeekly();
     }
     updateAnimations(dt);
   }
   renderHud();
+  if (sidebarDirty) renderSidebar();
   drawMap();
   requestAnimationFrame(frame);
 }

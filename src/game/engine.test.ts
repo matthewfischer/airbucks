@@ -389,7 +389,10 @@ describe('dynamic credit line & interest rate', () => {
   it('fleetValue depreciates the purchase price', () => {
     buyPlane(g, 'regionaljet');
     const price = AIRCRAFT_TYPES.find((t) => t.id === 'regionaljet')!.price;
-    expect(fleetValue(g)).toBeCloseTo(price * 0.6, 5);
+    // Brand-new plane starts at 80%; value falls toward 40% as km accumulate.
+    expect(fleetValue(g)).toBeCloseTo(price * 0.8, 5);
+    g.fleet[0].kmFlown = 5_000_000;
+    expect(fleetValue(g)).toBeCloseTo(price * 0.4, 5);
   });
 });
 
@@ -686,8 +689,8 @@ describe('landing rights', () => {
     g.cash = 1_000_000_000;
     expect(acquireRights(g, 'lax')).toMatch(/locked/i);
     g.cash = 1000;
-    expect(acquireRights(g, 'roa')).toMatch(/not enough cash/i);
-    expect(holdsRights(g, 'roa')).toBe(false);
+    expect(acquireRights(g, 'ric')).toMatch(/not enough cash/i); // size 2 costs $1M
+    expect(holdsRights(g, 'ric')).toBe(false);
   });
 
   it('bootstraps: growing the network unlocks the bigger regional hubs', () => {

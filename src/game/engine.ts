@@ -31,8 +31,12 @@ export function reseedIds(g: GameState): void {
   nextId = Math.max(nextId, max + 1);
 }
 
-/** Resale/book value of an aircraft as a fraction of its purchase price. */
-const PLANE_RESALE_FRACTION = 0.6;
+/** Resale fraction at zero hours (brand new). */
+const PLANE_RESALE_MAX = 0.8;
+/** Resale fraction at full depreciation. */
+const PLANE_RESALE_MIN = 0.4;
+/** Km at which a plane reaches minimum resale value. */
+const PLANE_LIFETIME_KM = 5_000_000;
 // Dynamic credit line: a base startup line, plus a multiple of annualized
 // revenue (cash-flow capacity) and a fraction of fleet value (collateral).
 const LOAN_BASE_CREDIT = 15_000_000;
@@ -52,7 +56,7 @@ const DEPOSIT_RATE = 0.02;
 // (you can't fly to LAX/JFK from tiny Charleston on day 1). Indexed by size 1..6.
 const RIGHTS_SIZE_REP = [0, 0, 0, 0, 2, 4, 6];
 const RIGHTS_NATIONAL_BUMP = 6;
-const RIGHTS_FEE = [0, 2_000_000, 3_000_000, 8_000_000, 15_000_000, 25_000_000, 40_000_000];
+const RIGHTS_FEE = [0, 0, 1_000_000, 3_000_000, 8_000_000, 15_000_000, 25_000_000];
 
 export function newGame(): GameState {
   return {
@@ -336,6 +340,7 @@ export function evaluateNetwork(g: GameState): NetworkResult {
   const remaining = new Map<string, number>();
   for (const [k, info] of legs) remaining.set(k, info.capacity);
   const legCarried = new Map<string, number>();
+  const legConnecting = new Map<string, number>();
 
   let revenue = 0;
   let passengers = 0;
@@ -357,34 +362,47 @@ export function evaluateNetwork(g: GameState): NetworkResult {
     for (const key of m.path.legKeys) {
       remaining.set(key, remaining.get(key)! - carried);
       legCarried.set(key, (legCarried.get(key) ?? 0) + carried);
+      if (m.path.connections > 0)
+        legConnecting.set(key, (legConnecting.get(key) ?? 0) + carried);
       const li = legs.get(key)!;
       const legFareShare = m.fare * (referenceFare(li.distance) / refSum);
       for (const [rid, rcap] of li.routeCap) {
         const share = rcap / li.capacity;
         const rs = summaries.get(rid)!;
         rs.revenue += carried * legFareShare * share;
-        rs.passengers += carried * share;
-        if (m.path.connections > 0) rs.connectingPassengers += carried * share;
       }
     }
   }
 
   // 4) Per-route cost: fly only enough circuits to cover the busiest leg's load.
+  //    Passengers and connecting passengers are set from the busiest leg so they
+  //    stay consistent with loadFactor and don't double-count connecting pax
+  //    across legs on multi-stop routes.
   let totalCost = 0;
   for (const route of g.routes) {
     const rs = summaries.get(route.id)!;
     let maxLF = 0;
+    let maxLegPax = 0;
+    let connectingOnMaxLeg = 0;
     let wSpeed = 0;
     let wDist = 0;
     for (const l of routeLegs(g, route)) {
       const key = legKey(l.fromId, l.toId);
       const li = legs.get(key);
       if (!li || li.capacity <= 0) continue;
-      maxLF = Math.max(maxLF, (legCarried.get(key) ?? 0) / li.capacity);
+      const lf = (legCarried.get(key) ?? 0) / li.capacity;
+      if (lf > maxLF) {
+        maxLF = lf;
+        const share = (li.routeCap.get(route.id) ?? 0) / li.capacity;
+        maxLegPax = (legCarried.get(key) ?? 0) * share;
+        connectingOnMaxLeg = (legConnecting.get(key) ?? 0) * share;
+      }
       wSpeed += (li.speedCapSum / li.capacity) * l.distance;
       wDist += l.distance;
     }
     rs.loadFactor = maxLF;
+    rs.passengers = maxLegPax;
+    rs.connectingPassengers = connectingOnMaxLeg;
     rs.speedPremium =
       wDist > 0 ? Math.max(0.85, Math.min(1.2, wSpeed / wDist / BASELINE_SPEED)) : 1;
     rs.cost = maxLF * (routeFly.get(route.id) ?? 0) + (routeUp.get(route.id) ?? 0);
@@ -420,11 +438,19 @@ export function evaluateRoute(g: GameState, route: Route): RouteSummary {
 
 // ---- Player actions -------------------------------------------------------
 
+/** Current resale value of a plane, based on mileage wear. */
+export function planeResaleValue(g: GameState, plane: Plane): number {
+  const type = typeById(g, plane.typeId);
+  const wear = Math.min(1, plane.kmFlown / PLANE_LIFETIME_KM);
+  const fraction = PLANE_RESALE_MAX - (PLANE_RESALE_MAX - PLANE_RESALE_MIN) * wear;
+  return Math.round(fraction * type.price);
+}
+
 export function buyPlane(g: GameState, typeId: string): string | null {
   const type = typeById(g, typeId);
   if (g.cash < type.price) return `Not enough cash to buy ${type.name}.`;
   g.cash -= type.price;
-  g.fleet.push({ id: makeId('plane'), typeId, routeId: null });
+  g.fleet.push({ id: makeId('plane'), typeId, routeId: null, kmFlown: 0 });
   g.log.unshift(`Bought a ${type.name} for ${money(type.price)}.`);
   return null;
 }
@@ -500,6 +526,18 @@ export function closeRoute(g: GameState, routeId: string): void {
   g.log.unshift(`Closed route ${label}.`);
 }
 
+/** Sell a plane at its current mileage-based resale value. */
+export function sellPlane(g: GameState, planeId: string): string | null {
+  const plane = g.fleet.find((p) => p.id === planeId);
+  if (!plane) return 'Unknown plane.';
+  const type = typeById(g, plane.typeId);
+  const proceeds = planeResaleValue(g, plane);
+  g.fleet = g.fleet.filter((p) => p.id !== planeId);
+  g.cash += proceeds;
+  g.log.unshift(`Sold ${type.name} for ${money(proceeds)}.`);
+  return null;
+}
+
 export function assignPlane(
   g: GameState,
   planeId: string,
@@ -568,16 +606,23 @@ export function advanceDay(g: GameState): void {
   const w = weeklyTotals(g);
   g.cash += w.net / 7;
   g.day += 1;
+  for (const plane of g.fleet) {
+    if (!plane.routeId) continue;
+    const route = g.routes.find((r) => r.id === plane.routeId);
+    if (!route) continue;
+    const type = typeById(g, plane.typeId);
+    const rlegs = routeLegs(g, route);
+    const pathLength = rlegs.reduce((s, l) => s + l.distance, 0);
+    const circuits = tripsPerWeek(type, pathLength, rlegs.length);
+    plane.kmFlown += (circuits * 2 * pathLength) / 7;
+  }
 }
 
 export const weekNumber = (g: GameState): number => Math.floor(g.day / 7) + 1;
 
 /** Depreciated resale/book value of the whole fleet. */
 export function fleetValue(g: GameState): number {
-  return g.fleet.reduce(
-    (s, p) => s + PLANE_RESALE_FRACTION * typeById(g, p.typeId).price,
-    0,
-  );
+  return g.fleet.reduce((s, p) => s + planeResaleValue(g, p), 0);
 }
 
 /** Assets backing the airline: spare cash plus fleet book value. */

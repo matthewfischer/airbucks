@@ -81,6 +81,7 @@ export function applySave(g: GameState, data: SaveData): void {
     .map((p) => ({
       ...p,
       routeId: p.routeId && routeIds.has(p.routeId) ? p.routeId : null,
+      kmFlown: p.kmFlown ?? 0,
     }));
 
   // Keep only rights at airports that still exist; always include home bases.
