@@ -1176,7 +1176,7 @@ function frame(ts: number) {
     updateAnimations(dt);
   }
   renderHud();
-  if (sidebarDirty) renderSidebar();
+  if (sidebarDirty && !sidebar.contains(document.activeElement)) renderSidebar();
   drawMap();
   requestAnimationFrame(frame);
 }
