@@ -1099,7 +1099,7 @@ function showHomeSelect() {
 
 /** Reset to a fresh airline — shows home airport selection first. */
 function resetGame() {
-  stopClock();
+  afterStateSwap();
   showHomeSelect();
 }
 
