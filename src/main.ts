@@ -382,12 +382,19 @@ function drawMap() {
     ctx.stroke();
     if (acquirable) acquireRing(p.x, p.y, r + 3, false);
 
-    ctx.fillStyle = '#e8eef6';
-    ctx.font = 'bold 13px system-ui';
-    ctx.fillText(ap.code + (ap.id === game.homeId ? ' ★' : ''), p.x + 10, p.y + 4);
-    ctx.fillStyle = '#93a7c0';
-    ctx.font = '11px system-ui';
-    ctx.fillText(ap.city, p.x + 10, p.y + 18);
+    // Hide labels for small airports when zoomed out; home always shows.
+    const isHome = ap.id === game.homeId;
+    const minScale = ap.size <= 1 ? 2.0 : ap.size <= 2 ? 1.4 : 0;
+    const showLabel = isHome || view.scale >= minScale;
+
+    if (showLabel) {
+      ctx.fillStyle = '#e8eef6';
+      ctx.font = 'bold 13px system-ui';
+      ctx.fillText(ap.code + (isHome ? ' ★' : ''), p.x + 10, p.y + 4);
+      ctx.fillStyle = '#93a7c0';
+      ctx.font = '11px system-ui';
+      ctx.fillText(ap.city, p.x + 10, p.y + 18);
+    }
 
     // When staging a route, label prospective leg demand from the path's end.
     if (selected.length > 0 && v !== null) {
