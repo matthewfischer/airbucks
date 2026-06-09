@@ -51,7 +51,10 @@ export const AIRPORTS: Airport[] = [
   { id: 'sat', code: 'SAT', city: 'San Antonio', lat: 29.53, lon: -98.47, size: 3, population: 2_600_000},
   { id: 'mem', code: 'MEM', city: 'Memphis', lat: 35.04, lon: -89.98, size: 3, population: 1_300_000},
   { id: 'jax', code: 'JAX', city: 'Jacksonville', lat: 30.49, lon: -81.69, size: 3, population: 1_600_000},
-  { id: 'abq', code: 'ABQ', city: 'Albuquerque', lat: 35.04, lon: -106.61, size: 3, population: 930_000},
+  { id: 'abq', code: 'ABQ', city: 'Albuquerque', lat: 35.04, lon: -106.61, size: 3, population: 930_000 },
+  { id: 'boi', code: 'BOI', city: 'Boise', lat: 43.56, lon: -116.22, size: 2, population: 780_000 },
+  { id: 'bzn', code: 'BZN', city: 'Bozeman', lat: 45.78, lon: -111.15, size: 1, population: 120_000 },
+  { id: 'chs', code: 'CHS', city: 'Charleston, SC', lat: 32.9, lon: -80.04, size: 2, population: 800_000 },
 ];
 
 // A right-sized regional fleet: short hops, modest seat counts.
