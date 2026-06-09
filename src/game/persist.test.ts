@@ -11,12 +11,12 @@ import { applySave, deserialize, serialize, SAVE_VERSION } from './persist';
 
 let g: GameState;
 beforeEach(() => {
-  g = newGame();
+  g = newGame('crw');
 });
 
 /** Build a small played game: cash spent, a route, a plane on it, some days. */
 function playedGame(): GameState {
-  const x = newGame();
+  const x = newGame('crw');
   x.cash = 1_000_000_000;
   x.rights = ['crw', 'clt', 'dca']; // hold rights for the route below
   openRoute(x, ['crw', 'clt', 'dca']);
@@ -33,6 +33,7 @@ describe('serialize / deserialize', () => {
     const src = playedGame();
     const restored = deserialize(serialize(src))!;
     expect(restored.version).toBe(SAVE_VERSION);
+    expect(restored.homeId).toBe('crw');
     expect(restored.day).toBe(42);
     expect(restored.cash).toBe(src.cash);
     expect(restored.debt).toBe(7_000_000);
@@ -60,13 +61,14 @@ describe('applySave', () => {
     const src = playedGame();
     const data = deserialize(serialize(src))!;
     applySave(g, data);
+    expect(g.homeId).toBe('crw');
     expect(g.day).toBe(42);
     expect(g.debt).toBe(7_000_000);
     expect(g.routes).toHaveLength(1);
     expect(g.fleet).toHaveLength(1);
     expect(g.fleet[0].routeId).toBe(g.routes[0].id);
     // Static data still comes from the live game, not the save.
-    expect(g.airports).toBe(newGame().airports);
+    expect(g.airports).toBe(newGame('crw').airports);
     expect(g.aircraftTypes.length).toBeGreaterThan(0);
   });
 

@@ -56,12 +56,15 @@ const DEPOSIT_RATE = 0.02;
 const RIGHTS_SIZE_REP = [0, 0, 0, 0, 2, 4, 6];
 const RIGHTS_FEE = [0, 0, 1_000_000, 3_000_000, 8_000_000, 15_000_000, 25_000_000];
 
-export function newGame(): GameState {
+export const MAX_HOME_SIZE = 3;
+
+export function newGame(homeId: string): GameState {
   return {
     day: 0,
     cash: STARTING_CASH,
     debt: 0,
-    rights: AIRPORTS.filter((a) => a.home).map((a) => a.id),
+    homeId,
+    rights: [homeId],
     airports: AIRPORTS,
     aircraftTypes: AIRCRAFT_TYPES,
     fleet: [],

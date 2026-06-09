@@ -2,11 +2,12 @@ import type { GameState, Plane, Route } from './types';
 import { reseedIds } from './engine';
 
 /** Bump when the save shape changes incompatibly. */
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 /** The persisted slice of a game — only the dynamic fields, not static data. */
 export interface SaveData {
   version: number;
+  homeId: string;
   day: number;
   cash: number;
   debt: number;
@@ -20,6 +21,7 @@ export interface SaveData {
 export function serialize(g: GameState): string {
   const data: SaveData = {
     version: SAVE_VERSION,
+    homeId: g.homeId,
     day: g.day,
     cash: g.cash,
     debt: g.debt,
@@ -43,6 +45,7 @@ export function deserialize(json: string): SaveData | null {
   const s = d as Record<string, unknown>;
   if (s.version !== SAVE_VERSION) return null;
   if (
+    typeof s.homeId !== 'string' ||
     typeof s.day !== 'number' ||
     typeof s.cash !== 'number' ||
     typeof s.debt !== 'number' ||
@@ -53,6 +56,7 @@ export function deserialize(json: string): SaveData | null {
   }
   return {
     version: SAVE_VERSION,
+    homeId: s.homeId,
     day: s.day,
     cash: s.cash,
     debt: s.debt,
@@ -84,10 +88,11 @@ export function applySave(g: GameState, data: SaveData): void {
       kmFlown: p.kmFlown ?? 0,
     }));
 
-  // Keep only rights at airports that still exist; always include home bases.
+  // Keep only rights at airports that still exist; always include the home base.
   const rights = new Set(data.rights.filter((id) => airportIds.has(id)));
-  for (const a of g.airports) if (a.home) rights.add(a.id);
+  rights.add(data.homeId);
 
+  g.homeId = data.homeId;
   g.day = data.day;
   g.cash = data.cash;
   g.debt = data.debt;

@@ -17,6 +17,7 @@ import {
   holdsRights,
   interestRate,
   money,
+  MAX_HOME_SIZE,
   newGame,
   openRoute,
   pairDemand,
@@ -38,8 +39,9 @@ import {
 } from './game/engine';
 import { distanceKm } from './game/geo';
 import { applySave, deserialize, serialize } from './game/persist';
+import { AIRPORTS } from './game/data';
 
-const game: GameState = newGame();
+const game: GameState = newGame('crw');
 (window as unknown as { game: GameState }).game = game;
 if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
   (window as unknown as { dbg: unknown }).dbg = {
@@ -362,7 +364,7 @@ function drawMap() {
     const acquirable = !held && rightsAvailable(game, ap.id);
     ctx.globalAlpha = held ? 1 : acquirable ? 0.7 : 0.28;
 
-    if (ap.home) {
+    if (ap.id === game.homeId) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, r + 5, 0, Math.PI * 2);
       ctx.strokeStyle = '#f5a623';
@@ -380,7 +382,7 @@ function drawMap() {
 
     ctx.fillStyle = '#e8eef6';
     ctx.font = 'bold 13px system-ui';
-    ctx.fillText(ap.code + (ap.home ? ' ★' : ''), p.x + 10, p.y + 4);
+    ctx.fillText(ap.code + (ap.id === game.homeId ? ' ★' : ''), p.x + 10, p.y + 4);
     ctx.fillStyle = '#93a7c0';
     ctx.font = '11px system-ui';
     ctx.fillText(ap.city, p.x + 10, p.y + 18);
@@ -1069,11 +1071,36 @@ function afterStateSwap() {
   playBtn.classList.remove('paused');
 }
 
-/** Reset to a fresh airline in place (keeps the same game object reference). */
+const homeSelectEl = document.getElementById('home-select')!;
+const homeAirportList = document.getElementById('home-airport-list')!;
+
+function showHomeSelect() {
+  const eligible = AIRPORTS.filter((a) => a.size <= MAX_HOME_SIZE)
+    .slice()
+    .sort((a, b) => b.size - a.size || a.city.localeCompare(b.city));
+  homeAirportList.innerHTML = '';
+  for (const ap of eligible) {
+    const btn = document.createElement('button');
+    btn.className = 'home-ap-btn';
+    btn.innerHTML =
+      `<span class="ap-code">${ap.code}</span>` +
+      `<span class="ap-city">${ap.city}</span>` +
+      `<span class="ap-pop">${(ap.population / 1_000_000).toFixed(1)}M</span>`;
+    btn.addEventListener('click', () => {
+      homeSelectEl.classList.add('hidden');
+      Object.assign(game, newGame(ap.id));
+      afterStateSwap();
+      render();
+    });
+    homeAirportList.appendChild(btn);
+  }
+  homeSelectEl.classList.remove('hidden');
+}
+
+/** Reset to a fresh airline — shows home airport selection first. */
 function resetGame() {
-  Object.assign(game, newGame());
-  afterStateSwap();
-  render();
+  stopClock();
+  showHomeSelect();
 }
 
 function saveGame(announce = false) {
@@ -1157,7 +1184,7 @@ function frame(ts: number) {
 window.addEventListener('resize', resizeCanvas);
 
 // Persistence: resume the last session, autosave periodically, save on exit.
-loadGame();
+if (!loadGame()) showHomeSelect();
 window.addEventListener('beforeunload', () => saveGame());
 setInterval(() => saveGame(), 5000);
 

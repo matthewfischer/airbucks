@@ -2,7 +2,7 @@ import type { Airport, AircraftType } from './types';
 
 // A regional network centered on Charleston, WV (CRW), the player's home base.
 export const AIRPORTS: Airport[] = [
-  { id: 'crw', code: 'CRW', city: 'Charleston, WV', lat: 38.37, lon: -81.59, size: 1, population: 250_000, home: true },
+  { id: 'crw', code: 'CRW', city: 'Charleston, WV', lat: 38.37, lon: -81.59, size: 1, population: 250_000 },
   { id: 'clt', code: 'CLT', city: 'Charlotte', lat: 35.21, lon: -80.94, size: 5, population: 2_700_000 },
   { id: 'dca', code: 'DCA', city: 'Washington', lat: 38.85, lon: -77.04, size: 5, population: 6_300_000 },
   { id: 'pit', code: 'PIT', city: 'Pittsburgh', lat: 40.49, lon: -80.23, size: 3, population: 2_300_000 },

@@ -9,8 +9,6 @@ export interface Airport {
   size: number;
   /** Metro-area population (people). Shown as context; demand is driven by size. */
   population: number;
-  /** True for the player's home base. */
-  home?: boolean;
 }
 
 export interface AircraftType {
@@ -55,6 +53,8 @@ export interface GameState {
   debt: number;
   /** Airport ids where the airline holds landing rights (can operate). */
   rights: string[];
+  /** IATA id of the player's chosen home airport. */
+  homeId: string;
   airports: Airport[];
   aircraftTypes: AircraftType[];
   fleet: Plane[];

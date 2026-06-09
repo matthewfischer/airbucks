@@ -33,6 +33,7 @@ import {
   routeLabel,
   routeLegs,
   routeMaxLeg,
+  MAX_HOME_SIZE,
   setFareFactor,
   tripsPerWeek,
   weeklyTotals,
@@ -47,7 +48,7 @@ const lastPlane = (g: GameState) => g.fleet[g.fleet.length - 1];
 
 let g: GameState;
 beforeEach(() => {
-  g = newGame();
+  g = newGame('crw');
   // Most tests aren't about landing rights — grant them everywhere by default.
   g.rights = AIRPORTS.map((a) => a.id);
 });
@@ -183,7 +184,7 @@ describe('assignPlane', () => {
 
   it('refuses when the longest leg exceeds the aircraft range', () => {
     const custom: GameState = {
-      ...newGame(),
+      ...newGame('crw'),
       aircraftTypes: [{ ...TURBOPROP, id: 'shorty', range: 100 }],
       fleet: [{ id: 'p1', typeId: 'shorty', routeId: null }],
       routes: [{ id: 'r1', stops: ['crw', 'clt'], fareFactor: 1 }],
@@ -422,8 +423,10 @@ describe('money formatting', () => {
 });
 
 describe('airport data integrity', () => {
-  it('has exactly one home base', () => {
-    expect(AIRPORTS.filter((a) => a.home)).toHaveLength(1);
+  it('has a valid default home base (crw)', () => {
+    const home = AIRPORTS.find((a) => a.id === 'crw');
+    expect(home).toBeDefined();
+    expect(home!.size).toBeLessThanOrEqual(MAX_HOME_SIZE);
   });
 
   it('uses unique airport ids', () => {
@@ -660,7 +663,7 @@ describe('determinism', () => {
 
 describe('landing rights', () => {
   it('a new game holds rights only at its home base', () => {
-    const fresh = newGame();
+    const fresh = newGame('crw');
     expect(fresh.rights).toEqual(['crw']);
     expect(reputation(fresh)).toBe(1);
   });
