@@ -359,7 +359,7 @@ function drawMap() {
     const positions = selected.flatMap((s, i) => (s === ap.id ? [i + 1] : []));
     const isStop = positions.length > 0;
     const v = demandValue(ap);
-    const r = (5 + ap.size) * Math.max(0.5, Math.min(2.5, Math.sqrt(view.scale)));
+    const r = (5 + ap.size) * Math.max(0.3, Math.min(3.5, view.scale ** 0.6));
     // Three states: held (full), acquirable (dimmed + green "buy" ring you can
     // click on the map), and locked (faint, needs a bigger network).
     const held = holdsRights(game, ap.id);
