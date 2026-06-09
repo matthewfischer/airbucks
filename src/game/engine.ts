@@ -50,11 +50,12 @@ const LOAN_MAX_RATE = 0.16;
 // floor, so parking cash earns a little but never beats paying down debt.
 const DEPOSIT_RATE = 0.02;
 
-// Landing rights: an airport's slots become available once the airline is big
-// enough (reputation = number of airports held), and cost a fee by size.
-// Indexed by size 1..6.
+// Landing rights: slots become available once the airline is big enough
+// (reputation = airports held), and cost a one-time fee. Indexed by size 1..6.
 const RIGHTS_SIZE_REP = [0, 0, 0, 0, 2, 4, 6];
-const RIGHTS_FEE = [0, 0, 1_000_000, 3_000_000, 8_000_000, 15_000_000, 25_000_000];
+const RIGHTS_FEE =  [0, 250_000, 750_000, 1_000_000, 3_000_000, 8_000_000, 25_000_000];
+// Max number of airlines that can hold rights at an airport, by size 1..6.
+const AIRPORT_SLOTS = [0, 2, 3, 4, 5, 6, 8];
 
 export const MAX_HOME_SIZE = 3;
 
@@ -472,13 +473,25 @@ export const requiredReputation = (a: Airport): number =>
 /** One-time fee to acquire landing rights at an airport. */
 export const rightsFee = (a: Airport): number => RIGHTS_FEE[a.size] ?? 0;
 
+/** Maximum number of airlines that can hold rights at an airport. */
+export const airportSlotsTotal = (a: Airport): number => AIRPORT_SLOTS[a.size] ?? 2;
+
 export const holdsRights = (g: GameState, airportId: string): boolean =>
   g.rights.includes(airportId);
 
-/** True if the airline can acquire this airport now (unlocked and not held). */
-export const rightsAvailable = (g: GameState, airportId: string): boolean =>
-  !holdsRights(g, airportId) &&
-  reputation(g) >= requiredReputation(airportById(g, airportId));
+/** How many airlines currently hold rights at this airport (player + future AI). */
+export const airportSlotsUsed = (g: GameState, airportId: string): number =>
+  holdsRights(g, airportId) ? 1 : 0;
+
+/** True if the airline can acquire this airport now (unlocked, has open slots, not held). */
+export const rightsAvailable = (g: GameState, airportId: string): boolean => {
+  const a = airportById(g, airportId);
+  return (
+    !holdsRights(g, airportId) &&
+    reputation(g) >= requiredReputation(a) &&
+    airportSlotsUsed(g, airportId) < airportSlotsTotal(a)
+  );
+};
 
 /** Buy landing rights at an airport. Returns an error string, or null on success. */
 export function acquireRights(g: GameState, airportId: string): string | null {

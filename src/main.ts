@@ -26,6 +26,8 @@ import {
   reputation,
   requiredReputation,
   rightsAvailable,
+  airportSlotsTotal,
+  airportSlotsUsed,
   rightsFee,
   routeDistance,
   routeLabel,
@@ -701,6 +703,10 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
   const demand = Math.round(networkDemand(ap));
   const tier = '●'.repeat(ap.size) + '○'.repeat(Math.max(0, 6 - ap.size));
 
+  const slotsUsed = airportSlotsUsed(game, ap.id);
+  const slotsTotal = airportSlotsTotal(ap);
+  const slotsFull = slotsUsed >= slotsTotal;
+
   let extra = '';
   if (held) {
     const routesHere = game.routes.filter((r) => r.stops.includes(ap.id)).length;
@@ -709,6 +715,8 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
       return r?.stops.includes(ap.id);
     }).length;
     extra = `<div class="pop-row"><span class="muted">Your operation</span><span>${routesHere} route${routesHere !== 1 ? 's' : ''} · ${planesHere} plane${planesHere !== 1 ? 's' : ''}</span></div>`;
+  } else if (slotsFull) {
+    extra = `<div class="tiny muted" style="margin-top:6px">No slots available (${slotsUsed}/${slotsTotal} taken)</div>`;
   } else if (acquirable) {
     extra = `
       <div class="pop-row"><span class="muted">Landing-rights fee</span><span class="${afford ? '' : 'bad'}">${money(fee)}</span></div>
@@ -726,6 +734,7 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
     </div>
     <div class="pop-row"><span class="muted">Population</span><span>${formatPop(ap.population)}</span></div>
     <div class="pop-row"><span class="muted">Market tier</span><span class="tier">${tier}</span></div>
+    <div class="pop-row"><span class="muted">Airline slots</span><span class="${slotsFull && !held ? 'bad' : ''}">${slotsUsed} / ${slotsTotal}</span></div>
     <div class="pop-row"><span class="muted">Demand to your network</span><span>${demand.toLocaleString()}/wk</span></div>
     ${extra}`;
 

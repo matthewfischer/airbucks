@@ -33,6 +33,8 @@ import {
   routeLabel,
   routeLegs,
   routeMaxLeg,
+  airportSlotsTotal,
+  airportSlotsUsed,
   MAX_HOME_SIZE,
   setFareFactor,
   tripsPerWeek,
@@ -704,6 +706,23 @@ describe('landing rights', () => {
     acquireRights(g, 'pit');
     acquireRights(g, 'cmh'); // reputation now 4
     expect(rightsAvailable(g, 'clt')).toBe(true);
+  });
+
+  it('no airport is free — all fees are positive', () => {
+    for (const a of AIRPORTS) {
+      expect(rightsFee(a)).toBeGreaterThan(0);
+    }
+  });
+
+  it('slot cap: small airports have 2 slots, large have more', () => {
+    expect(airportSlotsTotal(AIRPORTS.find((a) => a.size === 1)!)).toBe(2);
+    expect(airportSlotsTotal(AIRPORTS.find((a) => a.size === 6)!)).toBe(8);
+  });
+
+  it('slot cap: a held airport shows 1 slot used, unacquired shows 0', () => {
+    g.rights = ['crw'];
+    expect(airportSlotsUsed(g, 'crw')).toBe(1);
+    expect(airportSlotsUsed(g, 'roa')).toBe(0);
   });
 
   it('openRoute requires rights at every stop', () => {
