@@ -51,11 +51,9 @@ const LOAN_MAX_RATE = 0.16;
 const DEPOSIT_RATE = 0.02;
 
 // Landing rights: an airport's slots become available once the airline is big
-// enough (reputation = number of airports held), and cost a fee by size. The
-// regional network opens early; NATIONAL gateways carry a big reputation bump
-// (you can't fly to LAX/JFK from tiny Charleston on day 1). Indexed by size 1..6.
+// enough (reputation = number of airports held), and cost a fee by size.
+// Indexed by size 1..6.
 const RIGHTS_SIZE_REP = [0, 0, 0, 0, 2, 4, 6];
-const RIGHTS_NATIONAL_BUMP = 6;
 const RIGHTS_FEE = [0, 0, 1_000_000, 3_000_000, 8_000_000, 15_000_000, 25_000_000];
 
 export function newGame(): GameState {
@@ -466,7 +464,7 @@ export const reputation = (g: GameState): number => g.rights.length;
 
 /** Minimum reputation before an airport's rights become available to acquire. */
 export const requiredReputation = (a: Airport): number =>
-  (RIGHTS_SIZE_REP[a.size] ?? 0) + (a.national ? RIGHTS_NATIONAL_BUMP : 0);
+  RIGHTS_SIZE_REP[a.size] ?? 0;
 
 /** One-time fee to acquire landing rights at an airport. */
 export const rightsFee = (a: Airport): number => RIGHTS_FEE[a.size] ?? 0;

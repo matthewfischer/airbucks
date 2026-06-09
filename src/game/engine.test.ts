@@ -665,12 +665,12 @@ describe('landing rights', () => {
     expect(reputation(fresh)).toBe(1);
   });
 
-  it('opens the regional network early but gates national gateways hard', () => {
+  it('opens the regional network early but gates large airports by size', () => {
     g.rights = ['crw']; // reset to a fresh-airline footprint
-    expect(rightsAvailable(g, 'cvg')).toBe(true); // regional size 3, open day 1
-    expect(requiredReputation(airportById(g, 'clt'))).toBe(4); // regional hub
-    expect(requiredReputation(airportById(g, 'bos'))).toBe(10); // national size 5
-    expect(requiredReputation(airportById(g, 'lax'))).toBe(12); // national size 6
+    expect(rightsAvailable(g, 'cvg')).toBe(true); // size 3, open day 1
+    expect(requiredReputation(airportById(g, 'clt'))).toBe(4); // size 5
+    expect(requiredReputation(airportById(g, 'bos'))).toBe(4); // size 5
+    expect(requiredReputation(airportById(g, 'lax'))).toBe(6); // size 6
     expect(rightsAvailable(g, 'lax')).toBe(false); // can't reach LAX on day 1
   });
 
@@ -712,8 +712,8 @@ describe('landing rights', () => {
 });
 
 describe('national gateways', () => {
-  it('the data includes flagged national gateway airports', () => {
-    expect(AIRPORTS.some((a) => a.national)).toBe(true);
+  it('the data includes large airports (size 5+) reachable via the network', () => {
+    expect(AIRPORTS.some((a) => a.size >= 5)).toBe(true);
   });
 
   it('feeds a far national gateway from a regional spoke via a hub', () => {

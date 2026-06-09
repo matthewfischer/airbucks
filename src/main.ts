@@ -93,11 +93,8 @@ let popAirport: string | null = null;
 
 // ---- Geographic projection ------------------------------------------------
 
-// The map is fit to the REGIONAL airports only; national gateways are pinned
-// to the edges so they don't blow up the bounding box.
-const regionalAirports = game.airports.filter((a) => !a.national);
-const lats = regionalAirports.map((a) => a.lat);
-const lons = regionalAirports.map((a) => a.lon);
+const lats = game.airports.map((a) => a.lat);
+const lons = game.airports.map((a) => a.lon);
 const bounds = {
   minLat: Math.min(...lats),
   maxLat: Math.max(...lats),
@@ -106,9 +103,6 @@ const bounds = {
 };
 const lonScale = Math.cos((((bounds.minLat + bounds.maxLat) / 2) * Math.PI) / 180);
 const MAP_PAD = 0.12;
-/** Inset (px) at which national gateways sit on the map edge. */
-const EDGE_INSET = 30;
-
 function projectPoint(lat: number, lon: number, w: number, h: number) {
   const dataW = (bounds.maxLon - bounds.minLon) * lonScale;
   const dataH = bounds.maxLat - bounds.minLat;
@@ -134,16 +128,7 @@ const applyView = (p: { x: number; y: number }) => ({
 
 const airportScreen = (id: string, w: number, h: number) => {
   const a = airportById(game, id);
-  const p = applyView(projectPoint(a.lat, a.lon, w, h));
-  if (!a.national) return p;
-  // Pin a national gateway to the viewport edge along its real direction.
-  const dx = p.x - w / 2;
-  const dy = p.y - h / 2;
-  const hx = w / 2 - EDGE_INSET;
-  const hy = h / 2 - EDGE_INSET;
-  if (Math.abs(dx) <= hx && Math.abs(dy) <= hy) return p;
-  const s = Math.min(hx / Math.max(Math.abs(dx), 1e-6), hy / Math.max(Math.abs(dy), 1e-6));
-  return { x: w / 2 + dx * s, y: h / 2 + dy * s };
+  return applyView(projectPoint(a.lat, a.lon, w, h));
 };
 
 // ---- Demand signal (airport coloring) -------------------------------------
@@ -364,7 +349,7 @@ function drawMap() {
     ctx.setLineDash([]);
   }
 
-  // Airports, colored by the demand signal. National gateways sit on the edges.
+  // Airports, colored by the demand signal.
   for (const ap of game.airports) {
     const p = airportScreen(ap.id, w, h);
     const positions = selected.flatMap((s, i) => (s === ap.id ? [i + 1] : []));
@@ -376,33 +361,6 @@ function drawMap() {
     const held = holdsRights(game, ap.id);
     const acquirable = !held && rightsAvailable(game, ap.id);
     ctx.globalAlpha = held ? 1 : acquirable ? 0.7 : 0.28;
-
-    if (ap.national) {
-      // Gateway: a violet rounded square pinned to the edge, labelled inward.
-      ctx.beginPath();
-      ctx.roundRect(p.x - r, p.y - r, r * 2, r * 2, 3);
-      ctx.fillStyle = '#a78bfa';
-      ctx.fill();
-      ctx.lineWidth = isStop ? 3 : 2;
-      ctx.strokeStyle = isStop ? '#ffffff' : '#0b1622';
-      ctx.stroke();
-      if (acquirable) acquireRing(p.x, p.y, r + 2, true);
-
-      const below = p.y < h * 0.7;
-      const ly = below ? p.y + r + 12 : p.y - r - 6;
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#e8eef6';
-      ctx.font = 'bold 12px system-ui';
-      ctx.fillText(ap.code, p.x, ly);
-      if (selected.length > 0 && v !== null) {
-        ctx.fillStyle = heat(v);
-        ctx.font = 'bold 10px system-ui';
-        ctx.fillText(`${formatPax(v * MAX_PAIR_DEMAND)}/wk`, p.x, below ? ly + 12 : ly - 12);
-      }
-      ctx.textAlign = 'left';
-      drawOrderBadge(p.x, p.y, r, positions);
-      continue;
-    }
 
     if (ap.home) {
       ctx.beginPath();
@@ -761,7 +719,7 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
 
   popover.innerHTML = `
     <div class="pop-head">
-      <span><strong>${ap.code}</strong> · ${ap.city}${ap.national ? ' <span class="muted">· gateway</span>' : ''}${held ? ' <span class="good">✓</span>' : ''}</span>
+      <span><strong>${ap.code}</strong> · ${ap.city}${held ? ' <span class="good">✓</span>' : ''}</span>
       <button class="pop-x" data-pop="close" title="Close">✕</button>
     </div>
     <div class="pop-row"><span class="muted">Population</span><span>${formatPop(ap.population)}</span></div>
