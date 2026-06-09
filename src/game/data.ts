@@ -35,6 +35,23 @@ export const AIRPORTS: Airport[] = [
   { id: 'dfw', code: 'DFW', city: 'Dallas', lat: 32.9, lon: -97.04, size: 5, population: 7_600_000, national: true },
   { id: 'sfo', code: 'SFO', city: 'San Francisco', lat: 37.62, lon: -122.38, size: 6, population: 4_700_000, national: true },
   { id: 'sea', code: 'SEA', city: 'Seattle', lat: 47.45, lon: -122.31, size: 5, population: 4_000_000, national: true },
+  { id: 'phx', code: 'PHX', city: 'Phoenix', lat: 33.44, lon: -112.01, size: 5, population: 4_900_000, national: true },
+  { id: 'iah', code: 'IAH', city: 'Houston', lat: 29.98, lon: -95.34, size: 5, population: 7_300_000, national: true },
+  { id: 'las', code: 'LAS', city: 'Las Vegas', lat: 36.08, lon: -115.15, size: 5, population: 2_200_000, national: true },
+  { id: 'msp', code: 'MSP', city: 'Minneapolis', lat: 44.88, lon: -93.22, size: 5, population: 3_700_000, national: true },
+  { id: 'pdx', code: 'PDX', city: 'Portland', lat: 45.59, lon: -122.6, size: 4, population: 2_500_000, national: true },
+  { id: 'slc', code: 'SLC', city: 'Salt Lake City', lat: 40.79, lon: -111.98, size: 4, population: 1_200_000, national: true },
+  { id: 'mco', code: 'MCO', city: 'Orlando', lat: 28.43, lon: -81.31, size: 5, population: 2_700_000, national: true },
+  { id: 'tpa', code: 'TPA', city: 'Tampa', lat: 27.98, lon: -82.53, size: 4, population: 3_200_000, national: true },
+  { id: 'msy', code: 'MSY', city: 'New Orleans', lat: 29.99, lon: -90.26, size: 4, population: 1_300_000, national: true },
+  { id: 'san', code: 'SAN', city: 'San Diego', lat: 32.73, lon: -117.19, size: 4, population: 3_300_000, national: true },
+  { id: 'stl', code: 'STL', city: 'St. Louis', lat: 38.75, lon: -90.37, size: 4, population: 2_800_000, national: true },
+  { id: 'mci', code: 'MCI', city: 'Kansas City', lat: 39.3, lon: -94.71, size: 3, population: 2_200_000, national: true },
+  { id: 'aus', code: 'AUS', city: 'Austin', lat: 30.2, lon: -97.67, size: 4, population: 2_300_000, national: true },
+  { id: 'sat', code: 'SAT', city: 'San Antonio', lat: 29.53, lon: -98.47, size: 3, population: 2_600_000, national: true },
+  { id: 'mem', code: 'MEM', city: 'Memphis', lat: 35.04, lon: -89.98, size: 3, population: 1_300_000, national: true },
+  { id: 'jax', code: 'JAX', city: 'Jacksonville', lat: 30.49, lon: -81.69, size: 3, population: 1_600_000, national: true },
+  { id: 'abq', code: 'ABQ', city: 'Albuquerque', lat: 35.04, lon: -106.61, size: 3, population: 930_000, national: true },
 ];
 
 // A right-sized regional fleet: short hops, modest seat counts.
