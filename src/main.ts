@@ -474,6 +474,7 @@ const PLANE_STYLE: Record<string, { color: string; scale: number }> = {
   regionaljet: { color: '#3fd0c9', scale: 2.0 },
   cityjet: { color: '#f4f8ff', scale: 2.6 },
   transjet: { color: '#c084fc', scale: 3.1 },
+  oceanjet: { color: '#ff8fa3', scale: 3.7 },
 };
 
 function drawPlaneSprite(x: number, y: number, angle: number, typeId: string) {
@@ -511,7 +512,7 @@ function drawPlaneSprite(x: number, y: number, angle: number, typeId: string) {
   ctx.fill();
   ctx.stroke();
   // The bigger jets get a little tail fin so they read distinctly.
-  if (typeId === 'cityjet' || typeId === 'transjet') {
+  if (typeId === 'cityjet' || typeId === 'transjet' || typeId === 'oceanjet') {
     ctx.beginPath();
     ctx.moveTo(-4, 0);
     ctx.lineTo(-7, 2.2);

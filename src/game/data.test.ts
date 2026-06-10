@@ -13,11 +13,11 @@ describe('airport data', () => {
     for (const a of AIRPORTS) expect(a.id).toBe(a.code.toLowerCase());
   });
 
-  it('keeps every airport within North America / Caribbean bounds', () => {
+  it('keeps every airport within North America / Caribbean / Pacific bounds', () => {
     for (const a of AIRPORTS) {
       expect(a.lat, a.code).toBeGreaterThan(8);
-      expect(a.lat, a.code).toBeLessThan(60);
-      expect(a.lon, a.code).toBeGreaterThan(-130);
+      expect(a.lat, a.code).toBeLessThan(70);
+      expect(a.lon, a.code).toBeGreaterThan(-165);
       expect(a.lon, a.code).toBeLessThan(-55);
     }
   });
@@ -33,7 +33,7 @@ describe('airport data', () => {
 
   it('covers Canada, Mexico, Central America, and the Caribbean', () => {
     const ids = new Set(AIRPORTS.map((a) => a.id));
-    for (const id of ['yyz', 'yvr', 'mex', 'cun', 'pty', 'sju', 'hav', 'bgi'])
+    for (const id of ['yyz', 'yvr', 'mex', 'cun', 'pty', 'sju', 'hav', 'bgi', 'anc', 'hnl'])
       expect(ids.has(id), id).toBe(true);
   });
 });

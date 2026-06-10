@@ -56,6 +56,15 @@ export const AIRPORTS: Airport[] = [
   { id: 'boi', code: 'BOI', city: 'Boise', lat: 43.56, lon: -116.22, size: 2, population: 780_000 },
   { id: 'bzn', code: 'BZN', city: 'Bozeman', lat: 45.78, lon: -111.15, size: 1, population: 120_000 },
   { id: 'chs', code: 'CHS', city: 'Charleston, SC', lat: 32.9, lon: -80.04, size: 2, population: 800_000 },
+  // Alaska — ANC is the big trans-Pacific cargo/connection hub.
+  { id: 'anc', code: 'ANC', city: 'Anchorage', lat: 61.17, lon: -149.99, size: 3, population: 400_000 },
+  { id: 'fai', code: 'FAI', city: 'Fairbanks', lat: 64.82, lon: -147.86, size: 2, population: 95_000 },
+  { id: 'jnu', code: 'JNU', city: 'Juneau', lat: 58.35, lon: -134.58, size: 1, population: 32_000 },
+  // Hawaii
+  { id: 'hnl', code: 'HNL', city: 'Honolulu', lat: 21.32, lon: -157.92, size: 4, population: 1_000_000 },
+  { id: 'ogg', code: 'OGG', city: 'Kahului (Maui)', lat: 20.9, lon: -156.43, size: 2, population: 165_000 },
+  { id: 'koa', code: 'KOA', city: 'Kona', lat: 19.74, lon: -156.05, size: 1, population: 200_000 },
+  { id: 'lih', code: 'LIH', city: 'Lihue (Kauai)', lat: 21.98, lon: -159.34, size: 1, population: 73_000 },
   // Canada
   { id: 'yyz', code: 'YYZ', city: 'Toronto', lat: 43.68, lon: -79.63, size: 6, population: 6_400_000 },
   { id: 'yul', code: 'YUL', city: 'Montreal', lat: 45.47, lon: -73.74, size: 5, population: 4_300_000 },
@@ -141,6 +150,16 @@ export const AIRCRAFT_TYPES: AircraftType[] = [
     price: 110_000_000,
     costPerKm: 11,
     weeklyUpkeep: 85_000,
+  },
+  {
+    id: 'oceanjet',
+    name: 'OceanJet 280',
+    capacity: 280,
+    range: 11_000,
+    speed: 900,
+    price: 220_000_000,
+    costPerKm: 16,
+    weeklyUpkeep: 140_000,
   },
 ];
 
