@@ -965,7 +965,7 @@ function buyCard(): string {
     .filter((t) => t.introduced > year)
     .sort((a, b) => a.introduced - b.introduced)[0];
   const teaser = upcoming
-    ? `<div class="tiny muted">Coming in ${upcoming.introduced}: ${upcoming.name}</div>`
+    ? `<div class="tiny muted" style="margin-top:10px">Coming in ${upcoming.introduced}: ${upcoming.name}</div>`
     : '';
   return collapsibleCard('buy', 'Buy Aircraft', rows + teaser);
 }
@@ -978,12 +978,7 @@ function rightsCard(): string {
 
   let next: string;
   if (available.length) {
-    // The cheapest airport you could light up next.
-    const a = [...available].sort(
-      (x, y) => rightsFee(game, x) - rightsFee(game, y) || y.size - x.size,
-    )[0];
-    const afford = game.cash >= rightsFee(game, a);
-    next = `<div class="tiny">Next: <strong>${a.code}</strong> ${a.city} · <span class="${afford ? 'good' : 'bad'}">${money(rightsFee(game, a))}</span> <span class="muted">— click it on the map</span></div>`;
+    next = '';
   } else if (locked.length) {
     const a = [...locked].sort((x, y) => requiredReputation(x) - requiredReputation(y))[0];
     next = `<div class="tiny muted">Next unlock: <strong>${a.code}</strong> at a ${requiredReputation(a)}-airport network.</div>`;
