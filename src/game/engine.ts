@@ -448,8 +448,25 @@ export function planeResaleValue(g: GameState, plane: Plane): number {
   return Math.round(fraction * type.price);
 }
 
+// ---- Calendar -------------------------------------------------------------
+
+export const START_YEAR = 1950;
+export const START_EPOCH = Date.UTC(START_YEAR, 0, 1);
+
+export const currentYear = (g: GameState): number =>
+  new Date(START_EPOCH + g.day * 86_400_000).getUTCFullYear();
+
+/** Whether an aircraft type has entered service by the game's current year. */
+export const typeAvailable = (g: GameState, type: AircraftType): boolean =>
+  type.introduced <= currentYear(g);
+
+export const availableTypes = (g: GameState): AircraftType[] =>
+  g.aircraftTypes.filter((t) => typeAvailable(g, t));
+
 export function buyPlane(g: GameState, typeId: string): string | null {
   const type = typeById(g, typeId);
+  if (!typeAvailable(g, type))
+    return `The ${type.name} doesn't enter service until ${type.introduced}.`;
   if (g.cash < type.price) return `Not enough cash to buy ${type.name}.`;
   g.cash -= type.price;
   g.fleet.push({ id: makeId('plane'), typeId, routeId: null, kmFlown: 0 });
@@ -619,7 +636,15 @@ export function weeklyTotals(g: GameState): WeeklyTotals {
 export function advanceDay(g: GameState): void {
   const w = weeklyTotals(g);
   g.cash += w.net / 7;
+  const yearBefore = currentYear(g);
   g.day += 1;
+  const year = currentYear(g);
+  if (year !== yearBefore) {
+    for (const t of g.aircraftTypes) {
+      if (t.introduced === year)
+        g.log.unshift(`✈ The ${t.name} has entered service (${year}).`);
+    }
+  }
   for (const plane of g.fleet) {
     if (!plane.routeId) continue;
     const route = g.routes.find((r) => r.id === plane.routeId);

@@ -6,9 +6,11 @@ import {
   advanceDay,
   airportById,
   assignPlane,
+  availableTypes,
   borrow,
   acquireRights,
   buyPlane,
+  currentYear,
   closeRoute,
   creditLimit,
   depositRate,
@@ -53,6 +55,8 @@ beforeEach(() => {
   g = newGame('crw');
   // Most tests aren't about landing rights — grant them everywhere by default.
   g.rights = AIRPORTS.map((a) => a.id);
+  // Nor about the calendar — jump to 2025 so every aircraft type is in service.
+  g.day = 365 * 75 + 19; // leap days through 2025 keep this mid-January
 });
 
 /** Open a route and staff it with `count` planes of `planeType`. Returns the route. */
@@ -75,11 +79,49 @@ function legCapacity(distance: number, planeId = 'e175') {
 
 describe('newGame', () => {
   it('starts on day 0 with the starting cash and no debt/fleet/routes', () => {
-    expect(g.day).toBe(0);
-    expect(g.cash).toBe(STARTING_CASH);
-    expect(g.debt).toBe(0);
-    expect(g.fleet).toEqual([]);
-    expect(g.routes).toEqual([]);
+    const fresh = newGame('crw');
+    expect(fresh.day).toBe(0);
+    expect(fresh.cash).toBe(STARTING_CASH);
+    expect(fresh.debt).toBe(0);
+    expect(fresh.fleet).toEqual([]);
+    expect(fresh.routes).toEqual([]);
+  });
+});
+
+describe('calendar & aircraft availability', () => {
+  it('starts in 1950 and the year advances with the clock', () => {
+    const fresh = newGame('crw');
+    expect(currentYear(fresh)).toBe(1950);
+    fresh.day = 365; // Jan 1, 1951
+    expect(currentYear(fresh)).toBe(1951);
+  });
+
+  it('only types already in service are available in 1950', () => {
+    const fresh = newGame('crw');
+    const avail = availableTypes(fresh).map((t) => t.id);
+    expect(avail).toContain('dc3');
+    expect(avail).toContain('dc4');
+    expect(avail).not.toContain('b787');
+    for (const t of availableTypes(fresh)) expect(t.introduced).toBeLessThanOrEqual(1950);
+  });
+
+  it('refuses to sell a plane from the future', () => {
+    const fresh = newGame('crw');
+    fresh.cash = 1_000_000_000;
+    expect(buyPlane(fresh, 'b787')).toMatch(/doesn't enter service until 2014/);
+    expect(fresh.fleet).toHaveLength(0);
+    fresh.day = 365 * 75; // ~2025
+    expect(buyPlane(fresh, 'b787')).toBeNull();
+  });
+
+  it('announces types entering service at the new year', () => {
+    const fresh = newGame('crw');
+    fresh.day = 364; // Dec 31, 1950 -> next day is 1951
+    advanceDay(fresh);
+    expect(currentYear(fresh)).toBe(1951);
+    // DC-6B and the Constellation both arrive in 1951.
+    expect(fresh.log.some((l) => l.includes('DC-6B'))).toBe(true);
+    expect(fresh.log.some((l) => l.includes('Constellation'))).toBe(true);
   });
 });
 
@@ -309,13 +351,15 @@ describe('weeklyTotals & advanceDay', () => {
   it('advanceDay accrues one seventh of the weekly net and ticks the day', () => {
     buyPlane(g, 'q400');
     const before = g.cash;
+    const dayBefore = g.day;
     const net = weeklyTotals(g).net;
     advanceDay(g);
-    expect(g.day).toBe(1);
+    expect(g.day).toBe(dayBefore + 1);
     expect(g.cash).toBeCloseTo(before + net / 7, 5);
   });
 
   it('weekNumber rolls over every 7 days', () => {
+    g.day = 0;
     expect(weekNumber(g)).toBe(1);
     g.day = 6;
     expect(weekNumber(g)).toBe(1);
@@ -547,8 +591,9 @@ describe('interest accrues through advanceDay', () => {
     borrow(g, 10_000_000); // within the base credit line
     g.cash = 0; // isolate debt interest from deposit interest on a cash balance
     const weeklyInterest = weeklyTotals(g).interest;
+    const dayBefore = g.day;
     for (let i = 0; i < 7; i++) advanceDay(g);
-    expect(g.day).toBe(7);
+    expect(g.day).toBe(dayBefore + 7);
     // Rate drifts slightly as cash falls, so allow a small tolerance.
     expect(Math.abs(0 - g.cash - weeklyInterest)).toBeLessThan(100);
     expect(g.debt).toBe(10_000_000); // principal unchanged

@@ -35,9 +35,12 @@ import {
   planeResaleValue,
   sellPlane,
   setFareFactor,
+  typeAvailable,
   typeById,
   weeklyTotals,
   weekNumber,
+  currentYear,
+  START_EPOCH,
 } from './game/engine';
 import { distanceKm } from './game/geo';
 import { applySave, deserialize, serialize } from './game/persist';
@@ -74,7 +77,6 @@ let speed = 1;
 let lastTs = 0;
 let dayAccumulator = 0;
 const DAY_MS = 900;
-const START_EPOCH = Date.UTC(2000, 0, 1);
 const HOURS_TO_SECONDS = 5;
 
 /** Per-plane animation: t = 0..1 along its route path, dir = travel direction. */
@@ -875,6 +877,7 @@ const PROPULSION_LABEL = { prop: 'Piston', turboprop: 'Turboprop', jet: 'Jet' };
 
 function buyCard(): string {
   const rows = game.aircraftTypes
+    .filter((t) => typeAvailable(game, t))
     .map((t) => {
       const afford = game.cash >= t.price;
       const label = afford ? `Buy · ${money(t.price)}` : `Need ${money(t.price)}`;
@@ -886,7 +889,15 @@ function buyCard(): string {
       </div>`;
     })
     .join('');
-  return collapsibleCard('buy', 'Buy Aircraft', rows);
+  // Tease the next type to enter service so progression is visible.
+  const year = currentYear(game);
+  const upcoming = game.aircraftTypes
+    .filter((t) => t.introduced > year)
+    .sort((a, b) => a.introduced - b.introduced)[0];
+  const teaser = upcoming
+    ? `<div class="tiny muted">Coming in ${upcoming.introduced}: ${upcoming.name}</div>`
+    : '';
+  return collapsibleCard('buy', 'Buy Aircraft', rows + teaser);
 }
 
 function rightsCard(): string {

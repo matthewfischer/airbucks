@@ -14,16 +14,19 @@ beforeEach(() => {
   g = newGame('crw');
 });
 
+/** Day far enough along that every aircraft type is in service. */
+const PLAYED_DAY = 365 * 75;
+
 /** Build a small played game: cash spent, a route, a plane on it, some days. */
 function playedGame(): GameState {
   const x = newGame('crw');
+  x.day = PLAYED_DAY; // modern era, so the E175 below is purchasable
   x.cash = 1_000_000_000;
   x.rights = ['crw', 'clt', 'dca']; // hold rights for the route below
   openRoute(x, ['crw', 'clt', 'dca']);
   setFareFactor(x, x.routes[0].id, 1.2);
   buyPlane(x, 'e175');
   assignPlane(x, x.fleet[0].id, x.routes[0].id);
-  x.day = 42;
   x.debt = 7_000_000;
   return x;
 }
@@ -34,7 +37,7 @@ describe('serialize / deserialize', () => {
     const restored = deserialize(serialize(src))!;
     expect(restored.version).toBe(SAVE_VERSION);
     expect(restored.homeId).toBe('crw');
-    expect(restored.day).toBe(42);
+    expect(restored.day).toBe(PLAYED_DAY);
     expect(restored.cash).toBe(src.cash);
     expect(restored.debt).toBe(7_000_000);
     expect(restored.routes).toEqual(src.routes);
@@ -62,7 +65,7 @@ describe('applySave', () => {
     const data = deserialize(serialize(src))!;
     applySave(g, data);
     expect(g.homeId).toBe('crw');
-    expect(g.day).toBe(42);
+    expect(g.day).toBe(PLAYED_DAY);
     expect(g.debt).toBe(7_000_000);
     expect(g.routes).toHaveLength(1);
     expect(g.fleet).toHaveLength(1);
