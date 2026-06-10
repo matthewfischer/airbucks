@@ -491,17 +491,26 @@ const ERA_INFLATION = 1.038;
 export const eraScale = (g: GameState): number =>
   ERA_INFLATION ** (currentYear(g) - ERA_ANCHOR_YEAR);
 
-/** Whether an aircraft type has entered service by the game's current year. */
-export const typeAvailable = (g: GameState, type: AircraftType): boolean =>
-  type.introduced <= currentYear(g);
+/** Years a type stays in production after introduction. */
+export const PLANE_PRODUCTION_YEARS = 30;
+
+/** Whether an aircraft type is currently available for purchase. */
+export const typeAvailable = (g: GameState, type: AircraftType): boolean => {
+  const year = currentYear(g);
+  return type.introduced <= year && year < type.introduced + PLANE_PRODUCTION_YEARS;
+};
 
 export const availableTypes = (g: GameState): AircraftType[] =>
   g.aircraftTypes.filter((t) => typeAvailable(g, t));
 
 export function buyPlane(g: GameState, typeId: string): string | null {
   const type = typeById(g, typeId);
-  if (!typeAvailable(g, type))
-    return `The ${type.name} doesn't enter service until ${type.introduced}.`;
+  if (!typeAvailable(g, type)) {
+    const year = currentYear(g);
+    if (type.introduced > year)
+      return `The ${type.name} doesn't enter service until ${type.introduced}.`;
+    return `The ${type.name} left production in ${type.introduced + PLANE_PRODUCTION_YEARS}.`;
+  }
   if (g.cash < type.price) return `Not enough cash to buy ${type.name}.`;
   g.cash -= type.price;
   g.fleet.push({ id: makeId('plane'), typeId, routeId: null, kmFlown: 0 });
@@ -695,6 +704,8 @@ export function advanceDay(g: GameState): void {
     for (const t of g.aircraftTypes) {
       if (t.introduced === year)
         g.log.unshift(`✈ The ${t.name} has entered service (${year}).`);
+      if (t.introduced + PLANE_PRODUCTION_YEARS === year)
+        g.log.unshift(`The ${t.name} has left production (${year}).`);
     }
   }
   for (const plane of g.fleet) {

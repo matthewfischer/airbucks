@@ -40,6 +40,7 @@ import {
   airportSlotsTotal,
   airportSlotsUsed,
   MAX_HOME_SIZE,
+  PLANE_PRODUCTION_YEARS,
   setFareFactor,
   speedFareMultiplier,
   tripsPerWeek,
@@ -117,6 +118,26 @@ describe('calendar & aircraft availability', () => {
     expect(fresh.fleet).toHaveLength(0);
     fresh.day = 365 * 75; // ~2025
     expect(buyPlane(fresh, 'b787')).toBeNull();
+  });
+
+  it('refuses to sell a retired plane', () => {
+    const fresh = newGame('crw');
+    fresh.cash = 1_000_000_000;
+    const retiredYear = 1936 + PLANE_PRODUCTION_YEARS; // 1966
+    fresh.day = 5844; // Jan 1, 1966 — DC-3 production has ended
+    expect(buyPlane(fresh, 'dc3')).toMatch(new RegExp(`left production in ${retiredYear}`));
+    expect(fresh.fleet).toHaveLength(0);
+    fresh.day = 5843; // still 1965 — DC-3 still available
+    expect(buyPlane(fresh, 'dc3')).toBeNull();
+  });
+
+  it('announces when a type leaves production', () => {
+    const fresh = newGame('crw');
+    fresh.day = 5843; // Dec 31, 1965 — one day before DC-3 retires
+    const logBefore = fresh.log.length;
+    advanceDay(fresh); // ticks to Jan 1, 1966
+    const newEntries = fresh.log.slice(0, fresh.log.length - logBefore);
+    expect(newEntries.some((e) => e.includes('DC-3') && e.includes('left production'))).toBe(true);
   });
 
   it('rights fees start low in 1950 and inflate to modern values', () => {
@@ -346,6 +367,7 @@ describe('network evaluation', () => {
   });
 
   it('a faster fleet lifts the route speed premium', () => {
+    g.day = 21915; // 2010 — saab340 still in production
     const slow = withRoute(['clt', 'dca'], 'saab340');
     const saab = AIRCRAFT_TYPES.find((t) => t.id === 'saab340')!;
     expect(evaluateRoute(g, slow).speedPremium).toBeCloseTo(
@@ -601,6 +623,7 @@ describe('shared legs (pooling & attribution)', () => {
   });
 
   it('pools capacity: a second route over a capped leg carries more of its market', () => {
+    g.day = 21915; // 2010 — saab340 still in production
     // One small turboprop on a low-fare (high-demand) CLT-DCA: capacity-capped.
     const a = addRoute(['clt', 'dca'], 'saab340');
     setFareFactor(g, a.id, 0.5);
@@ -616,6 +639,7 @@ describe('shared legs (pooling & attribution)', () => {
 // Task #2
 describe('capacity-constrained allocation', () => {
   it('caps passengers at capacity with load factor at 1 when demand overflows', () => {
+    g.day = 21915; // 2010 — saab340 still in production
     const route = addRoute(['clt', 'dca'], 'saab340');
     setFareFactor(g, route.id, 0.5); // push demand above the small plane's seats
     const cap = legCapacity(routeDistance(g, route), 'saab340');
@@ -650,6 +674,7 @@ describe('detour cap', () => {
 // Task #4
 describe('cost right-sizing & multi-plane capacity', () => {
   it('a lightly-loaded route costs far less to fly than a capacity-capped one', () => {
+    g.day = 21915; // 2010 — saab340 still in production
     const thin = addRoute(['crw', 'roa'], 'saab340'); // tiny market, low load
     const capped = addRoute(['clt', 'dca'], 'saab340');
     setFareFactor(g, capped.id, 0.5); // overflow the seats -> full flying
@@ -663,6 +688,7 @@ describe('cost right-sizing & multi-plane capacity', () => {
   });
 
   it('a second plane on a capped route increases passengers carried', () => {
+    g.day = 21915; // 2010 — saab340 still in production
     const one = addRoute(['clt', 'dca'], 'saab340');
     setFareFactor(g, one.id, 0.5);
     const paxOne = evaluateRoute(g, one).passengers;
@@ -720,6 +746,7 @@ describe('interest earned on positive cash', () => {
 // Task #6
 describe('fare factor on a capacity-capped route', () => {
   it('raising fares lifts revenue while passengers stay pinned at capacity', () => {
+    g.day = 21915; // 2010 — saab340 still in production
     const route = addRoute(['clt', 'dca'], 'saab340');
     const cap = legCapacity(routeDistance(g, route), 'saab340');
 
