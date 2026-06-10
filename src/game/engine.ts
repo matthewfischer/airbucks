@@ -456,6 +456,14 @@ export const START_EPOCH = Date.UTC(START_YEAR, 0, 1);
 export const currentYear = (g: GameState): number =>
   new Date(START_EPOCH + g.day * 86_400_000).getUTCFullYear();
 
+// Fees and credit are quoted in modern dollars; earlier eras scale them down
+// by ~3.8%/yr inflation (≈16x from 1950 to 2025). Aircraft prices don't scale:
+// the roster itself is the ladder — period planes are period-cheap.
+const ERA_ANCHOR_YEAR = 2025;
+const ERA_INFLATION = 1.038;
+export const eraScale = (g: GameState): number =>
+  ERA_INFLATION ** (currentYear(g) - ERA_ANCHOR_YEAR);
+
 /** Whether an aircraft type has entered service by the game's current year. */
 export const typeAvailable = (g: GameState, type: AircraftType): boolean =>
   type.introduced <= currentYear(g);
@@ -487,8 +495,9 @@ export const reputation = (g: GameState): number => g.rights.length;
 export const requiredReputation = (a: Airport): number =>
   RIGHTS_SIZE_REP[a.size] ?? 0;
 
-/** One-time fee to acquire landing rights at an airport. */
-export const rightsFee = (a: Airport): number => RIGHTS_FEE[a.size] ?? 0;
+/** One-time fee to acquire landing rights at an airport, in era dollars. */
+export const rightsFee = (g: GameState, a: Airport): number =>
+  Math.max(1000, Math.round(((RIGHTS_FEE[a.size] ?? 0) * eraScale(g)) / 1000) * 1000);
 
 /** Maximum number of airlines that can hold rights at an airport. */
 export const airportSlotsTotal = (a: Airport): number => AIRPORT_SLOTS[a.size] ?? 2;
@@ -517,7 +526,7 @@ export function acquireRights(g: GameState, airportId: string): string | null {
   const need = requiredReputation(a);
   if (reputation(g) < need)
     return `${a.code} is locked — needs a ${need}-airport network (you have ${reputation(g)}).`;
-  const fee = rightsFee(a);
+  const fee = rightsFee(g, a);
   if (g.cash < fee)
     return `Not enough cash for rights at ${a.code} (${money(fee)}).`;
   g.cash -= fee;
@@ -680,8 +689,9 @@ function operatingNet(g: GameState): number {
 /** The bank's credit line: scales with cash flow (revenue) and collateral (fleet). */
 export function creditLimit(g: GameState): number {
   const annualRevenue = evaluateNetwork(g).revenue * 52;
+  // The startup line is in era dollars; revenue and fleet value already are.
   const limit =
-    LOAN_BASE_CREDIT +
+    LOAN_BASE_CREDIT * eraScale(g) +
     LOAN_REVENUE_MULTIPLE * annualRevenue +
     LOAN_COLLATERAL_FRACTION * fleetValue(g);
   return Math.min(LOAN_MAX_CREDIT, Math.round(limit));

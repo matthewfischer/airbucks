@@ -433,4 +433,5 @@ export const LEGACY_TYPE_IDS: Record<string, string> = {
   oceanjet: 'b767',
 };
 
-export const STARTING_CASH = 40_000_000;
+// 1950 dollars: enough for two DC-3s or a DC-4 plus rights and working capital.
+export const STARTING_CASH = 3_000_000;

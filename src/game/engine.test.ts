@@ -57,6 +57,8 @@ beforeEach(() => {
   g.rights = AIRPORTS.map((a) => a.id);
   // Nor about the calendar — jump to 2025 so every aircraft type is in service.
   g.day = 365 * 75 + 19; // leap days through 2025 keep this mid-January
+  // Nor about affordability — give a working balance (tests about cash set their own).
+  g.cash = 50_000_000;
 });
 
 /** Open a route and staff it with `count` planes of `planeType`. Returns the route. */
@@ -114,6 +116,28 @@ describe('calendar & aircraft availability', () => {
     expect(buyPlane(fresh, 'b787')).toBeNull();
   });
 
+  it('rights fees start low in 1950 and inflate to modern values', () => {
+    const fresh = newGame('crw'); // 1950
+    const clt = airportById(fresh, 'clt'); // size 5: $8M in modern dollars
+    const early = rightsFee(fresh, clt);
+    expect(early).toBeLessThan(800_000);
+    fresh.day = 365 * 75 + 19; // Jan 1, 2025
+    expect(rightsFee(fresh, clt)).toBe(8_000_000);
+    expect(early).toBeLessThan(rightsFee(fresh, clt));
+  });
+
+  it('the startup credit line is era-scaled too', () => {
+    const fresh = newGame('crw');
+    expect(creditLimit(fresh)).toBeLessThan(2_000_000); // vs $15M in 2025
+  });
+
+  it('starting cash affords a small 1950 fleet but not a modern jet', () => {
+    const fresh = newGame('crw');
+    expect(buyPlane(fresh, 'dc3')).toBeNull();
+    expect(buyPlane(fresh, 'dc3')).toBeNull(); // two DC-3s fit the budget
+    expect(buyPlane(fresh, 'dc4')).toMatch(/not enough cash/i);
+  });
+
   it('announces types entering service at the new year', () => {
     const fresh = newGame('crw');
     fresh.day = 364; // Dec 31, 1950 -> next day is 1951
@@ -162,10 +186,11 @@ describe('tripsPerWeek', () => {
 
 describe('buyPlane', () => {
   it('deducts the price and adds an idle plane', () => {
+    const before = g.cash;
     expect(buyPlane(g, 'q400')).toBeNull();
     expect(g.fleet).toHaveLength(1);
     expect(lastPlane(g).routeId).toBeNull();
-    expect(g.cash).toBe(STARTING_CASH - TURBOPROP.price);
+    expect(g.cash).toBe(before - TURBOPROP.price);
   });
 
   it('refuses when there is not enough cash', () => {
@@ -370,9 +395,10 @@ describe('weeklyTotals & advanceDay', () => {
 
 describe('loans', () => {
   it('borrowing adds to cash and debt and returns the amount taken', () => {
+    const before = g.cash;
     expect(borrow(g, 10_000_000)).toBe(10_000_000); // within the base credit line
     expect(g.debt).toBe(10_000_000);
-    expect(g.cash).toBe(STARTING_CASH + 10_000_000);
+    expect(g.cash).toBe(before + 10_000_000);
   });
 
   it('caps borrowing at the (dynamic) remaining credit line', () => {
@@ -731,7 +757,7 @@ describe('landing rights', () => {
     expect(acquireRights(g, 'roa')).toBeNull();
     expect(holdsRights(g, 'roa')).toBe(true);
     expect(reputation(g)).toBe(before + 1);
-    expect(g.cash).toBe(1_000_000_000 - rightsFee(airportById(g, 'roa')));
+    expect(g.cash).toBe(1_000_000_000 - rightsFee(g, airportById(g, 'roa')));
   });
 
   it('refuses to acquire a locked airport, and refuses when broke', () => {
@@ -753,9 +779,11 @@ describe('landing rights', () => {
     expect(rightsAvailable(g, 'clt')).toBe(true);
   });
 
-  it('no airport is free — all fees are positive', () => {
+  it('no airport is free — all fees are positive, even in 1950', () => {
+    const fresh = newGame('crw');
     for (const a of AIRPORTS) {
-      expect(rightsFee(a)).toBeGreaterThan(0);
+      expect(rightsFee(g, a)).toBeGreaterThan(0);
+      expect(rightsFee(fresh, a)).toBeGreaterThan(0);
     }
   });
 

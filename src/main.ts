@@ -718,7 +718,7 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
   popAirport = ap.id;
   const held = holdsRights(game, ap.id);
   const acquirable = !held && rightsAvailable(game, ap.id);
-  const fee = rightsFee(ap);
+  const fee = rightsFee(game, ap);
   const afford = game.cash >= fee;
   const demand = Math.round(networkDemand(ap));
   const tier = '●'.repeat(ap.size) + '○'.repeat(Math.max(0, 6 - ap.size));
@@ -909,9 +909,11 @@ function rightsCard(): string {
   let next: string;
   if (available.length) {
     // The cheapest airport you could light up next.
-    const a = [...available].sort((x, y) => rightsFee(x) - rightsFee(y) || y.size - x.size)[0];
-    const afford = game.cash >= rightsFee(a);
-    next = `<div class="tiny">Next: <strong>${a.code}</strong> ${a.city} · <span class="${afford ? 'good' : 'bad'}">${money(rightsFee(a))}</span> <span class="muted">— click it on the map</span></div>`;
+    const a = [...available].sort(
+      (x, y) => rightsFee(game, x) - rightsFee(game, y) || y.size - x.size,
+    )[0];
+    const afford = game.cash >= rightsFee(game, a);
+    next = `<div class="tiny">Next: <strong>${a.code}</strong> ${a.city} · <span class="${afford ? 'good' : 'bad'}">${money(rightsFee(game, a))}</span> <span class="muted">— click it on the map</span></div>`;
   } else if (locked.length) {
     const a = [...locked].sort((x, y) => requiredReputation(x) - requiredReputation(y))[0];
     next = `<div class="tiny muted">Next unlock: <strong>${a.code}</strong> at a ${requiredReputation(a)}-airport network.</div>`;
