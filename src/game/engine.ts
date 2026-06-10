@@ -130,17 +130,27 @@ export function tripsPerWeek(
 /** Cap on the cruise speed travelers will reward — the jet-age plateau. */
 const BASELINE_SPEED_CAP = 700;
 
-/** The speed travelers judge fares against: the era's fastest available type. */
-export const baselineSpeed = (g: GameState): number =>
-  Math.min(
-    BASELINE_SPEED_CAP,
-    Math.max(...availableTypes(g).map((t) => t.speed)),
-  );
+/** Years before a newly introduced type resets travelers' expectations. */
+const BASELINE_ADOPTION_LAG = 3;
 
 /**
- * Fare multiplier vs. the era's best: the fastest plane of the day flies
- * penalty-free; slower craft are discounted at half their speed gap, so a
- * piston liner loses ~15% once turboprops arrive and ~25% in the jet age.
+ * The speed travelers judge fares against: the fastest type that has been in
+ * service long enough to feel normal. During a new type's adoption window it
+ * flies above this baseline and earns a fare bonus instead of moving the bar.
+ */
+export const baselineSpeed = (g: GameState): number => {
+  const establishedBy = currentYear(g) - BASELINE_ADOPTION_LAG;
+  const speeds = g.aircraftTypes
+    .filter((t) => t.introduced <= establishedBy)
+    .map((t) => t.speed);
+  return Math.min(BASELINE_SPEED_CAP, Math.max(...speeds));
+};
+
+/**
+ * Fare multiplier vs. the established norm: planes at or above it earn a
+ * premium (capped +20%); slower craft are discounted at half their speed
+ * gap, so a piston liner loses ~15% once turboprops settle in and ~25% in
+ * the jet age.
  */
 export const speedFareMultiplier = (speed: number, baseline: number): number =>
   speed >= baseline

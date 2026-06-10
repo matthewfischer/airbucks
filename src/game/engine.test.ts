@@ -362,10 +362,23 @@ describe('network evaluation', () => {
     expect(evaluateRoute(g, route).speedPremium).toBe(1);
   });
 
-  it('a speed penalty appears only once faster types enter service', () => {
+  it('no penalty while a faster type is still in its adoption window', () => {
     g.day = 0;
     const route = withRoute(['crw', 'clt'], 'dc4');
-    g.day = 365 * 5; // ~1955: Viscount and Constellation now in service
+    g.day = 365 * 3 + 200; // mid-1953: Viscount is out but not yet the norm
+    expect(evaluateRoute(g, route).speedPremium).toBe(1);
+  });
+
+  it('a brand-new faster plane earns a fare bonus during its window', () => {
+    g.day = 365 * 3 + 200; // mid-1953
+    const route = withRoute(['crw', 'clt'], 'viscount');
+    expect(evaluateRoute(g, route).speedPremium).toBeCloseTo(1.2, 2);
+  });
+
+  it('a speed penalty appears once faster types settle in', () => {
+    g.day = 0;
+    const route = withRoute(['crw', 'clt'], 'dc4');
+    g.day = 365 * 7; // ~1957: Viscount established
     const midEra = evaluateRoute(g, route).speedPremium;
     expect(midEra).toBeLessThan(1);
     g.day = 365 * 15; // ~1965: jet age
@@ -373,9 +386,11 @@ describe('network evaluation', () => {
     expect(jetEra).toBeLessThan(midEra);
   });
 
-  it('baseline speed tracks the fastest available type, capped at 700', () => {
+  it('baseline speed lags introductions by 3 years, capped at 700', () => {
     g.day = 0;
     expect(baselineSpeed(g)).toBe(365); // DC-4
+    g.day = 365 * 4 + 200; // mid-1954: DC-6/Connie (1951) now established
+    expect(baselineSpeed(g)).toBe(550);
     g.day = 365 * 75 + 19; // 2025
     expect(baselineSpeed(g)).toBe(700);
   });
