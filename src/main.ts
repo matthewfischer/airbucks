@@ -19,6 +19,7 @@ import {
   interestRate,
   money,
   MAX_HOME_SIZE,
+  MAX_ROUTE_LEGS,
   nearestHeldAirport,
   newGame,
   openRoute,
@@ -732,6 +733,10 @@ document.getElementById('reset-view')!.addEventListener('click', resetView);
 function addStop(id: string) {
   // Ignore a double-click on the current endpoint (no zero-length leg).
   if (selected.length && selected[selected.length - 1] === id) return;
+  if (selected.length - 1 >= MAX_ROUTE_LEGS) {
+    flash(`A route can have at most ${MAX_ROUTE_LEGS} legs.`);
+    return;
+  }
   selected = [...selected, id];
   render();
 }
@@ -953,8 +958,13 @@ function newRouteCard(): string {
   let info: string;
   let canOpen = false;
   if (selected.length >= 2) {
+    const legs = selected.length - 1;
+    const more =
+      legs >= MAX_ROUTE_LEGS
+        ? `at the ${MAX_ROUTE_LEGS}-leg limit`
+        : 'click more stops (you can revisit a hub)';
     info = `<div class="row"><strong>${names}</strong><span class="pill">${stagedDistance().toLocaleString()} km</span></div>
-      <div class="tiny">${selected.length - 1} leg${selected.length - 1 === 1 ? '' : 's'} · click more stops (you can revisit a hub)</div>`;
+      <div class="tiny">${legs} leg${legs === 1 ? '' : 's'} · ${more}</div>`;
     canOpen = true;
   } else if (selected.length === 1) {
     info = `<div class="muted">Start: <strong>${names}</strong>. Click the next stop.</div>`;

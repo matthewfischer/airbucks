@@ -643,8 +643,14 @@ export function acquireRights(g: GameState, airportId: string): string | null {
   return null;
 }
 
+/** Most legs a single route may have. Beyond this, turnaround time eats the
+ *  weekly circuit and the path gets unwieldy. (legs = stops − 1.) */
+export const MAX_ROUTE_LEGS = 8;
+
 export function openRoute(g: GameState, stops: string[]): string | null {
   if (stops.length < 2) return 'Pick at least two airports.';
+  if (stops.length - 1 > MAX_ROUTE_LEGS)
+    return `A route can have at most ${MAX_ROUTE_LEGS} legs.`;
   for (let i = 1; i < stops.length; i++) {
     if (stops[i] === stops[i - 1]) return 'A route cannot stop at the same airport twice in a row.';
   }

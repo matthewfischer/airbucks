@@ -49,6 +49,7 @@ import {
   airportSlotsTotal,
   airportSlotsUsed,
   MAX_HOME_SIZE,
+  MAX_ROUTE_LEGS,
   PLANE_PRODUCTION_YEARS,
   setFareFactor,
   speedFareMultiplier,
@@ -262,6 +263,16 @@ describe('openRoute', () => {
     openRoute(g, ['crw', 'clt', 'dca']);
     expect(openRoute(g, ['crw', 'clt', 'dca'])).toMatch(/already exists/i);
     expect(openRoute(g, ['dca', 'clt', 'crw'])).toMatch(/already exists/i);
+    expect(g.routes).toHaveLength(1);
+  });
+
+  it('caps a route at MAX_ROUTE_LEGS legs', () => {
+    // Alternate two hubs so there are no consecutive duplicates.
+    const stops = (legs: number) =>
+      Array.from({ length: legs + 1 }, (_, i) => (i % 2 === 0 ? 'crw' : 'clt'));
+    expect(stops(MAX_ROUTE_LEGS)).toHaveLength(MAX_ROUTE_LEGS + 1);
+    expect(openRoute(g, stops(MAX_ROUTE_LEGS))).toBeNull(); // at the limit: ok
+    expect(openRoute(g, stops(MAX_ROUTE_LEGS + 1))).toMatch(/at most 8 legs/i);
     expect(g.routes).toHaveLength(1);
   });
 });
