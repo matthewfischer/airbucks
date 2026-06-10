@@ -182,31 +182,37 @@ function demandValue(ap: Airport): number | null {
 const formatPax = (n: number) =>
   n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n)}`;
 
-// ---- Real US map geometry -------------------------------------------------
+// ---- Real map geometry ----------------------------------------------------
 
 let stateRings: [number, number][][] = [];
 
-async function loadMap() {
-  try {
-    const res = await fetch('./us-states.json');
-    const gj = (await res.json()) as {
-      features: { geometry: { type: string; coordinates: unknown } }[];
-    };
-    const rings: [number, number][][] = [];
-    for (const f of gj.features) {
-      const g = f.geometry;
-      if (g.type === 'Polygon') {
-        for (const ring of g.coordinates as [number, number][][]) rings.push(ring);
-      } else if (g.type === 'MultiPolygon') {
-        for (const poly of g.coordinates as [number, number][][][])
-          for (const ring of poly) rings.push(ring);
-      }
+function geojsonRings(gj: {
+  features: { geometry: { type: string; coordinates: unknown } }[];
+}): [number, number][][] {
+  const rings: [number, number][][] = [];
+  for (const f of gj.features) {
+    const g = f.geometry;
+    if (g.type === 'Polygon') {
+      for (const ring of g.coordinates as [number, number][][]) rings.push(ring);
+    } else if (g.type === 'MultiPolygon') {
+      for (const poly of g.coordinates as [number, number][][][])
+        for (const ring of poly) rings.push(ring);
     }
-    stateRings = rings;
-    invalidateBaseMap();
-  } catch {
-    // Leave stateRings empty; drawBase falls back to a grid.
   }
+  return rings;
+}
+
+async function loadMap() {
+  // US states plus the rest of North America & the Caribbean (country outlines).
+  const results = await Promise.allSettled(
+    ['./na-countries.json', './us-states.json'].map(async (url) => {
+      const res = await fetch(url);
+      return geojsonRings(await res.json());
+    }),
+  );
+  stateRings = results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+  // If every fetch failed, stateRings stays empty and drawBase falls back to a grid.
+  invalidateBaseMap();
 }
 
 // ---- Cached base map ------------------------------------------------------
@@ -467,6 +473,7 @@ const PLANE_STYLE: Record<string, { color: string; scale: number }> = {
   turboprop: { color: '#f5a623', scale: 1.7 },
   regionaljet: { color: '#3fd0c9', scale: 2.0 },
   cityjet: { color: '#f4f8ff', scale: 2.6 },
+  transjet: { color: '#c084fc', scale: 3.1 },
 };
 
 function drawPlaneSprite(x: number, y: number, angle: number, typeId: string) {
@@ -503,8 +510,8 @@ function drawPlaneSprite(x: number, y: number, angle: number, typeId: string) {
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
-  // City jet gets a little tail fin so the biggest plane reads distinctly.
-  if (typeId === 'cityjet') {
+  // The bigger jets get a little tail fin so they read distinctly.
+  if (typeId === 'cityjet' || typeId === 'transjet') {
     ctx.beginPath();
     ctx.moveTo(-4, 0);
     ctx.lineTo(-7, 2.2);

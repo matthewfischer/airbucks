@@ -1,6 +1,7 @@
 import type { Airport, AircraftType } from './types';
 
-// A regional network centered on Charleston, WV (CRW), the player's home base.
+// The airport network: a dense regional core around Charleston, WV (CRW),
+// US national gateways, and the rest of North America & the Caribbean.
 export const AIRPORTS: Airport[] = [
   { id: 'crw', code: 'CRW', city: 'Charleston, WV', lat: 38.37, lon: -81.59, size: 1, population: 250_000 },
   { id: 'clt', code: 'CLT', city: 'Charlotte', lat: 35.21, lon: -80.94, size: 5, population: 2_700_000 },
@@ -55,9 +56,51 @@ export const AIRPORTS: Airport[] = [
   { id: 'boi', code: 'BOI', city: 'Boise', lat: 43.56, lon: -116.22, size: 2, population: 780_000 },
   { id: 'bzn', code: 'BZN', city: 'Bozeman', lat: 45.78, lon: -111.15, size: 1, population: 120_000 },
   { id: 'chs', code: 'CHS', city: 'Charleston, SC', lat: 32.9, lon: -80.04, size: 2, population: 800_000 },
+  // Canada
+  { id: 'yyz', code: 'YYZ', city: 'Toronto', lat: 43.68, lon: -79.63, size: 6, population: 6_400_000 },
+  { id: 'yul', code: 'YUL', city: 'Montreal', lat: 45.47, lon: -73.74, size: 5, population: 4_300_000 },
+  { id: 'yvr', code: 'YVR', city: 'Vancouver', lat: 49.19, lon: -123.18, size: 5, population: 2_700_000 },
+  { id: 'yyc', code: 'YYC', city: 'Calgary', lat: 51.11, lon: -114.02, size: 4, population: 1_600_000 },
+  { id: 'yeg', code: 'YEG', city: 'Edmonton', lat: 53.31, lon: -113.58, size: 3, population: 1_500_000 },
+  { id: 'yow', code: 'YOW', city: 'Ottawa', lat: 45.32, lon: -75.67, size: 3, population: 1_500_000 },
+  { id: 'ywg', code: 'YWG', city: 'Winnipeg', lat: 49.91, lon: -97.24, size: 2, population: 850_000 },
+  { id: 'yqb', code: 'YQB', city: 'Quebec City', lat: 46.79, lon: -71.38, size: 2, population: 840_000 },
+  { id: 'yhz', code: 'YHZ', city: 'Halifax', lat: 44.88, lon: -63.51, size: 2, population: 480_000 },
+  // Mexico
+  { id: 'mex', code: 'MEX', city: 'Mexico City', lat: 19.44, lon: -99.07, size: 6, population: 22_000_000 },
+  { id: 'cun', code: 'CUN', city: 'Cancún', lat: 21.04, lon: -86.87, size: 5, population: 1_000_000 },
+  { id: 'gdl', code: 'GDL', city: 'Guadalajara', lat: 20.52, lon: -103.31, size: 4, population: 5_300_000 },
+  { id: 'mty', code: 'MTY', city: 'Monterrey', lat: 25.78, lon: -100.11, size: 4, population: 5_300_000 },
+  { id: 'tij', code: 'TIJ', city: 'Tijuana', lat: 32.54, lon: -116.97, size: 3, population: 2_200_000 },
+  { id: 'sjd', code: 'SJD', city: 'Los Cabos', lat: 23.15, lon: -109.72, size: 2, population: 350_000 },
+  { id: 'pvr', code: 'PVR', city: 'Puerto Vallarta', lat: 20.68, lon: -105.25, size: 2, population: 500_000 },
+  { id: 'mid', code: 'MID', city: 'Mérida', lat: 20.94, lon: -89.66, size: 2, population: 1_200_000 },
+  // Central America
+  { id: 'pty', code: 'PTY', city: 'Panama City', lat: 9.07, lon: -79.38, size: 4, population: 1_900_000 },
+  { id: 'sjo', code: 'SJO', city: 'San José', lat: 9.99, lon: -84.21, size: 3, population: 2_200_000 },
+  { id: 'gua', code: 'GUA', city: 'Guatemala City', lat: 14.58, lon: -90.53, size: 3, population: 3_000_000 },
+  { id: 'sal', code: 'SAL', city: 'San Salvador', lat: 13.44, lon: -89.06, size: 2, population: 1_800_000 },
+  { id: 'bze', code: 'BZE', city: 'Belize City', lat: 17.54, lon: -88.31, size: 1, population: 200_000 },
+  // Caribbean
+  { id: 'sju', code: 'SJU', city: 'San Juan', lat: 18.44, lon: -66.0, size: 4, population: 2_400_000 },
+  { id: 'hav', code: 'HAV', city: 'Havana', lat: 22.99, lon: -82.41, size: 3, population: 2_100_000 },
+  { id: 'sdq', code: 'SDQ', city: 'Santo Domingo', lat: 18.43, lon: -69.67, size: 3, population: 3_300_000 },
+  { id: 'puj', code: 'PUJ', city: 'Punta Cana', lat: 18.57, lon: -68.36, size: 3, population: 300_000 },
+  { id: 'nas', code: 'NAS', city: 'Nassau', lat: 25.04, lon: -77.47, size: 3, population: 280_000 },
+  { id: 'mbj', code: 'MBJ', city: 'Montego Bay', lat: 18.5, lon: -77.91, size: 2, population: 200_000 },
+  { id: 'kin', code: 'KIN', city: 'Kingston', lat: 17.94, lon: -76.79, size: 2, population: 1_200_000 },
+  { id: 'bda', code: 'BDA', city: 'Bermuda', lat: 32.36, lon: -64.68, size: 2, population: 64_000 },
+  { id: 'aua', code: 'AUA', city: 'Aruba', lat: 12.5, lon: -70.02, size: 2, population: 110_000 },
+  { id: 'sxm', code: 'SXM', city: 'St. Maarten', lat: 18.04, lon: -63.11, size: 2, population: 80_000 },
+  { id: 'bgi', code: 'BGI', city: 'Barbados', lat: 13.07, lon: -59.49, size: 2, population: 280_000 },
+  { id: 'pos', code: 'POS', city: 'Port of Spain', lat: 10.6, lon: -61.34, size: 2, population: 1_400_000 },
+  { id: 'gcm', code: 'GCM', city: 'Grand Cayman', lat: 19.29, lon: -81.36, size: 1, population: 70_000 },
+  { id: 'stt', code: 'STT', city: 'St. Thomas', lat: 18.34, lon: -64.97, size: 1, population: 100_000 },
+  { id: 'pls', code: 'PLS', city: 'Providenciales', lat: 21.77, lon: -72.27, size: 1, population: 45_000 },
 ];
 
-// A right-sized regional fleet: short hops, modest seat counts.
+// The fleet ladder: short-hop regionals up to a continental narrowbody that
+// can cross the whole map (e.g. Vancouver to Barbados) nonstop.
 export const AIRCRAFT_TYPES: AircraftType[] = [
   {
     id: 'turboprop',
@@ -88,6 +131,16 @@ export const AIRCRAFT_TYPES: AircraftType[] = [
     price: 60_000_000,
     costPerKm: 8,
     weeklyUpkeep: 50_000,
+  },
+  {
+    id: 'transjet',
+    name: 'TransJet 190',
+    capacity: 190,
+    range: 7500,
+    speed: 860,
+    price: 110_000_000,
+    costPerKm: 11,
+    weeklyUpkeep: 85_000,
   },
 ];
 
