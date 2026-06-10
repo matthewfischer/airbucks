@@ -1,4 +1,5 @@
 import type { GameState, Plane, Route } from './types';
+import { LEGACY_TYPE_IDS } from './data';
 import { reseedIds } from './engine';
 
 /** Bump when the save shape changes incompatibly. */
@@ -81,6 +82,7 @@ export function applySave(g: GameState, data: SaveData): void {
   );
   const routeIds = new Set(routes.map((r) => r.id));
   const fleet = data.fleet
+    .map((p) => ({ ...p, typeId: LEGACY_TYPE_IDS[p.typeId] ?? p.typeId }))
     .filter((p) => typeIds.has(p.typeId))
     .map((p) => ({
       ...p,

@@ -21,7 +21,7 @@ function playedGame(): GameState {
   x.rights = ['crw', 'clt', 'dca']; // hold rights for the route below
   openRoute(x, ['crw', 'clt', 'dca']);
   setFareFactor(x, x.routes[0].id, 1.2);
-  buyPlane(x, 'regionaljet');
+  buyPlane(x, 'e175');
   assignPlane(x, x.fleet[0].id, x.routes[0].id);
   x.day = 42;
   x.debt = 7_000_000;
@@ -91,12 +91,32 @@ describe('applySave', () => {
   it('drops planes of unknown types and idles planes on dropped routes', () => {
     const src = playedGame();
     const data = deserialize(serialize(src))!;
-    data.fleet.push({ id: 'plane-ghost', typeId: 'flying-saucer', routeId: data.routes[0].id });
+    data.fleet.push({
+      id: 'plane-ghost',
+      typeId: 'flying-saucer',
+      routeId: data.routes[0].id,
+      kmFlown: 0,
+    });
     data.routes[0].stops = ['crw', 'atlantis']; // route will be dropped
     applySave(g, data);
     expect(g.fleet.every((p) => p.typeId !== 'flying-saucer')).toBe(true);
     // The real plane survives but is now idle (its route was dropped).
     expect(g.fleet).toHaveLength(1);
     expect(g.fleet[0].routeId).toBeNull();
+  });
+
+  it('migrates legacy fictional plane types to their real replacements', () => {
+    const src = playedGame();
+    const data = deserialize(serialize(src))!;
+    data.fleet.push({
+      id: 'plane-old',
+      typeId: 'oceanjet', // pre-real-aircraft save
+      routeId: null,
+      kmFlown: 1234,
+    });
+    applySave(g, data);
+    const migrated = g.fleet.find((p) => p.id === 'plane-old')!;
+    expect(migrated.typeId).toBe('b767');
+    expect(migrated.kmFlown).toBe(1234);
   });
 });

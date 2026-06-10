@@ -42,8 +42,8 @@ import {
   weekNumber,
 } from './engine';
 
-const TURBOPROP = AIRCRAFT_TYPES.find((t) => t.id === 'turboprop')!;
-const JET = AIRCRAFT_TYPES.find((t) => t.id === 'regionaljet')!;
+const TURBOPROP = AIRCRAFT_TYPES.find((t) => t.id === 'q400')!;
+const JET = AIRCRAFT_TYPES.find((t) => t.id === 'e175')!;
 
 const lastRoute = (g: GameState) => g.routes[g.routes.length - 1];
 const lastPlane = (g: GameState) => g.fleet[g.fleet.length - 1];
@@ -56,7 +56,7 @@ beforeEach(() => {
 });
 
 /** Open a route and staff it with `count` planes of `planeType`. Returns the route. */
-function addRoute(stops: string[], planeType = 'regionaljet', count = 1) {
+function addRoute(stops: string[], planeType = 'e175', count = 1) {
   g.cash = 1_000_000_000; // economics tests aren't about affordability
   openRoute(g, stops);
   const route = g.routes[g.routes.length - 1];
@@ -68,7 +68,7 @@ function addRoute(stops: string[], planeType = 'regionaljet', count = 1) {
 }
 
 /** Total weekly both-direction seats one plane offers on a single-leg route. */
-function legCapacity(distance: number, planeId = 'regionaljet') {
+function legCapacity(distance: number, planeId = 'e175') {
   const t = AIRCRAFT_TYPES.find((a) => a.id === planeId)!;
   return tripsPerWeek(t, distance, 1) * 2 * t.capacity;
 }
@@ -120,7 +120,7 @@ describe('tripsPerWeek', () => {
 
 describe('buyPlane', () => {
   it('deducts the price and adds an idle plane', () => {
-    expect(buyPlane(g, 'turboprop')).toBeNull();
+    expect(buyPlane(g, 'q400')).toBeNull();
     expect(g.fleet).toHaveLength(1);
     expect(lastPlane(g).routeId).toBeNull();
     expect(g.cash).toBe(STARTING_CASH - TURBOPROP.price);
@@ -128,7 +128,7 @@ describe('buyPlane', () => {
 
   it('refuses when there is not enough cash', () => {
     g.cash = 1_000_000;
-    expect(buyPlane(g, 'cityjet')).toMatch(/not enough cash/i);
+    expect(buyPlane(g, 'e195e2')).toMatch(/not enough cash/i);
     expect(g.fleet).toHaveLength(0);
   });
 });
@@ -178,7 +178,7 @@ describe('routeDistance & routeMaxLeg', () => {
 
 describe('assignPlane', () => {
   it('assigns a plane to a route it can reach', () => {
-    buyPlane(g, 'turboprop');
+    buyPlane(g, 'q400');
     openRoute(g, ['crw', 'clt']);
     expect(assignPlane(g, lastPlane(g).id, lastRoute(g).id)).toBeNull();
     expect(planesOnRoute(g, lastRoute(g).id)).toHaveLength(1);
@@ -188,7 +188,7 @@ describe('assignPlane', () => {
     const custom: GameState = {
       ...newGame('crw'),
       aircraftTypes: [{ ...TURBOPROP, id: 'shorty', range: 100 }],
-      fleet: [{ id: 'p1', typeId: 'shorty', routeId: null }],
+      fleet: [{ id: 'p1', typeId: 'shorty', routeId: null, kmFlown: 0 }],
       routes: [{ id: 'r1', stops: ['crw', 'clt'], fareFactor: 1 }],
     };
     expect(assignPlane(custom, 'p1', 'r1')).toMatch(/can't reach/i);
@@ -196,7 +196,7 @@ describe('assignPlane', () => {
   });
 
   it('always allows returning a plane to the hangar', () => {
-    buyPlane(g, 'turboprop');
+    buyPlane(g, 'q400');
     openRoute(g, ['crw', 'clt']);
     assignPlane(g, lastPlane(g).id, lastRoute(g).id);
     expect(assignPlane(g, lastPlane(g).id, null)).toBeNull();
@@ -206,7 +206,7 @@ describe('assignPlane', () => {
 
 describe('closeRoute', () => {
   it('removes the route and frees its planes back to the hangar', () => {
-    buyPlane(g, 'turboprop');
+    buyPlane(g, 'q400');
     openRoute(g, ['crw', 'clt']);
     const routeId = lastRoute(g).id;
     assignPlane(g, lastPlane(g).id, routeId);
@@ -218,7 +218,7 @@ describe('closeRoute', () => {
 });
 
 describe('network evaluation', () => {
-  function withRoute(stops: string[], planeType = 'regionaljet') {
+  function withRoute(stops: string[], planeType = 'e175') {
     g.cash = 1_000_000_000; // economics tests aren't about affordability
     openRoute(g, stops);
     const route = lastRoute(g);
@@ -269,21 +269,21 @@ describe('network evaluation', () => {
   });
 
   it('reports a load factor between 0 and 1 for a flown route', () => {
-    const route = withRoute(['clt', 'dca'], 'turboprop');
+    const route = withRoute(['clt', 'dca'], 'q400');
     const rs = evaluateRoute(g, route);
     expect(rs.loadFactor).toBeGreaterThan(0);
     expect(rs.loadFactor).toBeLessThanOrEqual(1);
   });
 
   it('a faster fleet lifts the route speed premium', () => {
-    const slow = withRoute(['clt', 'dca'], 'turboprop');
+    const slow = withRoute(['clt', 'dca'], 'saab340');
     expect(evaluateRoute(g, slow).speedPremium).toBeCloseTo(0.85, 2);
-    const fast = withRoute(['clt', 'cvg'], 'regionaljet');
+    const fast = withRoute(['clt', 'cvg'], 'e175');
     expect(evaluateRoute(g, fast).speedPremium).toBeCloseTo(JET.speed / 700, 2);
   });
 
   it('lower fares draw more passengers system-wide (price elasticity)', () => {
-    const route = withRoute(['clt', 'dca'], 'cityjet');
+    const route = withRoute(['clt', 'dca'], 'e195e2');
     setFareFactor(g, route.id, 2.5);
     const dearPax = evaluateNetwork(g).passengers;
     setFareFactor(g, route.id, 0.5);
@@ -294,7 +294,7 @@ describe('network evaluation', () => {
 
 describe('weeklyTotals & advanceDay', () => {
   it('charges upkeep for idle planes', () => {
-    buyPlane(g, 'turboprop');
+    buyPlane(g, 'q400');
     expect(weeklyTotals(g).cost).toBe(TURBOPROP.weeklyUpkeep);
   });
 
@@ -307,7 +307,7 @@ describe('weeklyTotals & advanceDay', () => {
   });
 
   it('advanceDay accrues one seventh of the weekly net and ticks the day', () => {
-    buyPlane(g, 'turboprop');
+    buyPlane(g, 'q400');
     const before = g.cash;
     const net = weeklyTotals(g).net;
     advanceDay(g);
@@ -355,7 +355,7 @@ describe('dynamic credit line & interest rate', () => {
   it('credit grows with fleet collateral and revenue', () => {
     const base = creditLimit(g);
     g.cash = 1_000_000_000;
-    buyPlane(g, 'cityjet'); // adds fleet collateral
+    buyPlane(g, 'e195e2'); // adds fleet collateral
     expect(creditLimit(g)).toBeGreaterThan(base);
     const withFleet = creditLimit(g);
     openRoute(g, ['clt', 'dca']); // now flying & earning revenue
@@ -381,7 +381,7 @@ describe('dynamic credit line & interest rate', () => {
     g.debt = 5_000_000;
     const solvent = interestRate(g);
     // Stressed: buy a plane (now idle => operating loss), then drain cash & pile on debt.
-    buyPlane(g, 'cityjet');
+    buyPlane(g, 'e195e2');
     g.cash = 1_000_000;
     g.debt = 30_000_000;
     const stressed = interestRate(g);
@@ -390,8 +390,8 @@ describe('dynamic credit line & interest rate', () => {
   });
 
   it('fleetValue depreciates the purchase price', () => {
-    buyPlane(g, 'regionaljet');
-    const price = AIRCRAFT_TYPES.find((t) => t.id === 'regionaljet')!.price;
+    buyPlane(g, 'e175');
+    const price = AIRCRAFT_TYPES.find((t) => t.id === 'e175')!.price;
     // Brand-new plane starts at 80%; value falls toward 40% as km accumulate.
     expect(fleetValue(g)).toBeCloseTo(price * 0.8, 5);
     g.fleet[0].kmFlown = 5_000_000;
@@ -469,12 +469,12 @@ describe('shared legs (pooling & attribution)', () => {
   });
 
   it('pools capacity: a second route over a capped leg carries more of its market', () => {
-    // One turboprop on a low-fare (high-demand) CLT-DCA: capacity-capped.
-    const a = addRoute(['clt', 'dca'], 'turboprop');
+    // One small turboprop on a low-fare (high-demand) CLT-DCA: capacity-capped.
+    const a = addRoute(['clt', 'dca'], 'saab340');
     setFareFactor(g, a.id, 0.5);
     const before = evaluateNetwork(g).passengers;
     // A second route adds capacity to the same CLT-DCA leg.
-    addRoute(['clt', 'dca', 'pit'], 'turboprop');
+    addRoute(['clt', 'dca', 'pit'], 'saab340');
     setFareFactor(g, g.routes[g.routes.length - 1].id, 0.5);
     const after = evaluateNetwork(g).passengers;
     expect(after).toBeGreaterThan(before);
@@ -484,16 +484,16 @@ describe('shared legs (pooling & attribution)', () => {
 // Task #2
 describe('capacity-constrained allocation', () => {
   it('caps passengers at capacity with load factor at 1 when demand overflows', () => {
-    const route = addRoute(['clt', 'dca'], 'turboprop');
+    const route = addRoute(['clt', 'dca'], 'saab340');
     setFareFactor(g, route.id, 0.5); // push demand above the small plane's seats
-    const cap = legCapacity(routeDistance(g, route), 'turboprop');
+    const cap = legCapacity(routeDistance(g, route), 'saab340');
     const rs = evaluateRoute(g, route);
     expect(rs.passengers).toBeCloseTo(cap, 0);
     expect(rs.loadFactor).toBeGreaterThan(0.99);
   });
 
   it('a demand-limited route stays below capacity (load factor < 1)', () => {
-    const route = addRoute(['crw', 'roa'], 'regionaljet'); // tiny 1x1 market
+    const route = addRoute(['crw', 'roa'], 'e175'); // tiny 1x1 market
     const rs = evaluateRoute(g, route);
     expect(rs.loadFactor).toBeLessThan(1);
   });
@@ -518,23 +518,23 @@ describe('detour cap', () => {
 // Task #4
 describe('cost right-sizing & multi-plane capacity', () => {
   it('a lightly-loaded route costs far less to fly than a capacity-capped one', () => {
-    const thin = addRoute(['crw', 'roa'], 'turboprop'); // tiny market, low load
-    const capped = addRoute(['clt', 'dca'], 'turboprop');
+    const thin = addRoute(['crw', 'roa'], 'saab340'); // tiny market, low load
+    const capped = addRoute(['clt', 'dca'], 'saab340');
     setFareFactor(g, capped.id, 0.5); // overflow the seats -> full flying
     const net = evaluateNetwork(g);
     const thinCost = net.routes.get(thin.id)!.cost;
     const cappedCost = net.routes.get(capped.id)!.cost;
-    const upkeep = AIRCRAFT_TYPES.find((t) => t.id === 'turboprop')!.weeklyUpkeep;
+    const upkeep = AIRCRAFT_TYPES.find((t) => t.id === 'saab340')!.weeklyUpkeep;
     expect(thinCost).toBeLessThan(cappedCost);
     expect(thinCost).toBeGreaterThanOrEqual(upkeep); // upkeep is always paid
     expect(thinCost).toBeLessThan(upkeep * 1.5); // little actual flying
   });
 
   it('a second plane on a capped route increases passengers carried', () => {
-    const one = addRoute(['clt', 'dca'], 'turboprop');
+    const one = addRoute(['clt', 'dca'], 'saab340');
     setFareFactor(g, one.id, 0.5);
     const paxOne = evaluateRoute(g, one).passengers;
-    buyPlane(g, 'turboprop');
+    buyPlane(g, 'saab340');
     assignPlane(g, g.fleet[g.fleet.length - 1].id, one.id);
     const paxTwo = evaluateRoute(g, one).passengers;
     expect(paxTwo).toBeGreaterThan(paxOne);
@@ -587,8 +587,8 @@ describe('interest earned on positive cash', () => {
 // Task #6
 describe('fare factor on a capacity-capped route', () => {
   it('raising fares lifts revenue while passengers stay pinned at capacity', () => {
-    const route = addRoute(['clt', 'dca'], 'turboprop');
-    const cap = legCapacity(routeDistance(g, route), 'turboprop');
+    const route = addRoute(['clt', 'dca'], 'saab340');
+    const cap = legCapacity(routeDistance(g, route), 'saab340');
 
     setFareFactor(g, route.id, 0.5);
     const low = evaluateRoute(g, route);
@@ -636,8 +636,8 @@ describe('data sanity & helpers', () => {
   });
 
   it('planesOnRoute returns only the planes assigned to that route', () => {
-    const route = addRoute(['clt', 'dca'], 'regionaljet');
-    buyPlane(g, 'turboprop'); // left idle in the hangar
+    const route = addRoute(['clt', 'dca'], 'e175');
+    buyPlane(g, 'q400'); // left idle in the hangar
     const on = planesOnRoute(g, route.id);
     expect(on).toHaveLength(1);
     expect(on[0].routeId).toBe(route.id);
@@ -649,7 +649,7 @@ describe('determinism', () => {
   it('evaluateNetwork yields identical results across repeated calls', () => {
     addRoute(['crw', 'cmh']);
     addRoute(['cmh', 'pit']);
-    addRoute(['clt', 'dca'], 'turboprop');
+    addRoute(['clt', 'dca'], 'q400');
     const a = evaluateNetwork(g);
     const b = evaluateNetwork(g);
     expect(b.revenue).toBe(a.revenue);
@@ -740,7 +740,7 @@ describe('national gateways', () => {
 
   it('feeds a far national gateway from a regional spoke via a hub', () => {
     addRoute(['crw', 'clt']); // regional feeder
-    addRoute(['clt', 'lax'], 'cityjet'); // long-haul to a national gateway
+    addRoute(['clt', 'lax'], 'e195e2'); // long-haul to a national gateway
     // CRW travelers reach LAX by connecting at CLT.
     expect(evaluateNetwork(g).connectingPassengers).toBeGreaterThan(0);
   });
@@ -748,7 +748,7 @@ describe('national gateways', () => {
   it('adding onward feed improves a feeder spoke (fair fare attribution)', () => {
     const spoke = addRoute(['crw', 'clt']);
     const alone = evaluateRoute(g, spoke).profit;
-    addRoute(['clt', 'lax'], 'cityjet'); // CLT now feeds onward; CRW carries CRW->LAX
+    addRoute(['clt', 'lax'], 'e195e2'); // CLT now feeds onward; CRW carries CRW->LAX
     const fed = evaluateRoute(g, spoke).profit;
     expect(fed).toBeGreaterThan(alone);
   });

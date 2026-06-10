@@ -11,9 +11,14 @@ export interface Airport {
   population: number;
 }
 
+export type Propulsion = 'prop' | 'turboprop' | 'jet';
+
 export interface AircraftType {
   id: string;
   name: string;
+  propulsion: Propulsion;
+  /** Year the type entered service. */
+  introduced: number;
   /** Seats per flight. */
   capacity: number;
   /** Maximum non-stop distance in km. */

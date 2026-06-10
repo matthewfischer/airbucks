@@ -467,27 +467,30 @@ function drawLegend(_w: number, h: number) {
   ctx.fillText('high', x + barW - 18, y + barH + 11);
 }
 
-// Per-type sprite styling: color (the clearest cue at small size) + scale,
-// plus a distinct silhouette — turboprops fly straight wings, jets are swept.
-const PLANE_STYLE: Record<string, { color: string; scale: number }> = {
-  turboprop: { color: '#f5a623', scale: 1.7 },
-  regionaljet: { color: '#3fd0c9', scale: 2.0 },
-  cityjet: { color: '#f4f8ff', scale: 2.6 },
-  transjet: { color: '#c084fc', scale: 3.1 },
-  oceanjet: { color: '#ff8fa3', scale: 3.7 },
-};
+// Sprite styling derived from the aircraft's stats: scale tracks seat count,
+// color marks the capacity tier (the clearest cue at small size), and the
+// silhouette follows propulsion — props fly straight wings, jets are swept.
+const TIER_COLORS: [number, string][] = [
+  [230, '#ff8fa3'],
+  [160, '#c084fc'],
+  [100, '#f4f8ff'],
+  [40, '#3fd0c9'],
+  [0, '#f5a623'],
+];
 
 function drawPlaneSprite(x: number, y: number, angle: number, typeId: string) {
-  const style = PLANE_STYLE[typeId] ?? { color: '#f4f8ff', scale: 1 };
+  const type = typeById(game, typeId);
+  const scale = 1.25 + 0.009 * type.capacity;
+  const color = TIER_COLORS.find(([min]) => type.capacity >= min)![1];
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
-  ctx.scale(style.scale, style.scale);
-  ctx.fillStyle = style.color;
+  ctx.scale(scale, scale);
+  ctx.fillStyle = color;
   ctx.strokeStyle = '#0b1622';
-  ctx.lineWidth = 1 / style.scale; // keep the outline ~1px regardless of scale
+  ctx.lineWidth = 1 / scale; // keep the outline ~1px regardless of scale
   ctx.beginPath();
-  if (typeId === 'turboprop') {
+  if (type.propulsion !== 'jet') {
     // Straight-wing prop silhouette (wings perpendicular to the fuselage).
     ctx.moveTo(6, 0);
     ctx.lineTo(0.5, -1);
@@ -512,7 +515,7 @@ function drawPlaneSprite(x: number, y: number, angle: number, typeId: string) {
   ctx.fill();
   ctx.stroke();
   // The bigger jets get a little tail fin so they read distinctly.
-  if (typeId === 'cityjet' || typeId === 'transjet' || typeId === 'oceanjet') {
+  if (type.propulsion === 'jet' && type.capacity >= 100) {
     ctx.beginPath();
     ctx.moveTo(-4, 0);
     ctx.lineTo(-7, 2.2);
@@ -868,6 +871,8 @@ function newRouteCard(): string {
     </div></div>`;
 }
 
+const PROPULSION_LABEL = { prop: 'Piston', turboprop: 'Turboprop', jet: 'Jet' };
+
 function buyCard(): string {
   const rows = game.aircraftTypes
     .map((t) => {
@@ -877,7 +882,7 @@ function buyCard(): string {
       return `<div class="plane-line">
         <div class="row"><strong>${t.name}</strong>
           <button class="${afford ? 'primary' : ''}" data-act="buy" data-type="${t.id}" ${afford ? '' : 'disabled'}>${label}</button></div>
-        <div class="type-stats">${t.capacity} seats · ${t.range.toLocaleString()} km range · ${t.speed} km/h · $${t.costPerKm}/km · ${money(t.weeklyUpkeep)}/wk upkeep · <span class="owned">${owned} owned</span></div>
+        <div class="type-stats">${PROPULSION_LABEL[t.propulsion]} · ${t.introduced} · ${t.capacity} seats · ${t.range.toLocaleString()} km range · ${t.speed} km/h · $${t.costPerKm}/km · ${money(t.weeklyUpkeep)}/wk upkeep · <span class="owned">${owned} owned</span></div>
       </div>`;
     })
     .join('');
