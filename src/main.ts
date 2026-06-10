@@ -1054,14 +1054,13 @@ function routesCard(): string {
   return collapsibleCard('routes', `Routes (${game.routes.length})`, rows);
 }
 
-/** Available in-range types worth switching a route's fleet to (excludes its current type). */
+/** In-range types worth upgrading a route's fleet to — strictly pricier than what it flies. */
 function upgradeCandidates(r: Route): AircraftType[] {
   const planes = planesOnRoute(game, r.id);
   if (planes.length === 0) return [];
   const longest = routeMaxLeg(game, r);
-  return availableTypes(game).filter(
-    (t) => t.range >= longest && !planes.every((p) => p.typeId === t.id),
-  );
+  const floor = Math.max(...planes.map((p) => typeById(game, p.typeId).price));
+  return availableTypes(game).filter((t) => t.range >= longest && t.price > floor);
 }
 
 function fleetCard(): string {

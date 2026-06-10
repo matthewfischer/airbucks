@@ -348,6 +348,17 @@ describe('upgradeRoute', () => {
     }
   });
 
+  it('refuses a downgrade to a cheaper type', () => {
+    const route = addRoute(['crw', 'clt'], 'e175', 1); // $30M jet
+    expect(upgradeRoute(g, route.id, 'q400')).toMatch(/isn't an upgrade/i); // $20M turboprop
+    expect(g.fleet.every((p) => p.typeId === 'e175')).toBe(true);
+  });
+
+  it('refuses re-buying the same type as a no-op', () => {
+    const route = addRoute(['crw', 'clt'], 'e175', 1);
+    expect(upgradeRoute(g, route.id, 'e175')).toMatch(/isn't an upgrade/i);
+  });
+
   it('refuses when the net cost exceeds available cash', () => {
     const route = addRoute(['crw', 'clt'], 'q400', 1);
     g.cash = 0;

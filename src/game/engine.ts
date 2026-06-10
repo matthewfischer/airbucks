@@ -685,8 +685,13 @@ export function upgradeRoute(g: GameState, routeId: string, newTypeId: string): 
   const longest = routeMaxLeg(g, route);
   if (type.range < longest)
     return `${type.name} can't reach that far (range ${type.range} km, longest leg ${longest} km).`;
+  const planes = planesOnRoute(g, routeId);
+  if (planes.length === 0) return 'No planes on this route to upgrade.';
+  // Upgrades only go up. Buying a cheaper type is a downgrade — do it by hand.
+  const floor = Math.max(...planes.map((p) => typeById(g, p.typeId).price));
+  if (type.price <= floor)
+    return `The ${type.name} isn't an upgrade — sell and rebuy manually to switch to it.`;
   const quote = upgradeRouteQuote(g, routeId, newTypeId);
-  if (quote.count === 0) return 'No planes on this route to upgrade.';
   if (g.cash < quote.net) return `Not enough cash to upgrade (net ${money(quote.net)}).`;
   g.cash -= quote.net;
   g.fleet = g.fleet.map((p) =>
