@@ -1,10 +1,11 @@
 import './ui/styles.css';
-import type { Airport, GameState } from './game/types';
+import type { Airport, GameState, Route } from './game/types';
 import {
   acquireRights,
   advanceDay,
   airportById,
   assignPlane,
+  availableTypes,
   borrow,
   buyPlane,
   cashInterestWeekly,
@@ -38,6 +39,8 @@ import {
   setFareFactor,
   typeAvailable,
   typeById,
+  upgradeRoute,
+  upgradeRouteQuote,
   weeklyTotals,
   weekNumber,
   currentYear,
@@ -1044,10 +1047,31 @@ function routesCard(): string {
         <div class="row" style="margin-top:6px">
           <span class="muted">Fare <input type="number" min="20" max="300" step="5" value="${Math.round(r.fareFactor * 100)}" data-act="fare" data-route="${r.id}">%</span>
         </div>
+        ${upgradeControl(r)}
       </div>`;
     })
     .join('');
   return collapsibleCard('routes', `Routes (${game.routes.length})`, rows);
+}
+
+/** Dropdown to swap a route's whole fleet to a newer type, each option showing the net cost. */
+function upgradeControl(r: Route): string {
+  if (planesOnRoute(game, r.id).length === 0) return '';
+  const longest = routeMaxLeg(game, r);
+  const candidates = availableTypes(game).filter((t) => t.range >= longest);
+  if (candidates.length === 0) return '';
+  const opts = [`<option value="">Upgrade fleet…</option>`]
+    .concat(
+      candidates.map((t) => {
+        const q = upgradeRouteQuote(game, r.id, t.id);
+        const delta = `${q.net >= 0 ? '+' : '−'}${money(Math.abs(q.net))}`;
+        const afford = game.cash >= q.net;
+        const name = t.name.split(' (')[0];
+        return `<option value="${t.id}" ${afford ? '' : 'disabled'}>↑ ${name} — ${delta}</option>`;
+      }),
+    )
+    .join('');
+  return `<div class="row" style="margin-top:6px"><select style="width:100%" data-act="upgrade-route" data-route="${r.id}">${opts}</select></div>`;
 }
 
 function fleetCard(): string {
@@ -1148,6 +1172,10 @@ sidebar.addEventListener('change', (e) => {
   if (el.dataset.act === 'assign') {
     const sel = el as unknown as HTMLSelectElement;
     flash(assignPlane(game, el.dataset.plane!, sel.value || null));
+    render();
+  } else if (el.dataset.act === 'upgrade-route') {
+    const sel = el as unknown as HTMLSelectElement;
+    if (sel.value) flash(upgradeRoute(game, el.dataset.route!, sel.value));
     render();
   } else if (el.dataset.act === 'fare') {
     const input = el as unknown as HTMLInputElement;

@@ -649,6 +649,55 @@ export function assignPlane(
   return null;
 }
 
+export interface UpgradeQuote {
+  /** Number of planes currently on the route (the count to be replaced). */
+  count: number;
+  /** Total cost to buy that many of the new type. */
+  buyCost: number;
+  /** Total resale value of the planes being replaced. */
+  resale: number;
+  /** Net cash change: buyCost − resale (positive = you pay, negative = you gain). */
+  net: number;
+}
+
+/** What it would cost to swap every plane on a route to `newTypeId`. Pure — no mutation. */
+export function upgradeRouteQuote(g: GameState, routeId: string, newTypeId: string): UpgradeQuote {
+  const planes = planesOnRoute(g, routeId);
+  const buyCost = typeById(g, newTypeId).price * planes.length;
+  const resale = planes.reduce((sum, p) => sum + planeResaleValue(g, p), 0);
+  return { count: planes.length, buyCost, resale, net: buyCost - resale };
+}
+
+/**
+ * Replace every plane on a route with a freshly bought plane of `newTypeId`,
+ * keeping the route assignment so the route is never left uncovered.
+ */
+export function upgradeRoute(g: GameState, routeId: string, newTypeId: string): string | null {
+  const route = g.routes.find((r) => r.id === routeId);
+  if (!route) return 'Unknown route.';
+  const type = typeById(g, newTypeId);
+  if (!typeAvailable(g, type)) {
+    const year = currentYear(g);
+    if (type.introduced > year)
+      return `The ${type.name} doesn't enter service until ${type.introduced}.`;
+    return `The ${type.name} left production in ${type.introduced + PLANE_PRODUCTION_YEARS}.`;
+  }
+  const longest = routeMaxLeg(g, route);
+  if (type.range < longest)
+    return `${type.name} can't reach that far (range ${type.range} km, longest leg ${longest} km).`;
+  const quote = upgradeRouteQuote(g, routeId, newTypeId);
+  if (quote.count === 0) return 'No planes on this route to upgrade.';
+  if (g.cash < quote.net) return `Not enough cash to upgrade (net ${money(quote.net)}).`;
+  g.cash -= quote.net;
+  g.fleet = g.fleet.map((p) =>
+    p.routeId === routeId ? { id: makeId('plane'), typeId: newTypeId, routeId, kmFlown: 0 } : p,
+  );
+  g.log.unshift(
+    `Upgraded ${routeLabel(g, route)} to ${quote.count} × ${type.name} (net ${money(quote.net)}).`,
+  );
+  return null;
+}
+
 /** Set the route's fare level (1 = the reference fare). Clamped to a sane band. */
 export function setFareFactor(g: GameState, routeId: string, factor: number): void {
   const route = g.routes.find((r) => r.id === routeId);

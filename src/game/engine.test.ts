@@ -37,6 +37,9 @@ import {
   routeLabel,
   routeLegs,
   routeMaxLeg,
+  planeResaleValue,
+  upgradeRoute,
+  upgradeRouteQuote,
   airportSlotsTotal,
   airportSlotsUsed,
   MAX_HOME_SIZE,
@@ -305,6 +308,50 @@ describe('closeRoute', () => {
     closeRoute(g, routeId);
     expect(g.routes).toHaveLength(0);
     expect(lastPlane(g).routeId).toBeNull();
+  });
+});
+
+describe('upgradeRoute', () => {
+  it('swaps every plane on the route for the new type and keeps them assigned', () => {
+    const route = addRoute(['crw', 'clt'], 'q400', 2);
+    const before = g.cash;
+    const quote = upgradeRouteQuote(g, route.id, 'e175');
+
+    expect(upgradeRoute(g, route.id, 'e175')).toBeNull();
+    const onRoute = g.fleet.filter((p) => p.routeId === route.id);
+    expect(onRoute).toHaveLength(2);
+    expect(onRoute.every((p) => p.typeId === 'e175')).toBe(true);
+    // Net cash change matches the quote exactly.
+    expect(g.cash).toBe(before - quote.net);
+  });
+
+  it('quote nets buy cost against resale of the planes replaced', () => {
+    const route = addRoute(['crw', 'clt'], 'q400', 1);
+    const plane = g.fleet.find((p) => p.routeId === route.id)!;
+    const q = upgradeRouteQuote(g, route.id, 'e175');
+    expect(q.count).toBe(1);
+    expect(q.buyCost).toBe(AIRCRAFT_TYPES.find((t) => t.id === 'e175')!.price);
+    expect(q.resale).toBe(planeResaleValue(g, plane));
+    expect(q.net).toBe(q.buyCost - q.resale);
+  });
+
+  it('refuses when the route has no planes', () => {
+    openRoute(g, ['crw', 'clt']);
+    expect(upgradeRoute(g, lastRoute(g).id, 'e175')).toMatch(/no planes/i);
+  });
+
+  it("refuses a type that can't reach the route's longest leg", () => {
+    const route = addRoute(['crw', 'clt'], 'e175', 1);
+    const shortRange = AIRCRAFT_TYPES.reduce((a, b) => (a.range < b.range ? a : b));
+    if (shortRange.range < routeMaxLeg(g, route)) {
+      expect(upgradeRoute(g, route.id, shortRange.id)).toMatch(/can't reach/i);
+    }
+  });
+
+  it('refuses when the net cost exceeds available cash', () => {
+    const route = addRoute(['crw', 'clt'], 'q400', 1);
+    g.cash = 0;
+    expect(upgradeRoute(g, route.id, 'e195e2')).toMatch(/not enough cash/i);
   });
 });
 
