@@ -154,6 +154,7 @@ export const AIRPORTS: Airport[] = [
   { id: 'doh', code: 'DOH', city: 'Doha', lat: 25.27, lon: 51.61, size: 4, population: 2_400_000 },
   { id: 'tlv', code: 'TLV', city: 'Tel Aviv', lat: 32.01, lon: 34.89, size: 4, population: 4_000_000 },
   { id: 'ruh', code: 'RUH', city: 'Riyadh', lat: 24.96, lon: 46.7, size: 4, population: 7_700_000 },
+  { id: 'thr', code: 'THR', city: 'Tehran', lat: 35.69, lon: 51.31, size: 5, population: 9_600_000 },
 
   // ---- Africa -----------------------------------------------------------
   { id: 'cai', code: 'CAI', city: 'Cairo', lat: 30.11, lon: 31.41, size: 5, population: 21_000_000 },
