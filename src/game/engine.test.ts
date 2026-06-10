@@ -18,6 +18,7 @@ import {
   distanceFactor,
   evaluateNetwork,
   evaluateRoute,
+  fedFundsRate,
   fleetValue,
   interestRate,
   money,
@@ -559,8 +560,10 @@ describe('dynamic credit line & interest rate', () => {
     expect(creditLimit(g)).toBeGreaterThan(withFleet);
   });
 
-  it('a debt-free airline pays the base rate', () => {
-    expect(interestRate(g)).toBeCloseTo(0.04, 5);
+  it('a debt-free airline pays the era fed funds rate', () => {
+    // These tests run in 2025 (see beforeEach), where fed funds ≈ 4.3%.
+    expect(interestRate(g)).toBeCloseTo(fedFundsRate(g), 5);
+    expect(interestRate(g)).toBeCloseTo(0.043, 5);
   });
 
   it('the rate rises with leverage', () => {
@@ -582,7 +585,7 @@ describe('dynamic credit line & interest rate', () => {
     g.debt = 30_000_000;
     const stressed = interestRate(g);
     expect(stressed).toBeGreaterThan(solvent);
-    expect(stressed).toBeLessThanOrEqual(0.16); // clamped
+    expect(stressed).toBeLessThanOrEqual(fedFundsRate(g) + 0.12); // clamped to the floating ceiling
   });
 
   it('fleetValue depreciates the purchase price', () => {
@@ -778,7 +781,7 @@ describe('interest earned on positive cash', () => {
     g.debt = 0;
     g.cash = 100_000_000;
     expect(weeklyTotals(g).interestEarned).toBeCloseTo(
-      100_000_000 * depositRate() * (7 / 365),
+      100_000_000 * depositRate(g) * (7 / 365),
       5,
     );
     g.cash = 0;
@@ -797,7 +800,50 @@ describe('interest earned on positive cash', () => {
   });
 
   it('the deposit rate sits below the loan floor — parking cash never beats repaying', () => {
-    expect(depositRate()).toBeLessThan(interestRate(g));
+    expect(depositRate(g)).toBeLessThan(interestRate(g));
+  });
+});
+
+describe('historical fed funds rate', () => {
+  const dayForYear = (year: number) => Math.round((year - 1950) * 365.25);
+
+  it('hits the anchors exactly', () => {
+    g.day = 0; // 1950
+    expect(currentYear(g)).toBe(1950);
+    expect(fedFundsRate(g)).toBeCloseTo(0.015, 5);
+
+    g.day = dayForYear(1981); // Volcker spike
+    expect(currentYear(g)).toBe(1981);
+    expect(fedFundsRate(g)).toBeCloseTo(0.16, 5);
+
+    g.day = dayForYear(2015); // ZIRP
+    expect(currentYear(g)).toBe(2015);
+    expect(fedFundsRate(g)).toBeCloseTo(0.001, 5);
+  });
+
+  it('interpolates linearly between anchors', () => {
+    g.day = dayForYear(1955); // halfway between 1950 (1.5%) and 1960 (3.5%)
+    expect(currentYear(g)).toBe(1955);
+    expect(fedFundsRate(g)).toBeCloseTo(0.025, 5);
+  });
+
+  it('clamps past the last anchor', () => {
+    g.day = dayForYear(2040);
+    expect(fedFundsRate(g)).toBeCloseTo(0.043, 5); // 2025 anchor
+  });
+
+  it('loan and deposit rates track the era', () => {
+    g.debt = 0;
+    g.day = dayForYear(1981); // expensive money
+    const volckerLoan = interestRate(g);
+    const volckerDeposit = depositRate(g);
+    g.day = dayForYear(2015); // cheap money
+    const zirpLoan = interestRate(g);
+    const zirpDeposit = depositRate(g);
+    expect(volckerLoan).toBeGreaterThan(zirpLoan);
+    expect(volckerDeposit).toBeGreaterThan(zirpDeposit);
+    expect(volckerDeposit).toBeCloseTo(0.14, 5); // 16% − 2% spread
+    expect(zirpDeposit).toBe(0); // floored at zero when fed funds < spread
   });
 });
 

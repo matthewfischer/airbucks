@@ -1002,7 +1002,7 @@ function bankCard(): string {
   const credit = Math.max(0, limit - game.debt);
   const rate = interestRate(game);
   const weeklyInterest = game.debt * rate * (7 / 365);
-  const earnRate = depositRate();
+  const earnRate = depositRate(game);
   const weeklyEarned = cashInterestWeekly(game);
   // Right-size the buttons so the label matches what actually happens.
   const borrowAmt = Math.min(5_000_000, credit);

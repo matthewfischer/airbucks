@@ -43,12 +43,15 @@ const LOAN_BASE_CREDIT = 15_000_000;
 const LOAN_REVENUE_MULTIPLE = 1.0;
 const LOAN_COLLATERAL_FRACTION = 0.5;
 const LOAN_MAX_CREDIT = 400_000_000;
-// Interest rate: a floor for a solvent airline, rising with leverage and losses.
-const LOAN_BASE_RATE = 0.04;
-const LOAN_MAX_RATE = 0.16;
-// Deposit rate: what the bank pays on positive cash balances. Below the loan
-// floor, so parking cash earns a little but never beats paying down debt.
-const DEPOSIT_RATE = 0.02;
+// Interest rate: the era's macro rate (fed funds) is the floor, plus a credit
+// spread that rises with leverage and losses. The ceiling floats with the
+// macro rate, so Volcker-era debt genuinely hurts and ZIRP-era debt is cheap.
+const LOAN_MAX_SPREAD = 0.12; // premium over fed funds at full leverage
+const LOAN_LOSS_PREMIUM = 0.02; // extra paid by a loss-making airline
+// Deposit rate: what the bank pays on positive cash balances. A fixed spread
+// below the macro rate, so parking cash earns a little but never beats paying
+// down debt (and tracks the era — ~14% in 1981, ~0% in the 2010s).
+const DEPOSIT_SPREAD = 0.02;
 
 // Landing rights: slots become available once the airline is big enough
 // (reputation = airports held), and cost a one-time fee. Indexed by size 1..6.
@@ -491,6 +494,47 @@ const ERA_INFLATION = 1.038;
 export const eraScale = (g: GameState): number =>
   ERA_INFLATION ** (currentYear(g) - ERA_ANCHOR_YEAR);
 
+// Historical fed funds rate (annual average), as sparse anchors keyed to year.
+// Linearly interpolated between, clamped at the ends. Captures the shape that
+// matters: the Volcker spike (~16% in '81), ZIRP (~0% in the 2010s), and the
+// 2022–23 climb. This is the macro floor under loan and deposit rates.
+const FED_FUNDS_ANCHORS: ReadonlyArray<readonly [number, number]> = [
+  [1950, 0.015],
+  [1960, 0.035],
+  [1970, 0.07],
+  [1975, 0.058],
+  [1979, 0.11],
+  [1981, 0.16],
+  [1984, 0.1],
+  [1990, 0.08],
+  [1993, 0.03],
+  [2000, 0.062],
+  [2003, 0.01],
+  [2007, 0.05],
+  [2009, 0.002],
+  [2015, 0.001],
+  [2019, 0.022],
+  [2020, 0.004],
+  [2023, 0.051],
+  [2025, 0.043],
+];
+
+/** The era's macro interest rate (annual), interpolated from history. */
+export function fedFundsRate(g: GameState): number {
+  const year = currentYear(g);
+  const a = FED_FUNDS_ANCHORS;
+  if (year <= a[0][0]) return a[0][1];
+  if (year >= a[a.length - 1][0]) return a[a.length - 1][1];
+  for (let i = 1; i < a.length; i++) {
+    if (year <= a[i][0]) {
+      const [y0, r0] = a[i - 1];
+      const [y1, r1] = a[i];
+      return r0 + ((r1 - r0) * (year - y0)) / (y1 - y0);
+    }
+  }
+  return a[a.length - 1][1]; // unreachable
+}
+
 /** Years a type stays in production after introduction. */
 export const PLANE_PRODUCTION_YEARS = 30;
 
@@ -721,11 +765,12 @@ export interface WeeklyTotals {
 }
 
 /** Annual rate the bank pays on a positive cash balance. */
-export const depositRate = (): number => DEPOSIT_RATE;
+export const depositRate = (g: GameState): number =>
+  Math.max(0, fedFundsRate(g) - DEPOSIT_SPREAD);
 
 /** Weekly deposit interest the airline earns on its current positive cash. */
 export const cashInterestWeekly = (g: GameState): number =>
-  Math.max(0, g.cash) * DEPOSIT_RATE * (7 / 365);
+  Math.max(0, g.cash) * depositRate(g) * (7 / 365);
 
 /** Current weekly run-rate across the whole airline (a snapshot, not accrued). */
 export function weeklyTotals(g: GameState): WeeklyTotals {
@@ -805,13 +850,15 @@ export function creditLimit(g: GameState): number {
   return Math.min(LOAN_MAX_CREDIT, Math.round(limit));
 }
 
-/** Annual interest rate: lowest when solvent, rising with leverage and losses. */
+/** Annual interest rate: the era's fed funds rate plus a credit spread that
+ *  rises with leverage and losses. */
 export function interestRate(g: GameState): number {
+  const base = fedFundsRate(g);
   const assets = airlineAssets(g);
   const leverage = assets > 0 ? g.debt / assets : g.debt > 0 ? 1 : 0;
-  let rate = LOAN_BASE_RATE + (LOAN_MAX_RATE - LOAN_BASE_RATE) * Math.min(1, leverage);
-  if (operatingNet(g) < 0) rate += 0.02; // a loss-making airline pays more
-  return Math.min(LOAN_MAX_RATE, rate);
+  let rate = base + LOAN_MAX_SPREAD * Math.min(1, leverage);
+  if (operatingNet(g) < 0) rate += LOAN_LOSS_PREMIUM; // a loss-making airline pays more
+  return Math.min(base + LOAN_MAX_SPREAD, rate); // ceiling floats with the era
 }
 
 /** Borrow from the bank, up to the remaining credit line. Returns amount taken. */
