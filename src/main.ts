@@ -1,5 +1,5 @@
 import './ui/styles.css';
-import type { Airport, GameState, Route } from './game/types';
+import type { AircraftType, Airport, GameState, Route } from './game/types';
 import {
   acquireRights,
   advanceDay,
@@ -1046,32 +1046,22 @@ function routesCard(): string {
         }</div>
         <div class="row" style="margin-top:6px">
           <span class="muted">Fare <input type="number" min="20" max="300" step="5" value="${Math.round(r.fareFactor * 100)}" data-act="fare" data-route="${r.id}">%</span>
+          ${upgradeCandidates(r).length ? `<button class="upgrade-btn" data-act="open-upgrade" data-route="${r.id}">↑ Upgrade</button>` : ''}
         </div>
-        ${upgradeControl(r)}
       </div>`;
     })
     .join('');
   return collapsibleCard('routes', `Routes (${game.routes.length})`, rows);
 }
 
-/** Dropdown to swap a route's whole fleet to a newer type, each option showing the net cost. */
-function upgradeControl(r: Route): string {
-  if (planesOnRoute(game, r.id).length === 0) return '';
+/** Available in-range types worth switching a route's fleet to (excludes its current type). */
+function upgradeCandidates(r: Route): AircraftType[] {
+  const planes = planesOnRoute(game, r.id);
+  if (planes.length === 0) return [];
   const longest = routeMaxLeg(game, r);
-  const candidates = availableTypes(game).filter((t) => t.range >= longest);
-  if (candidates.length === 0) return '';
-  const opts = [`<option value="">Upgrade fleet…</option>`]
-    .concat(
-      candidates.map((t) => {
-        const q = upgradeRouteQuote(game, r.id, t.id);
-        const delta = `${q.net >= 0 ? '+' : '−'}${money(Math.abs(q.net))}`;
-        const afford = game.cash >= q.net;
-        const name = t.name.split(' (')[0];
-        return `<option value="${t.id}" ${afford ? '' : 'disabled'}>↑ ${name} — ${delta}</option>`;
-      }),
-    )
-    .join('');
-  return `<div class="row" style="margin-top:6px"><select style="width:100%" data-act="upgrade-route" data-route="${r.id}">${opts}</select></div>`;
+  return availableTypes(game).filter(
+    (t) => t.range >= longest && !planes.every((p) => p.typeId === t.id),
+  );
 }
 
 function fleetCard(): string {
@@ -1164,6 +1154,9 @@ sidebar.addEventListener('click', (e) => {
       flash(sellPlane(game, btn.dataset.plane!));
       render();
       break;
+    case 'open-upgrade':
+      showUpgradeSelect(btn.dataset.route!);
+      break;
   }
 });
 
@@ -1172,10 +1165,6 @@ sidebar.addEventListener('change', (e) => {
   if (el.dataset.act === 'assign') {
     const sel = el as unknown as HTMLSelectElement;
     flash(assignPlane(game, el.dataset.plane!, sel.value || null));
-    render();
-  } else if (el.dataset.act === 'upgrade-route') {
-    const sel = el as unknown as HTMLSelectElement;
-    if (sel.value) flash(upgradeRoute(game, el.dataset.route!, sel.value));
     render();
   } else if (el.dataset.act === 'fare') {
     const input = el as unknown as HTMLInputElement;
@@ -1231,6 +1220,62 @@ function showHomeSelect() {
   }
   homeSelectEl.classList.remove('hidden');
 }
+
+const upgradeSelectEl = document.getElementById('upgrade-select')!;
+const upgradeTitleEl = document.getElementById('upgrade-title')!;
+const upgradeSubEl = document.getElementById('upgrade-sub')!;
+const upgradeListEl = document.getElementById('upgrade-list')!;
+
+const hideUpgradeSelect = () => upgradeSelectEl.classList.add('hidden');
+
+/** Popup (starter-airport style) to swap a route's whole fleet to a newer type. */
+function showUpgradeSelect(routeId: string) {
+  const r = game.routes.find((x) => x.id === routeId);
+  if (!r) return;
+  const candidates = upgradeCandidates(r);
+  if (candidates.length === 0) return;
+  const planes = planesOnRoute(game, r.id);
+  // Describe what's flying the route now, e.g. "2 × Dash 8 Q400".
+  const counts = new Map<string, number>();
+  for (const p of planes) counts.set(p.typeId, (counts.get(p.typeId) ?? 0) + 1);
+  const current = [...counts]
+    .map(([id, n]) => `${n} × ${typeById(game, id).name.split(' (')[0]}`)
+    .join(', ');
+
+  upgradeTitleEl.textContent = `↑ Upgrade fleet · ${routeLabel(game, r)}`;
+  upgradeSubEl.textContent = `Flying ${current} now. Picking a type sells the current plane${planes.length === 1 ? '' : 's'} and buys replacements in place — the route stays covered.`;
+  upgradeListEl.innerHTML = '';
+  for (const t of candidates) {
+    const q = upgradeRouteQuote(game, r.id, t.id);
+    const afford = game.cash >= q.net;
+    const delta = `${q.net >= 0 ? '+' : '−'}${money(Math.abs(q.net))}`;
+    const netCls = q.net < 0 ? 'good' : afford ? '' : 'bad';
+    const btn = document.createElement('button');
+    btn.className = 'upgrade-opt';
+    btn.disabled = !afford;
+    btn.innerHTML =
+      `<div class="up-top"><span class="up-name">${t.name.split(' (')[0]}</span>` +
+      `<span class="up-stats">${t.capacity} seats · ${t.range.toLocaleString()} km · ${t.speed} km/h</span></div>` +
+      `<div class="up-bot"><span class="up-calc">buy ${money(q.buyCost)} − sell ${money(q.resale)}</span>` +
+      `<span class="up-net ${netCls}">${afford ? delta : `need ${money(q.net)}`}</span></div>`;
+    btn.addEventListener('click', () => {
+      hideUpgradeSelect();
+      flash(upgradeRoute(game, r.id, t.id));
+      render();
+    });
+    upgradeListEl.appendChild(btn);
+  }
+  upgradeSelectEl.classList.remove('hidden');
+}
+
+// Dismiss the upgrade popup: Cancel button, backdrop click, or Escape.
+document.getElementById('upgrade-cancel')!.addEventListener('click', hideUpgradeSelect);
+upgradeSelectEl.addEventListener('click', (e) => {
+  if (e.target === upgradeSelectEl) hideUpgradeSelect();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hideUpgradeSelect();
+});
 
 /** Reset to a fresh airline — shows home airport selection first. */
 function resetGame() {
