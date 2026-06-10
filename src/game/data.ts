@@ -1,11 +1,16 @@
 import type { Airport, AircraftType } from './types';
 
-// The airport network: a dense regional core around Charleston, WV (CRW),
-// US national gateways, and the rest of North America & the Caribbean.
+// The airport network: a regional core around Charleston, WV (CRW), US
+// national gateways, and out from there to the whole world.
 //
-// Cut line: ~2M metro nationally, tapering to ~300k inside the Appalachian
-// core (cheap early routes near the home hub). Exceptions for geographic
-// isolation (Boise, Bozeman, Alaska) and tourism (Los Cabos, Maui).
+// Cut line: ~2M metro nationally, tapering to ~700k near the Appalachian
+// core (cheap early routes near the home hub); abroad, the biggest 2-4
+// metros per region. Exceptions for geographic isolation (Boise, Bozeman,
+// Alaska) and tourism (Los Cabos, Maui).
+//
+// Bridge airports (Gander, Keflavik, Midway, Wake…) are tiny size-1 refuel
+// stops, not markets: before long-range jets they're the only way to hop
+// across an ocean one short leg at a time.
 export const AIRPORTS: Airport[] = [
   { id: 'crw', code: 'CRW', city: 'Charleston, WV', lat: 38.37, lon: -81.59, size: 1, population: 250_000 },
   { id: 'clt', code: 'CLT', city: 'Charlotte', lat: 35.21, lon: -80.94, size: 5, population: 2_700_000 },
@@ -15,20 +20,18 @@ export const AIRPORTS: Airport[] = [
   { id: 'cvg', code: 'CVG', city: 'Cincinnati', lat: 39.05, lon: -84.67, size: 3, population: 2_250_000 },
   { id: 'cmh', code: 'CMH', city: 'Columbus', lat: 40.0, lon: -82.89, size: 3, population: 2_150_000 },
   { id: 'ric', code: 'RIC', city: 'Richmond', lat: 37.51, lon: -77.32, size: 2, population: 1_300_000 },
-  { id: 'roa', code: 'ROA', city: 'Roanoke', lat: 37.32, lon: -79.97, size: 1, population: 315_000 },
-  { id: 'lex', code: 'LEX', city: 'Lexington', lat: 38.04, lon: -84.61, size: 2, population: 520_000 },
   { id: 'sdf', code: 'SDF', city: 'Louisville', lat: 38.17, lon: -85.74, size: 3, population: 1_300_000 },
   { id: 'tys', code: 'TYS', city: 'Knoxville', lat: 35.81, lon: -83.99, size: 2, population: 870_000 },
   { id: 'gso', code: 'GSO', city: 'Greensboro', lat: 36.1, lon: -79.94, size: 2, population: 780_000 },
   { id: 'rdu', code: 'RDU', city: 'Raleigh-Durham', lat: 35.88, lon: -78.79, size: 4, population: 2_000_000 },
   { id: 'orf', code: 'ORF', city: 'Norfolk', lat: 36.89, lon: -76.2, size: 2, population: 1_800_000 },
+  // (Roanoke, Lexington, Asheville trimmed: too small to read on a world map.)
   { id: 'bwi', code: 'BWI', city: 'Baltimore', lat: 39.18, lon: -76.67, size: 4, population: 2_800_000 },
   { id: 'phl', code: 'PHL', city: 'Philadelphia', lat: 39.87, lon: -75.24, size: 5, population: 6_200_000 },
   { id: 'ind', code: 'IND', city: 'Indianapolis', lat: 39.72, lon: -86.29, size: 4, population: 2_100_000 },
   { id: 'dtw', code: 'DTW', city: 'Detroit', lat: 42.21, lon: -83.35, size: 4, population: 4_300_000 },
   { id: 'bna', code: 'BNA', city: 'Nashville', lat: 36.13, lon: -86.68, size: 4, population: 2_000_000 },
   { id: 'buf', code: 'BUF', city: 'Buffalo', lat: 42.94, lon: -78.73, size: 3, population: 1_100_000 },
-  { id: 'avl', code: 'AVL', city: 'Asheville', lat: 35.43, lon: -82.54, size: 2, population: 470_000 },
   // National gateways — big out-of-region hubs the regional network feeds into.
   { id: 'bos', code: 'BOS', city: 'Boston', lat: 42.36, lon: -71.01, size: 5, population: 4_900_000},
   { id: 'jfk', code: 'JFK', city: 'New York', lat: 40.64, lon: -73.78, size: 6, population: 19_500_000},
@@ -81,8 +84,8 @@ export const AIRPORTS: Airport[] = [
   { id: 'yeg', code: 'YEG', city: 'Edmonton', lat: 53.31, lon: -113.58, size: 3, population: 1_500_000 },
   { id: 'yow', code: 'YOW', city: 'Ottawa', lat: 45.32, lon: -75.67, size: 3, population: 1_500_000 },
   { id: 'ywg', code: 'YWG', city: 'Winnipeg', lat: 49.91, lon: -97.24, size: 2, population: 850_000 },
-  { id: 'yqb', code: 'YQB', city: 'Quebec City', lat: 46.79, lon: -71.38, size: 2, population: 840_000 },
   { id: 'yhz', code: 'YHZ', city: 'Halifax', lat: 44.88, lon: -63.51, size: 2, population: 480_000 },
+  // (Quebec City trimmed — sits on top of Montreal/Ottawa at world scale.)
   // Mexico
   { id: 'mex', code: 'MEX', city: 'Mexico City', lat: 19.44, lon: -99.07, size: 6, population: 22_000_000 },
   { id: 'cun', code: 'CUN', city: 'Cancún', lat: 21.04, lon: -86.87, size: 5, population: 1_000_000 },
@@ -114,6 +117,91 @@ export const AIRPORTS: Airport[] = [
   { id: 'gcm', code: 'GCM', city: 'Grand Cayman', lat: 19.29, lon: -81.36, size: 1, population: 70_000 },
   { id: 'stt', code: 'STT', city: 'St. Thomas', lat: 18.34, lon: -64.97, size: 1, population: 100_000 },
   { id: 'pls', code: 'PLS', city: 'Providenciales', lat: 21.77, lon: -72.27, size: 1, population: 45_000 },
+
+  // ---- North Atlantic bridges -------------------------------------------
+  // Tiny refuel stops, not markets. Before long-range jets, the only way
+  // across the Atlantic is to island-hop: JFK→Gander→Keflavik→Shannon→Europe,
+  // each leg short enough for a DC-4 or Constellation.
+  { id: 'yqx', code: 'YQX', city: 'Gander', lat: 48.95, lon: -54.57, size: 1, population: 12_000 },
+  { id: 'yyr', code: 'YYR', city: 'Goose Bay', lat: 53.32, lon: -60.42, size: 1, population: 8_000 },
+  { id: 'goh', code: 'GOH', city: 'Nuuk', lat: 64.19, lon: -51.68, size: 1, population: 19_000 },
+  { id: 'kef', code: 'KEF', city: 'Reykjavík', lat: 63.99, lon: -22.6, size: 2, population: 230_000 },
+  { id: 'snn', code: 'SNN', city: 'Shannon', lat: 52.7, lon: -8.92, size: 1, population: 60_000 },
+  { id: 'pdl', code: 'PDL', city: 'Azores', lat: 37.74, lon: -25.7, size: 1, population: 140_000 },
+
+  // ---- Europe -----------------------------------------------------------
+  { id: 'lhr', code: 'LHR', city: 'London', lat: 51.47, lon: -0.45, size: 6, population: 14_300_000 },
+  { id: 'cdg', code: 'CDG', city: 'Paris', lat: 49.01, lon: 2.55, size: 6, population: 12_400_000 },
+  { id: 'ams', code: 'AMS', city: 'Amsterdam', lat: 52.31, lon: 4.76, size: 5, population: 2_500_000 },
+  { id: 'fra', code: 'FRA', city: 'Frankfurt', lat: 50.03, lon: 8.56, size: 5, population: 5_800_000 },
+  { id: 'mad', code: 'MAD', city: 'Madrid', lat: 40.47, lon: -3.56, size: 5, population: 6_700_000 },
+  { id: 'bcn', code: 'BCN', city: 'Barcelona', lat: 41.3, lon: 2.08, size: 4, population: 5_600_000 },
+  { id: 'fco', code: 'FCO', city: 'Rome', lat: 41.8, lon: 12.25, size: 5, population: 4_300_000 },
+  { id: 'muc', code: 'MUC', city: 'Munich', lat: 48.35, lon: 11.79, size: 4, population: 2_600_000 },
+  { id: 'zrh', code: 'ZRH', city: 'Zürich', lat: 47.46, lon: 8.55, size: 3, population: 1_400_000 },
+  { id: 'cph', code: 'CPH', city: 'Copenhagen', lat: 55.62, lon: 12.65, size: 4, population: 2_000_000 },
+  { id: 'osl', code: 'OSL', city: 'Oslo', lat: 60.19, lon: 11.1, size: 3, population: 1_500_000 },
+  { id: 'arn', code: 'ARN', city: 'Stockholm', lat: 59.65, lon: 17.92, size: 4, population: 2_400_000 },
+  { id: 'waw', code: 'WAW', city: 'Warsaw', lat: 52.17, lon: 20.97, size: 4, population: 3_100_000 },
+  { id: 'ath', code: 'ATH', city: 'Athens', lat: 37.94, lon: 23.95, size: 4, population: 3_800_000 },
+  { id: 'dub', code: 'DUB', city: 'Dublin', lat: 53.42, lon: -6.27, size: 4, population: 1_900_000 },
+  { id: 'lis', code: 'LIS', city: 'Lisbon', lat: 38.77, lon: -9.13, size: 4, population: 2_900_000 },
+  { id: 'svo', code: 'SVO', city: 'Moscow', lat: 55.97, lon: 37.41, size: 5, population: 12_600_000 },
+  { id: 'ist', code: 'IST', city: 'Istanbul', lat: 41.26, lon: 28.74, size: 6, population: 15_500_000 },
+
+  // ---- Middle East ------------------------------------------------------
+  { id: 'dxb', code: 'DXB', city: 'Dubai', lat: 25.25, lon: 55.36, size: 6, population: 3_500_000 },
+  { id: 'doh', code: 'DOH', city: 'Doha', lat: 25.27, lon: 51.61, size: 4, population: 2_400_000 },
+  { id: 'tlv', code: 'TLV', city: 'Tel Aviv', lat: 32.01, lon: 34.89, size: 4, population: 4_000_000 },
+  { id: 'ruh', code: 'RUH', city: 'Riyadh', lat: 24.96, lon: 46.7, size: 4, population: 7_700_000 },
+
+  // ---- Africa -----------------------------------------------------------
+  { id: 'cai', code: 'CAI', city: 'Cairo', lat: 30.11, lon: 31.41, size: 5, population: 21_000_000 },
+  { id: 'cmn', code: 'CMN', city: 'Casablanca', lat: 33.37, lon: -7.59, size: 4, population: 3_800_000 },
+  { id: 'los', code: 'LOS', city: 'Lagos', lat: 6.58, lon: 3.32, size: 5, population: 15_400_000 },
+  { id: 'nbo', code: 'NBO', city: 'Nairobi', lat: -1.32, lon: 36.93, size: 4, population: 4_900_000 },
+  { id: 'jnb', code: 'JNB', city: 'Johannesburg', lat: -26.13, lon: 28.25, size: 5, population: 6_200_000 },
+  { id: 'cpt', code: 'CPT', city: 'Cape Town', lat: -33.97, lon: 18.6, size: 3, population: 4_600_000 },
+
+  // ---- Asia -------------------------------------------------------------
+  { id: 'del', code: 'DEL', city: 'Delhi', lat: 28.57, lon: 77.1, size: 6, population: 32_000_000 },
+  { id: 'bom', code: 'BOM', city: 'Mumbai', lat: 19.09, lon: 72.87, size: 6, population: 21_000_000 },
+  { id: 'bkk', code: 'BKK', city: 'Bangkok', lat: 13.69, lon: 100.75, size: 5, population: 10_700_000 },
+  { id: 'sin', code: 'SIN', city: 'Singapore', lat: 1.36, lon: 103.99, size: 5, population: 5_900_000 },
+  { id: 'kul', code: 'KUL', city: 'Kuala Lumpur', lat: 2.74, lon: 101.71, size: 4, population: 8_200_000 },
+  { id: 'cgk', code: 'CGK', city: 'Jakarta', lat: -6.13, lon: 106.66, size: 5, population: 11_000_000 },
+  { id: 'hkg', code: 'HKG', city: 'Hong Kong', lat: 22.31, lon: 113.91, size: 5, population: 7_500_000 },
+  { id: 'pek', code: 'PEK', city: 'Beijing', lat: 40.08, lon: 116.58, size: 6, population: 22_000_000 },
+  { id: 'pvg', code: 'PVG', city: 'Shanghai', lat: 31.14, lon: 121.81, size: 6, population: 29_000_000 },
+  { id: 'icn', code: 'ICN', city: 'Seoul', lat: 37.46, lon: 126.44, size: 5, population: 25_500_000 },
+  { id: 'nrt', code: 'NRT', city: 'Tokyo', lat: 35.77, lon: 140.39, size: 6, population: 37_000_000 },
+  { id: 'mnl', code: 'MNL', city: 'Manila', lat: 14.51, lon: 121.02, size: 5, population: 14_400_000 },
+  { id: 'tpe', code: 'TPE', city: 'Taipei', lat: 25.08, lon: 121.23, size: 4, population: 7_000_000 },
+
+  // ---- Oceania ----------------------------------------------------------
+  { id: 'syd', code: 'SYD', city: 'Sydney', lat: -33.95, lon: 151.18, size: 5, population: 5_300_000 },
+  { id: 'mel', code: 'MEL', city: 'Melbourne', lat: -37.67, lon: 144.84, size: 5, population: 5_100_000 },
+  { id: 'bne', code: 'BNE', city: 'Brisbane', lat: -27.38, lon: 153.12, size: 4, population: 2_600_000 },
+  { id: 'per', code: 'PER', city: 'Perth', lat: -31.94, lon: 115.97, size: 3, population: 2_100_000 },
+  { id: 'akl', code: 'AKL', city: 'Auckland', lat: -37.01, lon: 174.79, size: 4, population: 1_700_000 },
+
+  // ---- Pacific bridges --------------------------------------------------
+  // Mid-ocean refuel stops between Hawaii and Asia/Oceania for short-range craft.
+  { id: 'mdy', code: 'MDY', city: 'Midway Atoll', lat: 28.2, lon: -177.38, size: 1, population: 40 },
+  { id: 'awk', code: 'AWK', city: 'Wake Island', lat: 19.28, lon: 166.64, size: 1, population: 100 },
+  { id: 'gum', code: 'GUM', city: 'Guam', lat: 13.48, lon: 144.8, size: 2, population: 170_000 },
+  { id: 'ppg', code: 'PPG', city: 'Pago Pago', lat: -14.33, lon: -170.71, size: 1, population: 50_000 },
+  { id: 'nan', code: 'NAN', city: 'Nadi (Fiji)', lat: -17.75, lon: 177.45, size: 1, population: 200_000 },
+
+  // ---- South America ----------------------------------------------------
+  { id: 'bog', code: 'BOG', city: 'Bogotá', lat: 4.7, lon: -74.15, size: 5, population: 11_300_000 },
+  { id: 'ccs', code: 'CCS', city: 'Caracas', lat: 10.6, lon: -66.99, size: 4, population: 2_900_000 },
+  { id: 'uio', code: 'UIO', city: 'Quito', lat: -0.13, lon: -78.36, size: 3, population: 2_000_000 },
+  { id: 'lim', code: 'LIM', city: 'Lima', lat: -12.02, lon: -77.11, size: 5, population: 10_900_000 },
+  { id: 'gru', code: 'GRU', city: 'São Paulo', lat: -23.43, lon: -46.47, size: 6, population: 22_400_000 },
+  { id: 'gig', code: 'GIG', city: 'Rio de Janeiro', lat: -22.81, lon: -43.25, size: 5, population: 13_500_000 },
+  { id: 'scl', code: 'SCL', city: 'Santiago', lat: -33.39, lon: -70.79, size: 4, population: 7_100_000 },
+  { id: 'eze', code: 'EZE', city: 'Buenos Aires', lat: -34.82, lon: -58.54, size: 5, population: 15_400_000 },
 ];
 
 // The fleet ladder: real aircraft from puddle-jumpers up to a widebody that

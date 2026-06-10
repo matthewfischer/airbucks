@@ -216,9 +216,9 @@ function geojsonRings(gj: {
 }
 
 async function loadMap() {
-  // US states plus the rest of North America & the Caribbean (country outlines).
+  // US states for home-region detail, plus world country outlines for everywhere else.
   const results = await Promise.allSettled(
-    ['./na-countries.json', './us-states.json'].map(async (url) => {
+    ['./world-countries.json', './us-states.json'].map(async (url) => {
       const res = await fetch(url);
       return geojsonRings(await res.json());
     }),

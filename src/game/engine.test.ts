@@ -726,7 +726,7 @@ describe('capacity-constrained allocation', () => {
   });
 
   it('a demand-limited route stays below capacity (load factor < 1)', () => {
-    const route = addRoute(['crw', 'roa'], 'e175'); // tiny 1x1 market
+    const route = addRoute(['crw', 'gso'], 'e175'); // tiny 1x1 market
     const rs = evaluateRoute(g, route);
     expect(rs.loadFactor).toBeLessThan(1);
   });
@@ -752,7 +752,7 @@ describe('detour cap', () => {
 describe('cost right-sizing & multi-plane capacity', () => {
   it('a lightly-loaded route costs far less to fly than a capacity-capped one', () => {
     g.day = 21915; // 2010 — saab340 still in production
-    const thin = addRoute(['crw', 'roa'], 'saab340'); // tiny market, low load
+    const thin = addRoute(['crw', 'gso'], 'saab340'); // small market (1x2), low load
     const capped = addRoute(['clt', 'dca'], 'saab340');
     setFareFactor(g, capped.id, 0.5); // overflow the seats -> full flying
     const net = evaluateNetwork(g);
@@ -761,7 +761,7 @@ describe('cost right-sizing & multi-plane capacity', () => {
     const upkeep = AIRCRAFT_TYPES.find((t) => t.id === 'saab340')!.weeklyUpkeep;
     expect(thinCost).toBeLessThan(cappedCost);
     expect(thinCost).toBeGreaterThanOrEqual(upkeep); // upkeep is always paid
-    expect(thinCost).toBeLessThan(upkeep * 1.5); // little actual flying
+    expect(thinCost).toBeLessThan(upkeep * 1.7); // little actual flying
   });
 
   it('a second plane on a capped route increases passengers carried', () => {
@@ -896,13 +896,18 @@ describe('data sanity & helpers', () => {
     }
   });
 
-  it('the longest-range aircraft can reach the longest market nonstop', () => {
-    let longest = 0;
-    for (let i = 0; i < AIRPORTS.length; i++)
-      for (let j = i + 1; j < AIRPORTS.length; j++)
-        longest = Math.max(longest, distanceKm(AIRPORTS[i], AIRPORTS[j]));
+  it('no airport is stranded beyond the longest-range jet from every neighbor', () => {
+    // On a global map the farthest market pair is ~half the planet — no plane
+    // flies that nonstop (that's why bridge airports exist). The invariant that
+    // matters: every airport has at least one neighbor the best jet can reach,
+    // so the whole network is connectable with the top of the fleet.
     const maxRange = Math.max(...AIRCRAFT_TYPES.map((t) => t.range));
-    expect(maxRange).toBeGreaterThanOrEqual(longest);
+    for (const a of AIRPORTS) {
+      const nearest = Math.min(
+        ...AIRPORTS.filter((b) => b.id !== a.id).map((b) => distanceKm(a, b)),
+      );
+      expect(nearest, a.code).toBeLessThanOrEqual(maxRange);
+    }
   });
 
   it('starting cash affords at least the cheapest aircraft', () => {
@@ -963,10 +968,10 @@ describe('landing rights', () => {
     g.rights = ['crw'];
     g.cash = 1_000_000_000;
     const before = reputation(g);
-    expect(acquireRights(g, 'roa')).toBeNull();
-    expect(holdsRights(g, 'roa')).toBe(true);
+    expect(acquireRights(g, 'gso')).toBeNull();
+    expect(holdsRights(g, 'gso')).toBe(true);
     expect(reputation(g)).toBe(before + 1);
-    expect(g.cash).toBe(1_000_000_000 - rightsFee(g, airportById(g, 'roa')));
+    expect(g.cash).toBe(1_000_000_000 - rightsFee(g, airportById(g, 'gso')));
   });
 
   it('refuses to acquire a locked airport, and refuses when broke', () => {
@@ -1004,7 +1009,7 @@ describe('landing rights', () => {
   it('slot cap: a held airport shows 1 slot used, unacquired shows 0', () => {
     g.rights = ['crw'];
     expect(airportSlotsUsed(g, 'crw')).toBe(1);
-    expect(airportSlotsUsed(g, 'roa')).toBe(0);
+    expect(airportSlotsUsed(g, 'gso')).toBe(0);
   });
 
   it('openRoute requires rights at every stop', () => {

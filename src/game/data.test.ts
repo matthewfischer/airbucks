@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AIRPORTS, AIRCRAFT_TYPES, LEGACY_TYPE_IDS } from './data';
+import { distanceKm } from './geo';
 
 describe('airport data', () => {
   it('has unique ids and codes', () => {
@@ -13,12 +14,12 @@ describe('airport data', () => {
     for (const a of AIRPORTS) expect(a.id).toBe(a.code.toLowerCase());
   });
 
-  it('keeps every airport within North America / Caribbean / Pacific bounds', () => {
+  it('keeps every airport within valid world coordinate bounds', () => {
     for (const a of AIRPORTS) {
-      expect(a.lat, a.code).toBeGreaterThan(8);
-      expect(a.lat, a.code).toBeLessThan(70);
-      expect(a.lon, a.code).toBeGreaterThan(-165);
-      expect(a.lon, a.code).toBeLessThan(-55);
+      expect(a.lat, a.code).toBeGreaterThanOrEqual(-90);
+      expect(a.lat, a.code).toBeLessThanOrEqual(90);
+      expect(a.lon, a.code).toBeGreaterThanOrEqual(-180);
+      expect(a.lon, a.code).toBeLessThanOrEqual(180);
     }
   });
 
@@ -35,6 +36,37 @@ describe('airport data', () => {
     const ids = new Set(AIRPORTS.map((a) => a.id));
     for (const id of ['yyz', 'yvr', 'mex', 'cun', 'pty', 'sju', 'hav', 'bgi', 'anc', 'hnl'])
       expect(ids.has(id), id).toBe(true);
+  });
+
+  it('covers the rest of the world (every populated continent)', () => {
+    const ids = new Set(AIRPORTS.map((a) => a.id));
+    // Europe, Middle East, Africa, Asia, Oceania, South America.
+    for (const id of ['lhr', 'cdg', 'ist', 'dxb', 'cai', 'jnb', 'del', 'nrt', 'syd', 'gru'])
+      expect(ids.has(id), id).toBe(true);
+  });
+
+  it('has ocean bridge airports for the pre-jet era as tiny markets', () => {
+    const byId = new Map(AIRPORTS.map((a) => [a.id, a]));
+    // Pure refuel stops: no market of their own (Reykjavík/Guam are slightly
+    // bigger as real towns, so they're checked only for existence below).
+    for (const id of ['yqx', 'snn', 'goh', 'mdy', 'awk']) {
+      const a = byId.get(id);
+      expect(a, id).toBeDefined();
+      expect(a!.size, id).toBe(1); // refuel stops, not destinations
+    }
+    // Every Atlantic and Pacific bridge exists.
+    for (const id of ['kef', 'pdl', 'gum', 'nan', 'ppg'])
+      expect(byId.has(id), id).toBe(true);
+  });
+
+  it('chains short bridge legs across the Atlantic within early-prop range', () => {
+    const byId = new Map(AIRPORTS.map((a) => [a.id, a]));
+    const hop = (x: string, y: string) => distanceKm(byId.get(x)!, byId.get(y)!);
+    // JFK→Gander→Keflavik→Shannon: every leg flyable by a DC-4 (4000 km range).
+    for (const [x, y] of [['jfk', 'yqx'], ['yqx', 'kef'], ['kef', 'snn']])
+      expect(hop(x, y), `${x}->${y}`).toBeLessThan(4000);
+    // The nonstop JFK→London it replaces is out of early-prop reach.
+    expect(hop('jfk', 'lhr')).toBeGreaterThan(4000);
   });
 });
 
