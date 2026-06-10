@@ -127,8 +127,25 @@ export function tripsPerWeek(
   return Math.max(1, Math.floor(WEEKLY_FLY_HOURS / circuitHours));
 }
 
-/** Cruise speed at which travelers neither pay a premium nor a discount. */
-const BASELINE_SPEED = 700;
+/** Cap on the cruise speed travelers will reward — the jet-age plateau. */
+const BASELINE_SPEED_CAP = 700;
+
+/** The speed travelers judge fares against: the era's fastest available type. */
+export const baselineSpeed = (g: GameState): number =>
+  Math.min(
+    BASELINE_SPEED_CAP,
+    Math.max(...availableTypes(g).map((t) => t.speed)),
+  );
+
+/**
+ * Fare multiplier vs. the era's best: the fastest plane of the day flies
+ * penalty-free; slower craft are discounted at half their speed gap, so a
+ * piston liner loses ~15% once turboprops arrive and ~25% in the jet age.
+ */
+export const speedFareMultiplier = (speed: number, baseline: number): number =>
+  speed >= baseline
+    ? Math.min(1.2, speed / baseline)
+    : Math.max(0.7, 1 + (speed / baseline - 1) / 2);
 /** Distance (km) at which the distance factor is exactly 1. */
 const REF_DISTANCE = 400;
 /** Fraction of through-travelers willing to accept each extra connection. */
@@ -304,6 +321,7 @@ export function evaluateNetwork(g: GameState): NetworkResult {
     fare: number;
   }
   const markets: Mkt[] = [];
+  const baseline = baselineSpeed(g);
   const aps = g.airports;
   for (let i = 0; i < aps.length; i++) {
     for (let j = i + 1; j < aps.length; j++) {
@@ -322,7 +340,7 @@ export function evaluateNetwork(g: GameState): NetworkResult {
         wFare += (li.fareCapSum / li.capacity) * li.distance;
         wSum += li.distance;
       }
-      const speedPremium = Math.max(0.85, Math.min(1.2, wSpeed / wSum / BASELINE_SPEED));
+      const speedPremium = speedFareMultiplier(wSpeed / wSum, baseline);
       const fareFactor = wFare / wSum;
       const demandMult = Math.max(0.1, Math.min(1.5, 2 - fareFactor / speedPremium));
       const demand =
@@ -405,8 +423,7 @@ export function evaluateNetwork(g: GameState): NetworkResult {
     rs.loadFactor = maxLF;
     rs.passengers = maxLegPax;
     rs.connectingPassengers = connectingOnMaxLeg;
-    rs.speedPremium =
-      wDist > 0 ? Math.max(0.85, Math.min(1.2, wSpeed / wDist / BASELINE_SPEED)) : 1;
+    rs.speedPremium = wDist > 0 ? speedFareMultiplier(wSpeed / wDist, baseline) : 1;
     rs.cost = maxLF * (routeFly.get(route.id) ?? 0) + (routeUp.get(route.id) ?? 0);
     rs.profit = rs.revenue - rs.cost;
     totalCost += rs.cost;

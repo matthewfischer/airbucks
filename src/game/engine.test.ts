@@ -7,6 +7,7 @@ import {
   airportById,
   assignPlane,
   availableTypes,
+  baselineSpeed,
   borrow,
   acquireRights,
   buyPlane,
@@ -40,6 +41,7 @@ import {
   airportSlotsUsed,
   MAX_HOME_SIZE,
   setFareFactor,
+  speedFareMultiplier,
   tripsPerWeek,
   weeklyTotals,
   weekNumber,
@@ -345,9 +347,37 @@ describe('network evaluation', () => {
 
   it('a faster fleet lifts the route speed premium', () => {
     const slow = withRoute(['clt', 'dca'], 'saab340');
-    expect(evaluateRoute(g, slow).speedPremium).toBeCloseTo(0.85, 2);
+    const saab = AIRCRAFT_TYPES.find((t) => t.id === 'saab340')!;
+    expect(evaluateRoute(g, slow).speedPremium).toBeCloseTo(
+      speedFareMultiplier(saab.speed, 700),
+      2,
+    );
     const fast = withRoute(['clt', 'cvg'], 'e175');
     expect(evaluateRoute(g, fast).speedPremium).toBeCloseTo(JET.speed / 700, 2);
+  });
+
+  it('the era’s best plane flies with no speed penalty', () => {
+    g.day = 0; // back to 1950, when the DC-4 is the fastest thing flying
+    const route = withRoute(['crw', 'clt'], 'dc4');
+    expect(evaluateRoute(g, route).speedPremium).toBe(1);
+  });
+
+  it('a speed penalty appears only once faster types enter service', () => {
+    g.day = 0;
+    const route = withRoute(['crw', 'clt'], 'dc4');
+    g.day = 365 * 5; // ~1955: Viscount and Constellation now in service
+    const midEra = evaluateRoute(g, route).speedPremium;
+    expect(midEra).toBeLessThan(1);
+    g.day = 365 * 15; // ~1965: jet age
+    const jetEra = evaluateRoute(g, route).speedPremium;
+    expect(jetEra).toBeLessThan(midEra);
+  });
+
+  it('baseline speed tracks the fastest available type, capped at 700', () => {
+    g.day = 0;
+    expect(baselineSpeed(g)).toBe(365); // DC-4
+    g.day = 365 * 75 + 19; // 2025
+    expect(baselineSpeed(g)).toBe(700);
   });
 
   it('lower fares draw more passengers system-wide (price elasticity)', () => {
