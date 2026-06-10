@@ -97,6 +97,8 @@ popover.style.display = 'none';
 mapWrap.appendChild(popover);
 /** Airport currently shown in the popover, if any. */
 let popAirport: string | null = null;
+/** Measuring pin (⇧-click any airport): popovers show distance from here. */
+let measureFrom: string | null = null;
 
 // ---- Geographic projection ------------------------------------------------
 
@@ -415,6 +417,41 @@ function drawMap() {
   }
   ctx.globalAlpha = 1;
 
+  // Measuring pin: ring it and rule a line with km to the hovered airport.
+  if (measureFrom) {
+    const pin = airportById(game, measureFrom);
+    const pp = airportScreen(pin.id, w, h);
+    const r = (5 + pin.size) * Math.max(0.2, Math.min(1.0, view.scale));
+    ctx.save();
+    ctx.strokeStyle = '#5ac8fa';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.arc(pp.x, pp.y, r + 6, 0, Math.PI * 2);
+    ctx.stroke();
+    if (lastHoveredAirport && lastHoveredAirport !== pin.id) {
+      const other = airportById(game, lastHoveredAirport);
+      const op = airportScreen(other.id, w, h);
+      ctx.beginPath();
+      ctx.moveTo(pp.x, pp.y);
+      ctx.lineTo(op.x, op.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const label = `${distanceKm(pin, other).toLocaleString()} km`;
+      ctx.font = 'bold 12px system-ui';
+      const tw = ctx.measureText(label).width;
+      const lx = (pp.x + op.x) / 2;
+      const ly = (pp.y + op.y) / 2;
+      ctx.fillStyle = '#0b1622';
+      ctx.beginPath();
+      ctx.roundRect(lx - tw / 2 - 5, ly - 10, tw + 10, 20, 6);
+      ctx.fill();
+      ctx.fillStyle = '#5ac8fa';
+      ctx.fillText(label, lx - tw / 2, ly + 4);
+    }
+    ctx.restore();
+  }
+
   drawLegend(w, h);
 }
 
@@ -603,6 +640,13 @@ canvas.addEventListener('click', (e) => {
   for (const ap of game.airports) {
     const p = airportScreen(ap.id, w, h);
     if (Math.hypot(p.x - mx, p.y - my) <= 14) {
+      if (e.shiftKey) {
+        // Toggle the measuring pin — works on any airport, owned or not.
+        measureFrom = measureFrom === ap.id ? null : ap.id;
+        showAirportInfo(ap, p.x, p.y);
+        drawMap();
+        return;
+      }
       if (holdsRights(game, ap.id)) {
         hideAirportPopover();
         addStop(ap.id);
@@ -728,12 +772,16 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
   const slotsTotal = airportSlotsTotal(ap);
   const slotsFull = slotsUsed >= slotsTotal;
 
-  // Distance: from the route being built, else from the nearest held airport.
+  // Distance: from the measuring pin, else the route being built, else the
+  // nearest held airport.
   let distRow = '';
+  const pin = measureFrom && measureFrom !== ap.id ? airportById(game, measureFrom) : null;
   const pathEnd = selected.length
     ? airportById(game, selected[selected.length - 1])
     : null;
-  if (pathEnd && pathEnd.id !== ap.id) {
+  if (pin) {
+    distRow = `<div class="pop-row"><span class="muted">From ${pin.code} (pinned)</span><span>${distanceKm(pin, ap).toLocaleString()} km</span></div>`;
+  } else if (pathEnd && pathEnd.id !== ap.id) {
     distRow = `<div class="pop-row"><span class="muted">From ${pathEnd.code} (path end)</span><span>${distanceKm(pathEnd, ap).toLocaleString()} km</span></div>`;
   } else if (!pathEnd) {
     const near = nearestHeldAirport(game, ap);
@@ -771,7 +819,8 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
     <div class="pop-row"><span class="muted">Airline slots</span><span class="${slotsFull && !held ? 'bad' : ''}">${slotsUsed} / ${slotsTotal}</span></div>
     ${distRow}
     <div class="pop-row"><span class="muted">Demand to your network</span><span>${demand.toLocaleString()}/wk</span></div>
-    ${extra}`;
+    ${extra}
+    <div class="tiny muted" style="margin-top:6px">⇧-click ${measureFrom === ap.id ? 'to unpin' : 'to measure from here'}</div>`;
 
   popover.style.display = 'block';
   const wrapW = mapWrap.clientWidth;
@@ -806,7 +855,13 @@ popover.addEventListener('click', (e) => {
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') hideAirportPopover();
+  if (e.key === 'Escape') {
+    hideAirportPopover();
+    if (measureFrom) {
+      measureFrom = null;
+      drawMap();
+    }
+  }
 });
 
 // ---- HUD + sidebar --------------------------------------------------------
