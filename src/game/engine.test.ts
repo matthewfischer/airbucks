@@ -20,6 +20,7 @@ import {
   fleetValue,
   interestRate,
   money,
+  nearestHeldAirport,
   newGame,
   openRoute,
   holdsRights,
@@ -491,6 +492,22 @@ describe('money formatting', () => {
 
   it('keeps the minus sign for negative amounts', () => {
     expect(money(-85_000_000)).toBe('-$85.0M');
+  });
+});
+
+describe('nearestHeldAirport', () => {
+  it('returns the closest airport with rights, excluding itself', () => {
+    g.rights = ['crw', 'cvg'];
+    const mem = airportById(g, 'mem');
+    const near = nearestHeldAirport(g, mem)!;
+    expect(near.id).toBe('cvg');
+    expect(distanceKm(mem, near)).toBeLessThan(distanceKm(mem, airportById(g, 'crw')));
+  });
+
+  it('skips the airport itself and returns null when nothing else is held', () => {
+    g.rights = ['cvg'];
+    const cvg = airportById(g, 'cvg');
+    expect(nearestHeldAirport(g, cvg)).toBeNull();
   });
 });
 

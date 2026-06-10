@@ -18,6 +18,7 @@ import {
   interestRate,
   money,
   MAX_HOME_SIZE,
+  nearestHeldAirport,
   newGame,
   openRoute,
   pairDemand,
@@ -727,6 +728,19 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
   const slotsTotal = airportSlotsTotal(ap);
   const slotsFull = slotsUsed >= slotsTotal;
 
+  // Distance: from the route being built, else from the nearest held airport.
+  let distRow = '';
+  const pathEnd = selected.length
+    ? airportById(game, selected[selected.length - 1])
+    : null;
+  if (pathEnd && pathEnd.id !== ap.id) {
+    distRow = `<div class="pop-row"><span class="muted">From ${pathEnd.code} (path end)</span><span>${distanceKm(pathEnd, ap).toLocaleString()} km</span></div>`;
+  } else if (!pathEnd) {
+    const near = nearestHeldAirport(game, ap);
+    if (near)
+      distRow = `<div class="pop-row"><span class="muted">From ${near.code} (your nearest)</span><span>${distanceKm(near, ap).toLocaleString()} km</span></div>`;
+  }
+
   let extra = '';
   if (held) {
     const routesHere = game.routes.filter((r) => r.stops.includes(ap.id)).length;
@@ -755,6 +769,7 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
     <div class="pop-row"><span class="muted">Population</span><span>${formatPop(ap.population)}</span></div>
     <div class="pop-row"><span class="muted">Market tier</span><span class="tier">${tier}</span></div>
     <div class="pop-row"><span class="muted">Airline slots</span><span class="${slotsFull && !held ? 'bad' : ''}">${slotsUsed} / ${slotsTotal}</span></div>
+    ${distRow}
     <div class="pop-row"><span class="muted">Demand to your network</span><span>${demand.toLocaleString()}/wk</span></div>
     ${extra}`;
 

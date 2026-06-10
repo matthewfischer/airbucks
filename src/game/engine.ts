@@ -519,6 +519,22 @@ export const rightsAvailable = (g: GameState, airportId: string): boolean => {
   );
 };
 
+/** Nearest airport (other than `a`) where the airline holds rights, or null. */
+export function nearestHeldAirport(g: GameState, a: Airport): Airport | null {
+  let best: Airport | null = null;
+  let bestD = Infinity;
+  for (const id of g.rights) {
+    if (id === a.id) continue;
+    const other = airportById(g, id);
+    const d = distanceKm(a, other);
+    if (d < bestD) {
+      bestD = d;
+      best = other;
+    }
+  }
+  return best;
+}
+
 /** Buy landing rights at an airport. Returns an error string, or null on success. */
 export function acquireRights(g: GameState, airportId: string): string | null {
   const a = airportById(g, airportId);
