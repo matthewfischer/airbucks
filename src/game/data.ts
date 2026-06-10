@@ -2,6 +2,10 @@ import type { Airport, AircraftType } from './types';
 
 // The airport network: a dense regional core around Charleston, WV (CRW),
 // US national gateways, and the rest of North America & the Caribbean.
+//
+// Cut line: ~2M metro nationally, tapering to ~300k inside the Appalachian
+// core (cheap early routes near the home hub). Exceptions for geographic
+// isolation (Boise, Bozeman, Alaska) and tourism (Los Cabos, Maui).
 export const AIRPORTS: Airport[] = [
   { id: 'crw', code: 'CRW', city: 'Charleston, WV', lat: 38.37, lon: -81.59, size: 1, population: 250_000 },
   { id: 'clt', code: 'CLT', city: 'Charlotte', lat: 35.21, lon: -80.94, size: 5, population: 2_700_000 },
@@ -56,6 +60,10 @@ export const AIRPORTS: Airport[] = [
   { id: 'boi', code: 'BOI', city: 'Boise', lat: 43.56, lon: -116.22, size: 2, population: 780_000 },
   { id: 'bzn', code: 'BZN', city: 'Bozeman', lat: 45.78, lon: -111.15, size: 1, population: 120_000 },
   { id: 'chs', code: 'CHS', city: 'Charleston, SC', lat: 32.9, lon: -80.04, size: 2, population: 800_000 },
+  { id: 'smf', code: 'SMF', city: 'Sacramento', lat: 38.7, lon: -121.59, size: 3, population: 2_400_000 },
+  { id: 'mke', code: 'MKE', city: 'Milwaukee', lat: 42.95, lon: -87.9, size: 3, population: 1_600_000 },
+  { id: 'oma', code: 'OMA', city: 'Omaha', lat: 41.3, lon: -95.89, size: 2, population: 970_000 },
+  { id: 'dsm', code: 'DSM', city: 'Des Moines', lat: 41.53, lon: -93.66, size: 2, population: 700_000 },
   // Alaska — ANC is the big trans-Pacific cargo/connection hub.
   { id: 'anc', code: 'ANC', city: 'Anchorage', lat: 61.17, lon: -149.99, size: 3, population: 400_000 },
   { id: 'fai', code: 'FAI', city: 'Fairbanks', lat: 64.82, lon: -147.86, size: 2, population: 95_000 },
