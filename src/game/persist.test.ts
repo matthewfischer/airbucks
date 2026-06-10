@@ -44,6 +44,25 @@ describe('serialize / deserialize', () => {
     expect(restored.fleet).toEqual(src.fleet);
   });
 
+  it('round-trips finance history', () => {
+    const src = playedGame();
+    src.history.push({
+      day: 7, cash: 5_000_000, debt: 1_000_000, fleetValue: 2_000_000,
+      revenue: 300_000, cost: 200_000, interest: 1_000, interestEarned: 100,
+      net: 99_100, pax: 1234,
+    });
+    const restored = deserialize(serialize(src))!;
+    expect(restored.history).toEqual(src.history);
+    applySave(g, restored);
+    expect(g.history).toEqual(src.history);
+  });
+
+  it('tolerates a save with no history field', () => {
+    const raw = JSON.parse(serialize(playedGame())) as Record<string, unknown>;
+    delete raw.history;
+    expect(deserialize(JSON.stringify(raw))!.history).toEqual([]);
+  });
+
   it('rejects malformed JSON', () => {
     expect(deserialize('not json {')).toBeNull();
   });

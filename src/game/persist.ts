@@ -1,9 +1,9 @@
-import type { GameState, Plane, Route } from './types';
+import type { FinanceSnapshot, GameState, Plane, Route } from './types';
 import { LEGACY_TYPE_IDS } from './data';
 import { reseedIds } from './engine';
 
 /** Bump when the save shape changes incompatibly. */
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 /** The persisted slice of a game — only the dynamic fields, not static data. */
 export interface SaveData {
@@ -16,6 +16,7 @@ export interface SaveData {
   fleet: Plane[];
   routes: Route[];
   log: string[];
+  history: FinanceSnapshot[];
 }
 
 /** Serialize a game to a JSON string (airports/aircraft come from data.ts, not saved). */
@@ -30,6 +31,7 @@ export function serialize(g: GameState): string {
     fleet: g.fleet,
     routes: g.routes,
     log: g.log,
+    history: g.history,
   };
   return JSON.stringify(data);
 }
@@ -65,6 +67,7 @@ export function deserialize(json: string): SaveData | null {
     fleet: s.fleet as Plane[],
     routes: s.routes as Route[],
     log: Array.isArray(s.log) ? (s.log as string[]) : [],
+    history: Array.isArray(s.history) ? (s.history as FinanceSnapshot[]) : [],
   };
 }
 
@@ -102,5 +105,6 @@ export function applySave(g: GameState, data: SaveData): void {
   g.routes = routes;
   g.fleet = fleet;
   g.log = data.log;
+  g.history = data.history;
   reseedIds(g);
 }

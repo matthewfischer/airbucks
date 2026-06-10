@@ -50,6 +50,23 @@ export interface Route {
   fareFactor: number;
 }
 
+/** A weekly financial snapshot, recorded over the life of the airline. */
+export interface FinanceSnapshot {
+  /** Simulated day this snapshot was taken (week = day / 7). */
+  day: number;
+  cash: number;
+  debt: number;
+  /** Depreciated book value of the whole fleet at the time. */
+  fleetValue: number;
+  /** Weekly run-rate figures captured at this point. */
+  revenue: number;
+  cost: number;
+  interest: number;
+  interestEarned: number;
+  net: number;
+  pax: number;
+}
+
 export interface GameState {
   /** Simulated days elapsed since the start date. */
   day: number;
@@ -66,4 +83,6 @@ export interface GameState {
   routes: Route[];
   /** Newest-first list of human-readable events. */
   log: string[];
+  /** Oldest-first weekly financial snapshots, for the finance page. */
+  history: FinanceSnapshot[];
 }

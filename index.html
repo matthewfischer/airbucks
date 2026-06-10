@@ -10,6 +10,10 @@
     <div id="app">
       <header id="topbar">
         <div class="brand">✈ AIR BUCKS</div>
+        <nav id="views-nav">
+          <button class="view-tab active" data-view="map">Map</button>
+          <button class="view-tab" data-view="finance">Finance</button>
+        </nav>
         <div id="hud"></div>
         <div id="controls">
           <button id="new-game" title="Start a new game">⟲ New Game</button>
@@ -23,12 +27,15 @@
           <button id="play" class="primary">▶ Play</button>
         </div>
       </header>
-      <main id="stage">
-        <div id="map-wrap">
-          <canvas id="map"></canvas>
-          <button id="reset-view" title="Reset view (or double-click the map)">⤢ Reset view</button>
+      <main id="views">
+        <div id="stage">
+          <div id="map-wrap">
+            <canvas id="map"></canvas>
+            <button id="reset-view" title="Reset view (or double-click the map)">⤢ Reset view</button>
+          </div>
+          <aside id="sidebar"></aside>
         </div>
-        <aside id="sidebar"></aside>
+        <section id="finance" class="hidden"></section>
       </main>
       <footer id="log"></footer>
     </div>

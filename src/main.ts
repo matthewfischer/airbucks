@@ -24,6 +24,7 @@ import {
   openRoute,
   pairDemand,
   planesOnRoute,
+  recordFinanceSnapshot,
   repay,
   reputation,
   requiredReputation,
@@ -49,6 +50,7 @@ import {
 import { distanceKm } from './game/geo';
 import { applySave, deserialize, serialize } from './game/persist';
 import { AIRPORTS } from './game/data';
+import { renderFinance } from './ui/finance';
 
 const game: GameState = newGame('crw');
 (window as unknown as { game: GameState }).game = game;
@@ -92,6 +94,8 @@ const hud = document.getElementById('hud')!;
 const sidebar = document.getElementById('sidebar')!;
 const logEl = document.getElementById('log')!;
 const playBtn = document.getElementById('play') as HTMLButtonElement;
+const stageEl = document.getElementById('stage')!;
+const financeEl = document.getElementById('finance')!;
 
 const mapWrap = document.getElementById('map-wrap')!;
 const popover = document.createElement('div');
@@ -877,11 +881,31 @@ function dateStr(): string {
   });
 }
 
+type View = 'map' | 'finance';
+let currentView: View = 'map';
+
+function setView(view: View) {
+  currentView = view;
+  stageEl.classList.toggle('hidden', view !== 'map');
+  financeEl.classList.toggle('hidden', view !== 'finance');
+  document
+    .querySelectorAll('#views-nav .view-tab')
+    .forEach((b) => b.classList.toggle('active', (b as HTMLElement).dataset.view === view));
+  if (view === 'finance') renderFinance(game, financeEl);
+  else resizeCanvas(); // map was hidden (zero-size); re-fit now that it's visible
+}
+
+document.getElementById('views-nav')!.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest('[data-view]') as HTMLElement | null;
+  if (btn) setView(btn.dataset.view as View);
+});
+
 function render() {
   renderHud();
   renderSidebar();
   renderLog();
   drawMap();
+  if (currentView === 'finance') renderFinance(game, financeEl);
 }
 
 function renderHud() {
@@ -1350,12 +1374,16 @@ function frame(ts: number) {
       dayAccumulator -= 1;
       advanceDay(game);
       sidebarDirty = true;
-      if (game.day % 7 === 0) logWeekly();
+      if (game.day % 7 === 0) {
+        logWeekly();
+        recordFinanceSnapshot(game);
+      }
     }
     updateAnimations(dt);
   }
   renderHud();
   if (sidebarDirty && !sidebar.contains(document.activeElement)) renderSidebar();
+  if (sidebarDirty && currentView === 'finance') renderFinance(game, financeEl);
   drawMap();
   requestAnimationFrame(frame);
 }

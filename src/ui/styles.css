@@ -54,6 +54,10 @@ html, body, #app {
   flex: 1;
 }
 
+#views-nav { display: flex; gap: 2px; background: #0f1d2e; border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+.view-tab { border: none; background: transparent; padding: 6px 14px; border-radius: 6px; color: var(--muted); font-weight: 600; }
+.view-tab.active { background: var(--panel-2); color: var(--accent); }
+
 #controls { display: flex; align-items: center; gap: 12px; }
 #speeds { display: flex; gap: 2px; background: #0f1d2e; border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
 .speed { border: none; background: transparent; padding: 5px 10px; border-radius: 6px; color: var(--muted); }
@@ -90,11 +94,15 @@ button.primary {
 button.primary:hover { filter: brightness(1.08); }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
 
+#views { position: relative; min-height: 0; }
+
 #stage {
   display: grid;
   grid-template-columns: 1fr 360px;
+  height: 100%;
   min-height: 0;
 }
+#stage.hidden { display: none; }
 
 #map-wrap { position: relative; min-width: 0; min-height: 0; }
 #map { width: 100%; height: 100%; display: block; cursor: grab; }
@@ -336,6 +344,54 @@ input[type='number'] { width: 84px; }
 .upgrade-opt .up-net { font-size: 15px; font-weight: 800; color: var(--ink); }
 .upgrade-opt .up-net.good { color: var(--good); }
 .upgrade-opt .up-net.bad { color: var(--bad); }
+
+/* ---- Finance page ---- */
+#finance {
+  display: block;
+  height: 100%;
+  overflow-y: auto;
+  padding: 18px 22px 28px;
+}
+#finance.hidden { display: none; }
+.fin-title { font-size: 18px; font-weight: 800; color: var(--accent); letter-spacing: 0.5px; margin: 0 0 14px; }
+.fin-empty { color: var(--muted); font-size: 14px; padding: 40px 0; }
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.kpi {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.kpi .k-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+.kpi .k-value { font-size: 22px; font-weight: 800; margin-top: 4px; }
+.kpi .k-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+  gap: 16px;
+}
+.chart-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px 10px;
+}
+.chart-card h4 { margin: 0 0 4px; font-size: 13px; color: var(--ink); font-weight: 700; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 6px; font-size: 11px; color: var(--muted); }
+.chart-legend .lg { display: inline-flex; align-items: center; gap: 5px; }
+.chart-legend .sw { width: 12px; height: 3px; border-radius: 2px; display: inline-block; }
+.chart-card svg { width: 100%; height: auto; display: block; }
+.chart-card svg .grid-line { stroke: var(--grid); stroke-width: 1; }
+.chart-card svg .zero-line { stroke: var(--line); stroke-width: 1; }
+.chart-card svg .axis-label { fill: var(--muted); font-size: 11px; }
+.chart-card svg .series { fill: none; stroke-width: 2; }
 
 .overlay-cancel {
   align-self: flex-end;

@@ -74,6 +74,18 @@ export function newGame(homeId: string): GameState {
     fleet: [],
     routes: [],
     log: ['Welcome to Air Bucks! Buy a plane, open a route, then press Play.'],
+    history: [{
+      day: 0,
+      cash: STARTING_CASH,
+      debt: 0,
+      fleetValue: 0,
+      revenue: 0,
+      cost: 0,
+      interest: 0,
+      interestEarned: 0,
+      net: 0,
+      pax: 0,
+    }],
   };
 }
 
@@ -829,6 +841,83 @@ export function fleetValue(g: GameState): number {
 /** Assets backing the airline: spare cash plus fleet book value. */
 export const airlineAssets = (g: GameState): number =>
   Math.max(0, g.cash) + fleetValue(g);
+
+/** Net worth: everything the airline owns minus what it owes. */
+export const equity = (g: GameState): number =>
+  g.cash + fleetValue(g) - g.debt;
+
+/** Capital base for return-on-capital: cash plus fleet, the assets put to work. */
+const capitalEmployed = (assets: number): number => Math.max(1, assets);
+
+/**
+ * Net profit margin for a week: bottom-line net as a share of revenue.
+ * Zero when there's no revenue (rather than undefined).
+ */
+export const profitMargin = (revenue: number, net: number): number =>
+  revenue > 0 ? net / revenue : 0;
+
+/**
+ * Annualized return on capital: a week's net scaled to a year, over the assets
+ * employed. A quick read on how hard the airline's capital is working.
+ */
+export const returnOnCapital = (assets: number, net: number): number =>
+  (net * 52) / capitalEmployed(assets);
+
+export interface FinanceMetrics {
+  cash: number;
+  debt: number;
+  fleetValue: number;
+  /** cash + fleet − debt. */
+  equity: number;
+  /** max(0, cash) + fleet. */
+  assets: number;
+  revenue: number;
+  cost: number;
+  net: number;
+  /** net / revenue. */
+  margin: number;
+  /** annualized net / assets. */
+  roc: number;
+}
+
+/** Current finance KPIs, computed from the live state's weekly run-rate. */
+export function financeMetrics(g: GameState): FinanceMetrics {
+  const w = weeklyTotals(g);
+  const fv = fleetValue(g);
+  const assets = Math.max(0, g.cash) + fv;
+  return {
+    cash: g.cash,
+    debt: g.debt,
+    fleetValue: fv,
+    equity: g.cash + fv - g.debt,
+    assets,
+    revenue: w.revenue,
+    cost: w.cost,
+    net: w.net,
+    margin: profitMargin(w.revenue, w.net),
+    roc: returnOnCapital(assets, w.net),
+  };
+}
+
+/** Append a weekly financial snapshot, capping history to keep saves small. */
+export function recordFinanceSnapshot(g: GameState): void {
+  const w = weeklyTotals(g);
+  g.history.push({
+    day: g.day,
+    cash: g.cash,
+    debt: g.debt,
+    fleetValue: fleetValue(g),
+    revenue: w.revenue,
+    cost: w.cost,
+    interest: w.interest,
+    interestEarned: w.interestEarned,
+    net: w.net,
+    pax: w.pax,
+  });
+  // ~30 years of weekly points is plenty; drop the oldest beyond that.
+  const MAX_SNAPSHOTS = 1600;
+  if (g.history.length > MAX_SNAPSHOTS) g.history.shift();
+}
 
 /** Weekly operating result before debt interest — used to price loan risk. */
 function operatingNet(g: GameState): number {

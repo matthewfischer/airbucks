@@ -16,7 +16,12 @@ import {
   creditLimit,
   depositRate,
   distanceFactor,
+  equity,
   evaluateNetwork,
+  financeMetrics,
+  profitMargin,
+  recordFinanceSnapshot,
+  returnOnCapital,
   evaluateRoute,
   fedFundsRate,
   fleetValue,
@@ -1017,5 +1022,63 @@ describe('national gateways', () => {
     addRoute(['clt', 'lax'], 'e195e2'); // CLT now feeds onward; CRW carries CRW->LAX
     const fed = evaluateRoute(g, spoke).profit;
     expect(fed).toBeGreaterThan(alone);
+  });
+});
+
+describe('finance metrics', () => {
+  it('profit margin is net over revenue, and zero with no revenue', () => {
+    expect(profitMargin(1000, 250)).toBeCloseTo(0.25);
+    expect(profitMargin(0, -50)).toBe(0);
+  });
+
+  it('return on capital annualizes the weekly net over the capital base', () => {
+    expect(returnOnCapital(52_000, 1000)).toBeCloseTo(1); // 1000×52 / 52000
+    expect(returnOnCapital(0, 1000)).toBe(52_000); // guards against /0
+  });
+
+  it('equity is cash plus fleet value minus debt', () => {
+    g.cash = 10_000_000;
+    g.debt = 4_000_000;
+    addRoute(['crw', 'clt']);
+    expect(equity(g)).toBeCloseTo(g.cash + fleetValue(g) - g.debt);
+  });
+
+  it('financeMetrics reflects the current run-rate and balance sheet', () => {
+    addRoute(['crw', 'clt']);
+    const w = weeklyTotals(g);
+    const m = financeMetrics(g);
+    expect(m.cash).toBe(g.cash);
+    expect(m.debt).toBe(g.debt);
+    expect(m.revenue).toBeCloseTo(w.revenue);
+    expect(m.net).toBeCloseTo(w.net);
+    expect(m.assets).toBeCloseTo(Math.max(0, g.cash) + fleetValue(g));
+    expect(m.margin).toBeCloseTo(profitMargin(w.revenue, w.net));
+    expect(m.roc).toBeCloseTo(returnOnCapital(m.assets, w.net));
+  });
+});
+
+describe('finance history', () => {
+  it('newGame seeds a single baseline snapshot', () => {
+    const fresh = newGame('crw');
+    expect(fresh.history).toHaveLength(1);
+    expect(fresh.history[0]).toMatchObject({ day: 0, cash: STARTING_CASH, debt: 0 });
+  });
+
+  it('recordFinanceSnapshot appends a dated weekly snapshot', () => {
+    addRoute(['crw', 'clt']);
+    const before = g.history.length;
+    const w = weeklyTotals(g);
+    recordFinanceSnapshot(g);
+    expect(g.history).toHaveLength(before + 1);
+    const last = g.history[g.history.length - 1];
+    expect(last.day).toBe(g.day);
+    expect(last.revenue).toBeCloseTo(w.revenue);
+    expect(last.net).toBeCloseTo(w.net);
+    expect(last.fleetValue).toBeCloseTo(fleetValue(g));
+  });
+
+  it('caps history length so saves stay small', () => {
+    for (let i = 0; i < 1700; i++) recordFinanceSnapshot(g);
+    expect(g.history.length).toBeLessThanOrEqual(1600);
   });
 });
