@@ -65,6 +65,24 @@ describe('serialize / deserialize', () => {
     expect(deserialize(JSON.stringify(raw))!.negotiations).toEqual([]);
   });
 
+  it('round-trips earned badges, dropping any unknown ids on load', () => {
+    const src = playedGame();
+    src.badges = [
+      { id: 'net-5', day: 100 },
+      { id: 'no-such-badge', day: 200 }, // a badge that no longer exists
+    ];
+    const restored = deserialize(serialize(src))!;
+    expect(restored.badges).toEqual(src.badges);
+    applySave(g, restored);
+    expect(g.badges).toEqual([{ id: 'net-5', day: 100 }]);
+  });
+
+  it('tolerates a save with no badges field', () => {
+    const raw = JSON.parse(serialize(playedGame())) as Record<string, unknown>;
+    delete raw.badges;
+    expect(deserialize(JSON.stringify(raw))!.badges).toEqual([]);
+  });
+
   it('round-trips finance history', () => {
     const src = playedGame();
     src.history.push({

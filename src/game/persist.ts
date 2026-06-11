@@ -1,9 +1,17 @@
-import type { FinanceSnapshot, GameState, Negotiation, Plane, Route } from './types';
+import type {
+  EarnedBadge,
+  FinanceSnapshot,
+  GameState,
+  Negotiation,
+  Plane,
+  Route,
+} from './types';
 import { LEGACY_TYPE_IDS } from './data';
+import { BADGE_IDS } from './badges';
 import { reseedIds } from './engine';
 
 /** Bump when the save shape changes incompatibly. */
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 /** The persisted slice of a game — only the dynamic fields, not static data. */
 export interface SaveData {
@@ -14,6 +22,7 @@ export interface SaveData {
   debt: number;
   rights: string[];
   negotiations: Negotiation[];
+  badges: EarnedBadge[];
   fleet: Plane[];
   routes: Route[];
   log: string[];
@@ -30,6 +39,7 @@ export function serialize(g: GameState): string {
     debt: g.debt,
     rights: g.rights,
     negotiations: g.negotiations,
+    badges: g.badges,
     fleet: g.fleet,
     routes: g.routes,
     log: g.log,
@@ -67,6 +77,7 @@ export function deserialize(json: string): SaveData | null {
     debt: s.debt,
     rights: Array.isArray(s.rights) ? (s.rights as string[]) : [],
     negotiations: Array.isArray(s.negotiations) ? (s.negotiations as Negotiation[]) : [],
+    badges: Array.isArray(s.badges) ? (s.badges as EarnedBadge[]) : [],
     fleet: s.fleet as Plane[],
     routes: s.routes as Route[],
     log: Array.isArray(s.log) ? (s.log as string[]) : [],
@@ -111,6 +122,8 @@ export function applySave(g: GameState, data: SaveData): void {
   g.debt = data.debt;
   g.rights = [...rights];
   g.negotiations = negotiations;
+  // Drop any badges whose definitions no longer exist.
+  g.badges = (data.badges ?? []).filter((b) => BADGE_IDS.has(b.id));
   g.routes = routes;
   g.fleet = fleet;
   g.log = data.log;

@@ -67,6 +67,20 @@ export interface FinanceSnapshot {
   pax: number;
 }
 
+export type Continent =
+  | 'North America'
+  | 'Europe'
+  | 'Asia'
+  | 'Africa'
+  | 'South America'
+  | 'Oceania';
+
+/** A badge the airline has earned, with the day it was awarded. */
+export interface EarnedBadge {
+  id: string;
+  day: number;
+}
+
 /** A slot application in progress: a fee is paid up front, rights land on `opensDay`. */
 export interface Negotiation {
   airportId: string;
@@ -86,6 +100,8 @@ export interface GameState {
   rights: string[];
   /** Slot applications in progress, not yet granted. */
   negotiations: Negotiation[];
+  /** Badges earned, oldest-first. */
+  badges: EarnedBadge[];
   /** IATA id of the player's chosen home airport. */
   homeId: string;
   airports: Airport[];

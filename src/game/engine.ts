@@ -7,6 +7,7 @@ import type {
 } from './types';
 import { AIRCRAFT_TYPES, AIRPORTS, STARTING_CASH } from './data';
 import { distanceKm } from './geo';
+import { checkBadges } from './badges';
 
 /** Usable flying hours per plane per week (≈16h/day, rest is turnaround/maintenance). */
 const WEEKLY_FLY_HOURS = 112;
@@ -82,6 +83,7 @@ export function newGame(homeId: string): GameState {
     homeId,
     rights: [homeId],
     negotiations: [],
+    badges: [],
     airports: AIRPORTS,
     aircraftTypes: AIRCRAFT_TYPES,
     fleet: [],
@@ -915,6 +917,7 @@ export function advanceDay(g: GameState): void {
     const circuits = tripsPerWeek(type, pathLength, rlegs.length);
     plane.kmFlown += (circuits * 2 * pathLength) / 7;
   }
+  checkBadges(g);
 }
 
 export const weekNumber = (g: GameState): number => Math.floor(g.day / 7) + 1;

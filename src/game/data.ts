@@ -1,4 +1,4 @@
-import type { Airport, AircraftType } from './types';
+import type { Airport, AircraftType, Continent } from './types';
 
 // The airport network: a regional core around Charleston, WV (CRW), US
 // national gateways, and out from there to the whole world.
@@ -203,6 +203,32 @@ export const AIRPORTS: Airport[] = [
   { id: 'gig', code: 'GIG', city: 'Rio de Janeiro', lat: -22.81, lon: -43.25, size: 5, population: 13_500_000 },
   { id: 'scl', code: 'SCL', city: 'Santiago', lat: -33.39, lon: -70.79, size: 4, population: 7_100_000 },
   { id: 'eze', code: 'EZE', city: 'Buenos Aires', lat: -34.82, lon: -58.54, size: 5, population: 15_400_000 },
+];
+
+// Overseas markets by continent (the Middle East is folded into Asia). Anything
+// not listed — the home network, Canada, Mexico, Central America, the Caribbean,
+// and the ocean refuel bridges — counts as North America for badge purposes.
+export const CONTINENT_AIRPORTS: Record<Exclude<Continent, 'North America'>, string[]> = {
+  Europe: ['lhr', 'cdg', 'ams', 'fra', 'mad', 'bcn', 'fco', 'muc', 'zrh', 'cph',
+    'osl', 'arn', 'waw', 'ath', 'dub', 'lis', 'svo', 'ist'],
+  Asia: ['dxb', 'doh', 'tlv', 'ruh', 'thr', 'del', 'bom', 'bkk', 'sin', 'kul',
+    'cgk', 'hkg', 'pek', 'pvg', 'icn', 'nrt', 'mnl', 'tpe'],
+  Africa: ['cai', 'cmn', 'los', 'nbo', 'jnb', 'cpt'],
+  Oceania: ['syd', 'mel', 'bne', 'per', 'akl'],
+  'South America': ['bog', 'ccs', 'uio', 'lim', 'gru', 'gig', 'scl', 'eze'],
+};
+
+const CONTINENT_BY_ID = new Map<string, Continent>();
+for (const [continent, ids] of Object.entries(CONTINENT_AIRPORTS))
+  for (const id of ids) CONTINENT_BY_ID.set(id, continent as Continent);
+
+/** Which continent an airport sits on; unlisted airports are North America. */
+export const continentOf = (airportId: string): Continent =>
+  CONTINENT_BY_ID.get(airportId) ?? 'North America';
+
+/** Every continent, home first. */
+export const CONTINENTS: Continent[] = [
+  'North America', 'Europe', 'Asia', 'Africa', 'South America', 'Oceania',
 ];
 
 // The fleet ladder: real aircraft from puddle-jumpers up to a widebody that

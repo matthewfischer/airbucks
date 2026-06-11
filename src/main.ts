@@ -58,6 +58,7 @@ import { distanceKm } from './game/geo';
 import { applySave, deserialize, serialize } from './game/persist';
 import { AIRPORTS } from './game/data';
 import { renderFinance } from './ui/finance';
+import { renderAwards } from './ui/awards';
 
 const game: GameState = newGame('crw');
 (window as unknown as { game: GameState }).game = game;
@@ -103,6 +104,7 @@ const logEl = document.getElementById('log')!;
 const playBtn = document.getElementById('play') as HTMLButtonElement;
 const stageEl = document.getElementById('stage')!;
 const financeEl = document.getElementById('finance')!;
+const awardsEl = document.getElementById('awards')!;
 
 const mapWrap = document.getElementById('map-wrap')!;
 const popover = document.createElement('div');
@@ -944,17 +946,19 @@ function monthYear(day: number): string {
   });
 }
 
-type View = 'map' | 'finance';
+type View = 'map' | 'finance' | 'awards';
 let currentView: View = 'map';
 
 function setView(view: View) {
   currentView = view;
   stageEl.classList.toggle('hidden', view !== 'map');
   financeEl.classList.toggle('hidden', view !== 'finance');
+  awardsEl.classList.toggle('hidden', view !== 'awards');
   document
     .querySelectorAll('#views-nav .view-tab')
     .forEach((b) => b.classList.toggle('active', (b as HTMLElement).dataset.view === view));
   if (view === 'finance') renderFinance(game, financeEl);
+  else if (view === 'awards') renderAwards(game, awardsEl);
   else resizeCanvas(); // map was hidden (zero-size); re-fit now that it's visible
 }
 
@@ -969,6 +973,7 @@ function render() {
   renderLog();
   drawMap();
   if (currentView === 'finance') renderFinance(game, financeEl);
+  else if (currentView === 'awards') renderAwards(game, awardsEl);
 }
 
 function renderHud() {
@@ -1451,6 +1456,7 @@ function frame(ts: number) {
   let sidebarDirty = false;
   if (playing) {
     dayAccumulator += (dt * speed) / DAY_MS;
+    const badgesBefore = game.badges.length;
     while (dayAccumulator >= 1) {
       dayAccumulator -= 1;
       advanceDay(game);
@@ -1460,11 +1466,13 @@ function frame(ts: number) {
         recordFinanceSnapshot(game);
       }
     }
+    if (game.badges.length > badgesBefore) renderLog(); // surface freshly-earned badges
     updateAnimations(dt);
   }
   renderHud();
   if (sidebarDirty && !sidebar.contains(document.activeElement)) renderSidebar();
   if (sidebarDirty && currentView === 'finance') renderFinance(game, financeEl);
+  if (sidebarDirty && currentView === 'awards') renderAwards(game, awardsEl);
   drawMap();
   requestAnimationFrame(frame);
 }
