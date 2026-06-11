@@ -58,7 +58,19 @@ const DEPOSIT_SPREAD = 0.02;
 const RIGHTS_SIZE_REP = [0, 0, 0, 0, 2, 4, 6];
 const RIGHTS_FEE =  [0, 250_000, 750_000, 1_000_000, 3_000_000, 8_000_000, 25_000_000];
 // Max number of airlines that can hold rights at an airport, by size 1..6.
-const AIRPORT_SLOTS = [0, 2, 3, 4, 5, 6, 8];
+// Contested by design: small fields seat few carriers, the largest just six.
+const AIRPORT_SLOTS = [0, 2, 2, 3, 4, 5, 6];
+
+// A slot isn't bought outright — you file an application and wait ~2 months for
+// it to clear. You can only run so many at once, and the cap grows as the
+// network does (start at 2, +1 every 8 airports held).
+const NEGOTIATION_DAYS = 60;
+const NEGOTIATION_BASE = 2;
+const NEGOTIATION_PER_AIRPORTS = 8;
+// Annual gate fee to keep a slot, as a share of its one-time rights fee.
+const GATE_FEE_RATE = 0.1;
+// Fraction of the rights fee refunded when you sell a slot back.
+const SELL_REFUND_RATE = 0.25;
 
 export const MAX_HOME_SIZE = 3;
 
@@ -69,6 +81,7 @@ export function newGame(homeId: string): GameState {
     debt: 0,
     homeId,
     rights: [homeId],
+    negotiations: [],
     airports: AIRPORTS,
     aircraftTypes: AIRCRAFT_TYPES,
     fleet: [],
@@ -597,15 +610,40 @@ export const airportSlotsTotal = (a: Airport): number => AIRPORT_SLOTS[a.size] ?
 export const holdsRights = (g: GameState, airportId: string): boolean =>
   g.rights.includes(airportId);
 
+/** The in-progress slot application for an airport, if any. */
+export const negotiationFor = (g: GameState, airportId: string) =>
+  g.negotiations.find((n) => n.airportId === airportId) ?? null;
+
+/** True if a slot application is already running for this airport. */
+export const isNegotiating = (g: GameState, airportId: string): boolean =>
+  g.negotiations.some((n) => n.airportId === airportId);
+
 /** How many airlines currently hold rights at this airport (player + future AI). */
 export const airportSlotsUsed = (g: GameState, airportId: string): number =>
   holdsRights(g, airportId) ? 1 : 0;
 
-/** True if the airline can acquire this airport now (unlocked, has open slots, not held). */
+/** Concurrent slot applications allowed: 2, plus one per 8 airports held. */
+export const concurrentCap = (g: GameState): number =>
+  NEGOTIATION_BASE + Math.floor(reputation(g) / NEGOTIATION_PER_AIRPORTS);
+
+/** Annual gate fee to keep one airport's slot, in era dollars. */
+export const gateFee = (g: GameState, a: Airport): number =>
+  Math.round(rightsFee(g, a) * GATE_FEE_RATE);
+
+/** Weekly gate fee across every slot the airline holds (a cost). */
+export const gateFeesWeekly = (g: GameState): number =>
+  g.rights.reduce((s, id) => s + gateFee(g, airportById(g, id)), 0) * (7 / 365);
+
+/** Cash back when selling a slot at this airport. */
+export const sellRefund = (g: GameState, a: Airport): number =>
+  Math.round(rightsFee(g, a) * SELL_REFUND_RATE);
+
+/** True if a slot application could be filed now (unlocked, open slot, not held/pending). */
 export const rightsAvailable = (g: GameState, airportId: string): boolean => {
   const a = airportById(g, airportId);
   return (
     !holdsRights(g, airportId) &&
+    !isNegotiating(g, airportId) &&
     reputation(g) >= requiredReputation(a) &&
     airportSlotsUsed(g, airportId) < airportSlotsTotal(a)
   );
@@ -627,19 +665,47 @@ export function nearestHeldAirport(g: GameState, a: Airport): Airport | null {
   return best;
 }
 
-/** Buy landing rights at an airport. Returns an error string, or null on success. */
-export function acquireRights(g: GameState, airportId: string): string | null {
+/** Grant landing rights immediately. Used when a slot application clears. */
+function grantRights(g: GameState, airportId: string): void {
+  if (!g.rights.includes(airportId)) g.rights.push(airportId);
+}
+
+/** File a slot application. Fee is paid up front; rights land after ~2 months.
+ *  Returns an error string, or null on success. */
+export function startNegotiation(g: GameState, airportId: string): string | null {
   const a = airportById(g, airportId);
-  if (holdsRights(g, airportId)) return `Already hold rights at ${a.code}.`;
+  if (holdsRights(g, airportId)) return `Already hold a slot at ${a.code}.`;
+  if (isNegotiating(g, airportId)) return `Already negotiating a slot at ${a.code}.`;
   const need = requiredReputation(a);
   if (reputation(g) < need)
     return `${a.code} is locked — needs a ${need}-airport network (you have ${reputation(g)}).`;
+  if (airportSlotsUsed(g, airportId) >= airportSlotsTotal(a))
+    return `${a.code} is full — no slots available.`;
+  const cap = concurrentCap(g);
+  if (g.negotiations.length >= cap)
+    return `At your negotiation limit (${g.negotiations.length}/${cap}). Wait for one to clear.`;
   const fee = rightsFee(g, a);
   if (g.cash < fee)
-    return `Not enough cash for rights at ${a.code} (${money(fee)}).`;
+    return `Not enough cash for a slot at ${a.code} (${money(fee)}).`;
   g.cash -= fee;
-  g.rights.push(airportId);
-  g.log.unshift(`Acquired landing rights at ${a.code} (${a.city}) for ${money(fee)}.`);
+  g.negotiations.push({ airportId, opensDay: g.day + NEGOTIATION_DAYS, fee });
+  g.log.unshift(`Filed for a slot at ${a.code} (${a.city}) — ${money(fee)}, ~2 months.`);
+  return null;
+}
+
+/** Sell back a slot for a partial refund. Blocked while routes still use it.
+ *  Returns an error string, or null on success. */
+export function sellSlot(g: GameState, airportId: string): string | null {
+  const a = airportById(g, airportId);
+  if (!holdsRights(g, airportId)) return `No slot held at ${a.code}.`;
+  if (airportId === g.homeId) return `Can't sell your home airport.`;
+  const inUse = g.routes.filter((r) => r.stops.includes(airportId)).length;
+  if (inUse > 0)
+    return `Can't sell ${a.code} — ${inUse} route${inUse !== 1 ? 's' : ''} use it.`;
+  const refund = sellRefund(g, a);
+  g.cash += refund;
+  g.rights = g.rights.filter((id) => id !== airportId);
+  g.log.unshift(`Sold the slot at ${a.code} (${a.city}) for ${money(refund)}.`);
   return null;
 }
 
@@ -798,6 +864,7 @@ export function weeklyTotals(g: GameState): WeeklyTotals {
   for (const plane of g.fleet) {
     if (plane.routeId === null) cost += typeById(g, plane.typeId).weeklyUpkeep;
   }
+  cost += gateFeesWeekly(g);
   const interest = g.debt * interestRate(g) * (7 / 365);
   const interestEarned = cashInterestWeekly(g);
   return {
@@ -816,6 +883,17 @@ export function advanceDay(g: GameState): void {
   g.cash += w.net / 7;
   const yearBefore = currentYear(g);
   g.day += 1;
+  // Clear any slot applications that have come through.
+  if (g.negotiations.length) {
+    const cleared = g.negotiations.filter((n) => g.day >= n.opensDay);
+    for (const n of cleared) {
+      grantRights(g, n.airportId);
+      const a = airportById(g, n.airportId);
+      g.log.unshift(`Slot at ${a.code} (${a.city}) is open — you're now flying there.`);
+    }
+    if (cleared.length)
+      g.negotiations = g.negotiations.filter((n) => g.day < n.opensDay);
+  }
   const year = currentYear(g);
   if (year !== yearBefore) {
     for (const t of g.aircraftTypes) {

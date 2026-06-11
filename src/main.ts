@@ -1,7 +1,6 @@
 import './ui/styles.css';
 import type { AircraftType, Airport, GameState, Route } from './game/types';
 import {
-  acquireRights,
   advanceDay,
   airportById,
   assignPlane,
@@ -17,6 +16,13 @@ import {
   evaluateRoute,
   holdsRights,
   interestRate,
+  isNegotiating,
+  negotiationFor,
+  concurrentCap,
+  gateFee,
+  sellSlot,
+  sellRefund,
+  startNegotiation,
   money,
   MAX_HOME_SIZE,
   MAX_ROUTE_LEGS,
@@ -382,8 +388,9 @@ function drawMap() {
     // Three states: held (full), acquirable (dimmed + green "buy" ring you can
     // click on the map), and locked (faint, needs a bigger network).
     const held = holdsRights(game, ap.id);
+    const pending = !held && isNegotiating(game, ap.id);
     const acquirable = !held && rightsAvailable(game, ap.id);
-    ctx.globalAlpha = held ? 1 : acquirable ? 0.7 : 0.28;
+    ctx.globalAlpha = held ? 1 : pending || acquirable ? 0.7 : 0.28;
 
     if (ap.id === game.homeId) {
       ctx.beginPath();
@@ -400,6 +407,7 @@ function drawMap() {
     ctx.strokeStyle = isStop ? '#ffffff' : '#0b1622';
     ctx.stroke();
     if (acquirable) acquireRing(p.x, p.y, r + 3, false);
+    else if (pending) pendingRing(p.x, p.y, r + 3);
 
     // Hide labels for small airports when zoomed out; home always shows.
     const isHome = ap.id === game.homeId;
@@ -474,6 +482,19 @@ function acquireRing(x: number, y: number, r: number, square: boolean) {
   ctx.beginPath();
   if (square) ctx.roundRect(x - r, y - r, r * 2, r * 2, 4);
   else ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Amber dashed ring: a slot application is in progress here. */
+function pendingRing(x: number, y: number, r: number) {
+  ctx.save();
+  ctx.globalAlpha = 0.95;
+  ctx.setLineDash([2, 4]);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#f5a623';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
 }
@@ -658,7 +679,7 @@ canvas.addEventListener('click', (e) => {
       if (holdsRights(game, ap.id)) {
         hideAirportPopover();
         addStop(ap.id);
-      } else if (rightsAvailable(game, ap.id)) {
+      } else if (rightsAvailable(game, ap.id) || isNegotiating(game, ap.id)) {
         showAirportInfo(ap, p.x, p.y);
       } else {
         hideAirportPopover();
@@ -801,6 +822,10 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
       distRow = `<div class="pop-row"><span class="muted">From ${near.code} (your nearest)</span><span>${distanceKm(near, ap).toLocaleString()} km</span></div>`;
   }
 
+  const pending = negotiationFor(game, ap.id);
+  const cap = concurrentCap(game);
+  const atCap = game.negotiations.length >= cap;
+
   let extra = '';
   if (held) {
     const routesHere = game.routes.filter((r) => r.stops.includes(ap.id)).length;
@@ -808,14 +833,31 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
       const r = game.routes.find((r) => r.id === p.routeId);
       return r?.stops.includes(ap.id);
     }).length;
-    extra = `<div class="pop-row"><span class="muted">Your operation</span><span>${routesHere} route${routesHere !== 1 ? 's' : ''} · ${planesHere} plane${planesHere !== 1 ? 's' : ''}</span></div>`;
+    const isHome = ap.id === game.homeId;
+    const refund = sellRefund(game, ap);
+    extra = `
+      <div class="pop-row"><span class="muted">Your operation</span><span>${routesHere} route${routesHere !== 1 ? 's' : ''} · ${planesHere} plane${planesHere !== 1 ? 's' : ''}</span></div>
+      <div class="pop-row"><span class="muted">Gate fee</span><span>${money(gateFee(game, ap))}/yr</span></div>
+      ${isHome
+        ? ''
+        : routesHere > 0
+          ? `<div class="tiny muted" style="margin-top:6px">Close its ${routesHere} route${routesHere !== 1 ? 's' : ''} to sell this slot.</div>`
+          : `<button class="pop-buy" data-pop="sell">Sell slot · +${money(refund)}</button>`}`;
+  } else if (pending) {
+    extra = `<div class="pop-row"><span class="muted">Slot application</span><span class="good">opens ${monthYear(pending.opensDay)}</span></div>`;
   } else if (slotsFull) {
     extra = `<div class="tiny muted" style="margin-top:6px">No slots available (${slotsUsed}/${slotsTotal} taken)</div>`;
   } else if (acquirable) {
+    const blocked = !afford || atCap;
+    const label = !afford
+      ? `Need ${money(fee)}`
+      : atCap
+        ? `Limit reached (${game.negotiations.length}/${cap})`
+        : `Apply for slot · ${money(fee)}`;
     extra = `
-      <div class="pop-row"><span class="muted">Landing-rights fee</span><span class="${afford ? '' : 'bad'}">${money(fee)}</span></div>
-      <button class="pop-buy ${afford ? 'primary' : ''}" data-pop="buy" ${afford ? '' : 'disabled'}>
-        ${afford ? `Acquire · ${money(fee)}` : `Need ${money(fee)}`}</button>`;
+      <div class="pop-row"><span class="muted">Slot fee</span><span class="${afford ? '' : 'bad'}">${money(fee)}</span></div>
+      <div class="pop-row"><span class="muted">Negotiation</span><span>~2 months · ${game.negotiations.length}/${cap} open</span></div>
+      <button class="pop-buy ${blocked ? '' : 'primary'}" data-pop="buy" ${blocked ? 'disabled' : ''}>${label}</button>`;
   } else {
     const need = requiredReputation(ap);
     extra = `<div class="tiny muted" style="margin-top:6px">Locked — needs a ${need}-airport network (you have ${reputation(game)})</div>`;
@@ -860,7 +902,11 @@ popover.addEventListener('click', (e) => {
   if (btn.dataset.pop === 'close') {
     hideAirportPopover();
   } else if (btn.dataset.pop === 'buy' && popAirport) {
-    flash(acquireRights(game, popAirport));
+    flash(startNegotiation(game, popAirport));
+    hideAirportPopover();
+    render();
+  } else if (btn.dataset.pop === 'sell' && popAirport) {
+    flash(sellSlot(game, popAirport));
     hideAirportPopover();
     render();
   }
@@ -882,6 +928,14 @@ function dateStr(): string {
   return new Date(START_EPOCH + game.day * 86_400_000).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+/** Month + year label for an arbitrary simulated day, e.g. "Aug 1985". */
+function monthYear(day: number): string {
+  return new Date(START_EPOCH + day * 86_400_000).toLocaleDateString('en-US', {
+    month: 'short',
     year: 'numeric',
   });
 }
@@ -1024,9 +1078,23 @@ function rightsCard(): string {
   }
 
   const lockedNote = locked.length ? ` <span class="muted">· 🔒 ${locked.length} still locked.</span>` : '';
+  const cap = concurrentCap(game);
+  const negs = game.negotiations.length;
+  const negRows = game.negotiations
+    .slice()
+    .sort((a, b) => a.opensDay - b.opensDay)
+    .map((n) => {
+      const a = airportById(game, n.airportId);
+      return `<div class="row"><span class="muted">${a.code}</span><span class="tiny good">opens ${monthYear(n.opensDay)}</span></div>`;
+    })
+    .join('');
+  const negBlock = negs
+    ? `<div class="row" style="margin-top:6px"><span class="muted">Negotiations</span><strong class="${negs >= cap ? 'bad' : ''}">${negs}/${cap} in progress</strong></div>${negRows}`
+    : `<div class="row" style="margin-top:6px"><span class="muted">Negotiations</span><strong>0/${cap} in progress</strong></div>`;
   const body = `
     <div class="row"><span class="muted">Network</span><strong>${rep} airport${rep === 1 ? '' : 's'}</strong></div>
-    <div class="tiny" style="margin:6px 0">Click a <span class="good">green-ringed</span> airport on the map to acquire its rights.${lockedNote}</div>
+    ${negBlock}
+    <div class="tiny" style="margin:6px 0">Click a <span class="good">green-ringed</span> airport to apply for a slot (~2 months). ${lockedNote}</div>
     ${next}`;
   return collapsibleCard('rights', 'Landing Rights', body);
 }

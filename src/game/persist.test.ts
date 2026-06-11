@@ -44,6 +44,27 @@ describe('serialize / deserialize', () => {
     expect(restored.fleet).toEqual(src.fleet);
   });
 
+  it('round-trips pending slot negotiations, dropping ones already granted', () => {
+    const src = playedGame();
+    src.negotiations = [
+      { airportId: 'gso', opensDay: PLAYED_DAY + 60, fee: 1_000_000 },
+      { airportId: 'clt', opensDay: PLAYED_DAY + 30, fee: 3_000_000 }, // already held
+    ];
+    const restored = deserialize(serialize(src))!;
+    expect(restored.negotiations).toEqual(src.negotiations);
+    applySave(g, restored);
+    // CLT is already a held right, so its stale application is dropped on load.
+    expect(g.negotiations).toEqual([
+      { airportId: 'gso', opensDay: PLAYED_DAY + 60, fee: 1_000_000 },
+    ]);
+  });
+
+  it('tolerates a save with no negotiations field', () => {
+    const raw = JSON.parse(serialize(playedGame())) as Record<string, unknown>;
+    delete raw.negotiations;
+    expect(deserialize(JSON.stringify(raw))!.negotiations).toEqual([]);
+  });
+
   it('round-trips finance history', () => {
     const src = playedGame();
     src.history.push({

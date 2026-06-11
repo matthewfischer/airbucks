@@ -1,9 +1,9 @@
-import type { FinanceSnapshot, GameState, Plane, Route } from './types';
+import type { FinanceSnapshot, GameState, Negotiation, Plane, Route } from './types';
 import { LEGACY_TYPE_IDS } from './data';
 import { reseedIds } from './engine';
 
 /** Bump when the save shape changes incompatibly. */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 /** The persisted slice of a game — only the dynamic fields, not static data. */
 export interface SaveData {
@@ -13,6 +13,7 @@ export interface SaveData {
   cash: number;
   debt: number;
   rights: string[];
+  negotiations: Negotiation[];
   fleet: Plane[];
   routes: Route[];
   log: string[];
@@ -28,6 +29,7 @@ export function serialize(g: GameState): string {
     cash: g.cash,
     debt: g.debt,
     rights: g.rights,
+    negotiations: g.negotiations,
     fleet: g.fleet,
     routes: g.routes,
     log: g.log,
@@ -64,6 +66,7 @@ export function deserialize(json: string): SaveData | null {
     cash: s.cash,
     debt: s.debt,
     rights: Array.isArray(s.rights) ? (s.rights as string[]) : [],
+    negotiations: Array.isArray(s.negotiations) ? (s.negotiations as Negotiation[]) : [],
     fleet: s.fleet as Plane[],
     routes: s.routes as Route[],
     log: Array.isArray(s.log) ? (s.log as string[]) : [],
@@ -97,11 +100,17 @@ export function applySave(g: GameState, data: SaveData): void {
   const rights = new Set(data.rights.filter((id) => airportIds.has(id)));
   rights.add(data.homeId);
 
+  // Drop pending applications at vanished airports or ones already granted.
+  const negotiations = (data.negotiations ?? []).filter(
+    (n) => airportIds.has(n.airportId) && !rights.has(n.airportId),
+  );
+
   g.homeId = data.homeId;
   g.day = data.day;
   g.cash = data.cash;
   g.debt = data.debt;
   g.rights = [...rights];
+  g.negotiations = negotiations;
   g.routes = routes;
   g.fleet = fleet;
   g.log = data.log;

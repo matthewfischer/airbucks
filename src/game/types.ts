@@ -67,6 +67,15 @@ export interface FinanceSnapshot {
   pax: number;
 }
 
+/** A slot application in progress: a fee is paid up front, rights land on `opensDay`. */
+export interface Negotiation {
+  airportId: string;
+  /** Day the slot opens and the airport moves into `rights`. */
+  opensDay: number;
+  /** Fee already paid when the application was filed. */
+  fee: number;
+}
+
 export interface GameState {
   /** Simulated days elapsed since the start date. */
   day: number;
@@ -75,6 +84,8 @@ export interface GameState {
   debt: number;
   /** Airport ids where the airline holds landing rights (can operate). */
   rights: string[];
+  /** Slot applications in progress, not yet granted. */
+  negotiations: Negotiation[];
   /** IATA id of the player's chosen home airport. */
   homeId: string;
   airports: Airport[];

@@ -9,7 +9,14 @@ import {
   availableTypes,
   baselineSpeed,
   borrow,
-  acquireRights,
+  startNegotiation,
+  sellSlot,
+  concurrentCap,
+  gateFee,
+  gateFeesWeekly,
+  sellRefund,
+  isNegotiating,
+  negotiationFor,
   buyPlane,
   currentYear,
   closeRoute,
@@ -504,6 +511,7 @@ describe('network evaluation', () => {
 
 describe('weeklyTotals & advanceDay', () => {
   it('charges upkeep for idle planes', () => {
+    g.rights = []; // isolate upkeep from slot gate fees
     buyPlane(g, 'q400');
     expect(weeklyTotals(g).cost).toBe(TURBOPROP.weeklyUpkeep);
   });
@@ -779,6 +787,7 @@ describe('cost right-sizing & multi-plane capacity', () => {
 // Task #5
 describe('interest accrues through advanceDay', () => {
   it('a week of days with debt drains cash by ~the weekly interest', () => {
+    g.rights = []; // isolate debt interest from slot gate fees
     borrow(g, 10_000_000); // within the base credit line
     g.cash = 0; // isolate debt interest from deposit interest on a cash balance
     const weeklyInterest = weeklyTotals(g).interest;
@@ -808,6 +817,7 @@ describe('interest earned on positive cash', () => {
 
   it('a debt-free week of days grows idle cash by ~the deposit interest', () => {
     g.debt = 0;
+    g.rights = []; // isolate deposit interest from slot gate fees
     const start = g.cash;
     const earned = weeklyTotals(g).interestEarned;
     for (let i = 0; i < 7; i++) advanceDay(g);
@@ -964,33 +974,86 @@ describe('landing rights', () => {
     expect(rightsAvailable(g, 'lax')).toBe(false); // can't reach LAX on day 1
   });
 
-  it('acquiring rights costs the fee, adds the airport, and raises reputation', () => {
+  it('filing a slot charges the fee up front but does not grant rights yet', () => {
+    g.rights = ['crw'];
+    g.cash = 1_000_000_000;
+    const fee = rightsFee(g, airportById(g, 'gso'));
+    expect(startNegotiation(g, 'gso')).toBeNull();
+    expect(holdsRights(g, 'gso')).toBe(false); // not yet — it's pending
+    expect(isNegotiating(g, 'gso')).toBe(true);
+    expect(g.cash).toBe(1_000_000_000 - fee);
+    expect(negotiationFor(g, 'gso')!.opensDay).toBe(g.day + 60);
+  });
+
+  it('a slot opens after ~2 months and then grants rights', () => {
     g.rights = ['crw'];
     g.cash = 1_000_000_000;
     const before = reputation(g);
-    expect(acquireRights(g, 'gso')).toBeNull();
+    startNegotiation(g, 'gso');
+    for (let i = 0; i < 59; i++) advanceDay(g);
+    expect(holdsRights(g, 'gso')).toBe(false); // day 59, not open
+    advanceDay(g); // day 60
     expect(holdsRights(g, 'gso')).toBe(true);
+    expect(isNegotiating(g, 'gso')).toBe(false);
     expect(reputation(g)).toBe(before + 1);
-    expect(g.cash).toBe(1_000_000_000 - rightsFee(g, airportById(g, 'gso')));
   });
 
-  it('refuses to acquire a locked airport, and refuses when broke', () => {
+  it('refuses a locked airport, a duplicate application, and when broke', () => {
     g.rights = ['crw'];
     g.cash = 1_000_000_000;
-    expect(acquireRights(g, 'lax')).toMatch(/locked/i);
+    expect(startNegotiation(g, 'lax')).toMatch(/locked/i);
+    expect(startNegotiation(g, 'gso')).toBeNull();
+    expect(startNegotiation(g, 'gso')).toMatch(/already negotiating/i);
     g.cash = 1000;
-    expect(acquireRights(g, 'ric')).toMatch(/not enough cash/i); // size 2 costs $1M
-    expect(holdsRights(g, 'ric')).toBe(false);
+    expect(startNegotiation(g, 'ric')).toMatch(/not enough cash/i); // size 2 costs $1M
+    expect(isNegotiating(g, 'ric')).toBe(false);
+  });
+
+  it('caps concurrent negotiations: 2 to start, growing with the network', () => {
+    g.rights = ['crw'];
+    g.cash = 1_000_000_000;
+    expect(concurrentCap(g)).toBe(2);
+    expect(startNegotiation(g, 'gso')).toBeNull();
+    expect(startNegotiation(g, 'cvg')).toBeNull();
+    expect(startNegotiation(g, 'pit')).toMatch(/limit/i); // 2/2 in flight
+    // A bigger network lifts the cap (+1 per 8 airports held).
+    g.rights = AIRPORTS.slice(0, 8).map((a) => a.id);
+    expect(concurrentCap(g)).toBe(3);
   });
 
   it('bootstraps: growing the network unlocks the bigger regional hubs', () => {
-    g.rights = ['crw'];
     g.cash = 1_000_000_000;
+    g.rights = ['crw'];
     expect(rightsAvailable(g, 'clt')).toBe(false); // size 5 regional needs rep 4
-    acquireRights(g, 'cvg');
-    acquireRights(g, 'pit');
-    acquireRights(g, 'cmh'); // reputation now 4
+    g.rights = ['crw', 'cvg', 'pit', 'cmh']; // reputation now 4
     expect(rightsAvailable(g, 'clt')).toBe(true);
+  });
+
+  it('sells a slot for a partial refund, but not while routes use it', () => {
+    g.rights = ['crw', 'gso'];
+    g.cash = 0;
+    const refund = sellRefund(g, airportById(g, 'gso'));
+    expect(sellSlot(g, 'gso')).toBeNull();
+    expect(holdsRights(g, 'gso')).toBe(false);
+    expect(g.cash).toBe(refund);
+    // Can't sell the home airport.
+    expect(sellSlot(g, 'crw')).toMatch(/home/i);
+  });
+
+  it('a slot in use by a route cannot be sold until the route is closed', () => {
+    g.rights = ['crw', 'clt'];
+    g.cash = 1_000_000_000;
+    expect(openRoute(g, ['crw', 'clt'])).toBeNull();
+    expect(sellSlot(g, 'clt')).toMatch(/route/i);
+  });
+
+  it('gate fees bleed cash: 10% of each slot fee a year, accrued weekly', () => {
+    g.rights = ['crw', 'gso'];
+    const annual = gateFee(g, airportById(g, 'crw')) + gateFee(g, airportById(g, 'gso'));
+    expect(gateFeesWeekly(g)).toBeCloseTo((annual * 7) / 365, 6);
+    expect(gateFee(g, airportById(g, 'gso'))).toBe(
+      Math.round(rightsFee(g, airportById(g, 'gso')) * 0.1),
+    );
   });
 
   it('no airport is free — all fees are positive, even in 1950', () => {
@@ -1001,9 +1064,9 @@ describe('landing rights', () => {
     }
   });
 
-  it('slot cap: small airports have 2 slots, large have more', () => {
+  it('slot cap: small airports have 2 slots, the largest have 6', () => {
     expect(airportSlotsTotal(AIRPORTS.find((a) => a.size === 1)!)).toBe(2);
-    expect(airportSlotsTotal(AIRPORTS.find((a) => a.size === 6)!)).toBe(8);
+    expect(airportSlotsTotal(AIRPORTS.find((a) => a.size === 6)!)).toBe(6);
   });
 
   it('slot cap: a held airport shows 1 slot used, unacquired shows 0', () => {
