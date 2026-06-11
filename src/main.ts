@@ -340,6 +340,7 @@ function posAlongPath(points: { x: number; y: number }[], t: number) {
 function drawMap() {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
+  if (w === 0 || h === 0) return; // canvas is hidden (Finance/Awards tab) — nothing to draw
   const dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, w, h);
   ctx.drawImage(ensureBaseMap(w, h, dpr), 0, 0, w, h);
