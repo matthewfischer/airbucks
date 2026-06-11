@@ -62,12 +62,18 @@ const RIGHTS_FEE =  [0, 250_000, 750_000, 1_000_000, 3_000_000, 8_000_000, 25_00
 // Contested by design: small fields seat few carriers, the largest just six.
 const AIRPORT_SLOTS = [0, 2, 2, 3, 4, 5, 6];
 
-// A slot isn't bought outright — you file an application and wait ~2 months for
-// it to clear. You can only run so many at once, and the cap grows as the
-// network does (start at 2, +1 every 8 airports held).
-const NEGOTIATION_DAYS = 60;
-const NEGOTIATION_BASE = 2;
-const NEGOTIATION_PER_AIRPORTS = 8;
+// A slot isn't bought outright — you file an application and wait for it to
+// clear. Bigger airports negotiate slower (a regional in ~2 months, a mega-hub
+// up to a year). Indexed by size 1..6.
+const NEGOTIATION_DAYS_BY_SIZE = [0, 60, 90, 120, 180, 270, 365];
+// You negotiate one slot at a time to start, earning parallelism as the network
+// grows (+1 every 10 airports held).
+const NEGOTIATION_BASE = 1;
+const NEGOTIATION_PER_AIRPORTS = 10;
+// Plus one bonus negotiation reserved for an "easy" slot: a small airport close
+// enough to reach with a starter plane, so a young airline can get cash flowing.
+const EASY_SLOT_MAX_SIZE = 2;
+const EASY_SLOT_RANGE_KM = 1800; // DC-3 range
 // Annual gate fee to keep a slot, as a share of its one-time rights fee.
 const GATE_FEE_RATE = 0.1;
 // Fraction of the rights fee refunded when you sell a slot back.
@@ -624,9 +630,26 @@ export const isNegotiating = (g: GameState, airportId: string): boolean =>
 export const airportSlotsUsed = (g: GameState, airportId: string): number =>
   holdsRights(g, airportId) ? 1 : 0;
 
-/** Concurrent slot applications allowed: 2, plus one per 8 airports held. */
+/** Base concurrent slot applications: 1, plus one per 10 airports held. */
 export const concurrentCap = (g: GameState): number =>
   NEGOTIATION_BASE + Math.floor(reputation(g) / NEGOTIATION_PER_AIRPORTS);
+
+/** How long an airport's slot takes to negotiate, in days (bigger = slower). */
+export const negotiationDays = (a: Airport): number =>
+  NEGOTIATION_DAYS_BY_SIZE[a.size] ?? 60;
+
+/** An "easy" slot — small and within starter-plane range of the network — gets
+ *  a bonus concurrent negotiation so a young airline can expand near home. */
+export const isEasySlot = (g: GameState, a: Airport): boolean => {
+  if (a.size > EASY_SLOT_MAX_SIZE) return false;
+  const near = nearestHeldAirport(g, a);
+  return near !== null && distanceKm(a, near) <= EASY_SLOT_RANGE_KM;
+};
+
+/** Concurrent applications allowed when filing for this airport: the base cap,
+ *  plus one if it qualifies as an easy slot. */
+export const negotiationCapFor = (g: GameState, a: Airport): number =>
+  concurrentCap(g) + (isEasySlot(g, a) ? 1 : 0);
 
 /** Annual gate fee to keep one airport's slot, in era dollars. */
 export const gateFee = (g: GameState, a: Airport): number =>
@@ -690,7 +713,7 @@ export function startNegotiation(g: GameState, airportId: string): string | null
     return `${a.code} is locked — needs a ${need}-airport network (you have ${reputation(g)}).`;
   if (airportSlotsUsed(g, airportId) >= airportSlotsTotal(a))
     return `${a.code} is full — no slots available.`;
-  const cap = concurrentCap(g);
+  const cap = negotiationCapFor(g, a);
   if (g.negotiations.length >= cap)
     return `At your negotiation limit (${g.negotiations.length}/${cap}). Wait for one to clear.`;
   const fee = rightsFee(g, a);
@@ -702,8 +725,11 @@ export function startNegotiation(g: GameState, airportId: string): string | null
     g.log.unshift(`Acquired your first slot at ${a.code} (${a.city}) for ${money(fee)}.`);
     return null;
   }
-  g.negotiations.push({ airportId, opensDay: g.day + NEGOTIATION_DAYS, fee });
-  g.log.unshift(`Filed for a slot at ${a.code} (${a.city}) — ${money(fee)}, ~2 months.`);
+  const days = negotiationDays(a);
+  g.negotiations.push({ airportId, opensDay: g.day + days, fee });
+  g.log.unshift(
+    `Filed for a slot at ${a.code} (${a.city}) — ${money(fee)}, ~${Math.round(days / 30)} months.`,
+  );
   return null;
 }
 

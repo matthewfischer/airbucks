@@ -12,6 +12,8 @@ import {
   startNegotiation,
   sellSlot,
   concurrentCap,
+  negotiationDays,
+  isEasySlot,
   gateFee,
   gateFeesWeekly,
   sellRefund,
@@ -989,22 +991,30 @@ describe('landing rights', () => {
   it('filing a slot charges the fee up front but does not grant rights yet', () => {
     g.rights = ['crw', 'pit']; // past the free first slot
     g.cash = 1_000_000_000;
-    const fee = rightsFee(g, airportById(g, 'gso'));
+    const a = airportById(g, 'gso');
+    const fee = rightsFee(g, a);
     expect(startNegotiation(g, 'gso')).toBeNull();
     expect(holdsRights(g, 'gso')).toBe(false); // not yet — it's pending
     expect(isNegotiating(g, 'gso')).toBe(true);
     expect(g.cash).toBe(1_000_000_000 - fee);
-    expect(negotiationFor(g, 'gso')!.opensDay).toBe(g.day + 60);
+    expect(negotiationFor(g, 'gso')!.opensDay).toBe(g.day + negotiationDays(a));
   });
 
-  it('a slot opens after ~2 months and then grants rights', () => {
+  it('negotiation time scales with airport size', () => {
+    expect(negotiationDays(AIRPORTS.find((a) => a.size === 1)!)).toBe(60);
+    expect(negotiationDays(AIRPORTS.find((a) => a.size === 2)!)).toBe(90);
+    expect(negotiationDays(AIRPORTS.find((a) => a.size === 6)!)).toBe(365);
+  });
+
+  it('a slot opens after its negotiation window and then grants rights', () => {
     g.rights = ['crw', 'pit']; // past the free first slot
     g.cash = 1_000_000_000;
+    const days = negotiationDays(airportById(g, 'gso'));
     const before = reputation(g);
     startNegotiation(g, 'gso');
-    for (let i = 0; i < 59; i++) advanceDay(g);
-    expect(holdsRights(g, 'gso')).toBe(false); // day 59, not open
-    advanceDay(g); // day 60
+    for (let i = 0; i < days - 1; i++) advanceDay(g);
+    expect(holdsRights(g, 'gso')).toBe(false); // not open yet
+    advanceDay(g); // window elapsed
     expect(holdsRights(g, 'gso')).toBe(true);
     expect(isNegotiating(g, 'gso')).toBe(false);
     expect(reputation(g)).toBe(before + 1);
@@ -1021,16 +1031,31 @@ describe('landing rights', () => {
     expect(isNegotiating(g, 'ric')).toBe(false);
   });
 
-  it('caps concurrent negotiations: 2 to start, growing with the network', () => {
-    g.rights = ['crw', 'pit']; // past the free first slot
+  it('negotiates one big slot at a time to start, more as the network grows', () => {
+    g.rights = ['crw', 'clt']; // past the free first slot; network of 2
     g.cash = 1_000_000_000;
-    expect(concurrentCap(g)).toBe(2);
-    expect(startNegotiation(g, 'gso')).toBeNull();
+    expect(concurrentCap(g)).toBe(1);
+    // cvg/cmh are size-3 hubs — not "easy", so capped at one at a time.
     expect(startNegotiation(g, 'cvg')).toBeNull();
-    expect(startNegotiation(g, 'ric')).toMatch(/limit/i); // 2/2 in flight
-    // A bigger network lifts the cap (+1 per 8 airports held).
-    g.rights = AIRPORTS.slice(0, 8).map((a) => a.id);
-    expect(concurrentCap(g)).toBe(3);
+    expect(startNegotiation(g, 'cmh')).toMatch(/limit/i);
+    // A bigger network lifts the base cap (+1 per 10 airports held).
+    g.rights = AIRPORTS.slice(0, 10).map((a) => a.id);
+    expect(concurrentCap(g)).toBe(2);
+  });
+
+  it('a small nearby airport gets a bonus negotiation to get cash flowing', () => {
+    g.rights = ['crw', 'clt']; // base cap 1
+    g.cash = 1_000_000_000;
+    // gso/ric are small (size 2) and close to home — easy slots.
+    expect(isEasySlot(g, airportById(g, 'gso'))).toBe(true);
+    expect(startNegotiation(g, 'gso')).toBeNull();
+    expect(startNegotiation(g, 'ric')).toBeNull(); // the +1 easy bonus
+    expect(startNegotiation(g, 'tys')).toMatch(/limit/i); // base 1 + 1 easy = 2 max
+    // A big hub is not easy, so it can't use the bonus even with room conceptually.
+    const fresh = newGame('crw');
+    fresh.rights = ['crw', 'clt'];
+    fresh.cash = 1_000_000_000;
+    expect(isEasySlot(fresh, airportById(fresh, 'lax'))).toBe(false); // size 6
   });
 
   it('bootstraps: growing the network unlocks the bigger regional hubs', () => {

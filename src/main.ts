@@ -19,6 +19,9 @@ import {
   isNegotiating,
   negotiationFor,
   firstSlotInstant,
+  negotiationDays,
+  negotiationCapFor,
+  isEasySlot,
   concurrentCap,
   gateFee,
   sellSlot,
@@ -828,7 +831,7 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
   }
 
   const pending = negotiationFor(game, ap.id);
-  const cap = concurrentCap(game);
+  const cap = negotiationCapFor(game, ap);
   const atCap = game.negotiations.length >= cap;
 
   let extra = '';
@@ -856,6 +859,8 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
     extra = `<div class="tiny muted" style="margin-top:6px">No slots available (${slotsUsed}/${slotsTotal} taken)</div>`;
   } else if (acquirable) {
     const instant = firstSlotInstant(game);
+    const months = Math.round(negotiationDays(ap) / 30);
+    const easy = isEasySlot(game, ap);
     const blocked = !afford || atCap;
     const label = !afford
       ? `Need ${money(fee)}`
@@ -866,7 +871,7 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
           : `Apply for slot · ${money(fee)}`;
     const timing = instant
       ? `<span class="good">opens immediately (first slot)</span>`
-      : `~2 months · ${game.negotiations.length}/${cap} open`;
+      : `~${months} mo${easy ? ' · quick regional' : ''} · ${game.negotiations.length}/${cap} open`;
     extra = `
       <div class="pop-row"><span class="muted">Slot fee</span><span class="${afford ? '' : 'bad'}">${money(fee)}</span></div>
       <div class="pop-row"><span class="muted">Negotiation</span><span>${timing}</span></div>
@@ -1104,9 +1109,9 @@ function rightsCard(): string {
       return `<div class="row"><span class="muted">${a.code}</span><span class="tiny good">opens ${monthYear(n.opensDay)}</span></div>`;
     })
     .join('');
-  const negBlock = negs
-    ? `<div class="row" style="margin-top:6px"><span class="muted">Negotiations</span><strong class="${negs >= cap ? 'bad' : ''}">${negs}/${cap} in progress</strong></div>${negRows}`
-    : `<div class="row" style="margin-top:6px"><span class="muted">Negotiations</span><strong>0/${cap} in progress</strong></div>`;
+  const negBlock = `
+    <div class="row" style="margin-top:6px"><span class="muted">Negotiations</span><strong>${negs} in progress</strong></div>
+    <div class="tiny muted">${cap} at a time (+1 for a quick regional slot)</div>${negRows}`;
   const body = `
     <div class="row"><span class="muted">Network</span><strong>${rep} airport${rep === 1 ? '' : 's'}${lockedNote}</strong></div>
     ${negBlock}
