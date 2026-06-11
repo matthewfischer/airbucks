@@ -143,7 +143,9 @@ function projectPoint(lat: number, lon: number, w: number, h: number) {
 // Pan/zoom view applied on top of the fit-to-region projection.
 const view = { scale: 1, offsetX: 0, offsetY: 0 };
 const MIN_SCALE = 0.3;
-const MAX_SCALE = 8;
+// The map now fits the whole globe at scale 1, so allow a deep zoom to reach
+// city level (the old cap of 8 was sized for the North-America-only map).
+const MAX_SCALE = 24;
 const applyView = (p: { x: number; y: number }) => ({
   x: p.x * view.scale + view.offsetX,
   y: p.y * view.scale + view.offsetY,
@@ -837,7 +839,9 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
     const refund = sellRefund(game, ap);
     extra = `
       <div class="pop-row"><span class="muted">Your operation</span><span>${routesHere} route${routesHere !== 1 ? 's' : ''} · ${planesHere} plane${planesHere !== 1 ? 's' : ''}</span></div>
-      <div class="pop-row"><span class="muted">Gate fee</span><span>${money(gateFee(game, ap))}/yr</span></div>
+      ${isHome
+        ? '<div class="pop-row"><span class="muted">Gate fee</span><span class="good">home — free</span></div>'
+        : `<div class="pop-row"><span class="muted">Gate fee</span><span>${money(gateFee(game, ap))}/yr</span></div>`}
       ${isHome
         ? ''
         : routesHere > 0
@@ -1092,9 +1096,8 @@ function rightsCard(): string {
     ? `<div class="row" style="margin-top:6px"><span class="muted">Negotiations</span><strong class="${negs >= cap ? 'bad' : ''}">${negs}/${cap} in progress</strong></div>${negRows}`
     : `<div class="row" style="margin-top:6px"><span class="muted">Negotiations</span><strong>0/${cap} in progress</strong></div>`;
   const body = `
-    <div class="row"><span class="muted">Network</span><strong>${rep} airport${rep === 1 ? '' : 's'}</strong></div>
+    <div class="row"><span class="muted">Network</span><strong>${rep} airport${rep === 1 ? '' : 's'}${lockedNote}</strong></div>
     ${negBlock}
-    <div class="tiny" style="margin:6px 0">Click a <span class="good">green-ringed</span> airport to apply for a slot (~2 months). ${lockedNote}</div>
     ${next}`;
   return collapsibleCard('rights', 'Landing Rights', body);
 }

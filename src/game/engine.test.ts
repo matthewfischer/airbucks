@@ -1048,12 +1048,18 @@ describe('landing rights', () => {
   });
 
   it('gate fees bleed cash: 10% of each slot fee a year, accrued weekly', () => {
-    g.rights = ['crw', 'gso'];
-    const annual = gateFee(g, airportById(g, 'crw')) + gateFee(g, airportById(g, 'gso'));
+    g.rights = ['crw', 'gso', 'cvg']; // crw is home
+    // Home base is exempt; only the two acquired slots are billed.
+    const annual = gateFee(g, airportById(g, 'gso')) + gateFee(g, airportById(g, 'cvg'));
     expect(gateFeesWeekly(g)).toBeCloseTo((annual * 7) / 365, 6);
     expect(gateFee(g, airportById(g, 'gso'))).toBe(
       Math.round(rightsFee(g, airportById(g, 'gso')) * 0.1),
     );
+  });
+
+  it('the home airport pays no gate fee — a fresh airline bleeds nothing', () => {
+    const fresh = newGame('crw');
+    expect(gateFeesWeekly(fresh)).toBe(0);
   });
 
   it('no airport is free — all fees are positive, even in 1950', () => {

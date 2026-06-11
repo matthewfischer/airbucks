@@ -630,9 +630,11 @@ export const concurrentCap = (g: GameState): number =>
 export const gateFee = (g: GameState, a: Airport): number =>
   Math.round(rightsFee(g, a) * GATE_FEE_RATE);
 
-/** Weekly gate fee across every slot the airline holds (a cost). */
+/** Weekly gate fee across every acquired slot (a cost). Home base is exempt. */
 export const gateFeesWeekly = (g: GameState): number =>
-  g.rights.reduce((s, id) => s + gateFee(g, airportById(g, id)), 0) * (7 / 365);
+  g.rights
+    .filter((id) => id !== g.homeId)
+    .reduce((s, id) => s + gateFee(g, airportById(g, id)), 0) * (7 / 365);
 
 /** Cash back when selling a slot at this airport. */
 export const sellRefund = (g: GameState, a: Airport): number =>
