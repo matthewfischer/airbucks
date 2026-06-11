@@ -674,6 +674,11 @@ function grantRights(g: GameState, airportId: string): void {
   if (!g.rights.includes(airportId)) g.rights.push(airportId);
 }
 
+/** The airline's very first slot opens immediately, so a fresh airline can
+ *  start flying without sitting through a 2-month wait. Later slots negotiate. */
+export const firstSlotInstant = (g: GameState): boolean =>
+  g.rights.length === 1 && g.negotiations.length === 0;
+
 /** File a slot application. Fee is paid up front; rights land after ~2 months.
  *  Returns an error string, or null on success. */
 export function startNegotiation(g: GameState, airportId: string): string | null {
@@ -692,6 +697,11 @@ export function startNegotiation(g: GameState, airportId: string): string | null
   if (g.cash < fee)
     return `Not enough cash for a slot at ${a.code} (${money(fee)}).`;
   g.cash -= fee;
+  if (firstSlotInstant(g)) {
+    grantRights(g, airportId);
+    g.log.unshift(`Acquired your first slot at ${a.code} (${a.city}) for ${money(fee)}.`);
+    return null;
+  }
   g.negotiations.push({ airportId, opensDay: g.day + NEGOTIATION_DAYS, fee });
   g.log.unshift(`Filed for a slot at ${a.code} (${a.city}) — ${money(fee)}, ~2 months.`);
   return null;

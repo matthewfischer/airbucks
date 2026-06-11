@@ -18,6 +18,7 @@ import {
   interestRate,
   isNegotiating,
   negotiationFor,
+  firstSlotInstant,
   concurrentCap,
   gateFee,
   sellSlot,
@@ -854,15 +855,21 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
   } else if (slotsFull) {
     extra = `<div class="tiny muted" style="margin-top:6px">No slots available (${slotsUsed}/${slotsTotal} taken)</div>`;
   } else if (acquirable) {
+    const instant = firstSlotInstant(game);
     const blocked = !afford || atCap;
     const label = !afford
       ? `Need ${money(fee)}`
       : atCap
         ? `Limit reached (${game.negotiations.length}/${cap})`
-        : `Apply for slot · ${money(fee)}`;
+        : instant
+          ? `Acquire slot · ${money(fee)}`
+          : `Apply for slot · ${money(fee)}`;
+    const timing = instant
+      ? `<span class="good">opens immediately (first slot)</span>`
+      : `~2 months · ${game.negotiations.length}/${cap} open`;
     extra = `
       <div class="pop-row"><span class="muted">Slot fee</span><span class="${afford ? '' : 'bad'}">${money(fee)}</span></div>
-      <div class="pop-row"><span class="muted">Negotiation</span><span>~2 months · ${game.negotiations.length}/${cap} open</span></div>
+      <div class="pop-row"><span class="muted">Negotiation</span><span>${timing}</span></div>
       <button class="pop-buy ${blocked ? '' : 'primary'}" data-pop="buy" ${blocked ? 'disabled' : ''}>${label}</button>`;
   } else {
     const need = requiredReputation(ap);

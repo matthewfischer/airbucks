@@ -974,8 +974,20 @@ describe('landing rights', () => {
     expect(rightsAvailable(g, 'lax')).toBe(false); // can't reach LAX on day 1
   });
 
+  it("the airline's first slot opens immediately, the next one negotiates", () => {
+    g.rights = ['crw']; // a fresh airline, home only
+    g.cash = 1_000_000_000;
+    expect(startNegotiation(g, 'gso')).toBeNull();
+    expect(holdsRights(g, 'gso')).toBe(true); // instant — no wait
+    expect(isNegotiating(g, 'gso')).toBe(false);
+    // The second application takes the full negotiation.
+    expect(startNegotiation(g, 'cvg')).toBeNull();
+    expect(holdsRights(g, 'cvg')).toBe(false);
+    expect(isNegotiating(g, 'cvg')).toBe(true);
+  });
+
   it('filing a slot charges the fee up front but does not grant rights yet', () => {
-    g.rights = ['crw'];
+    g.rights = ['crw', 'pit']; // past the free first slot
     g.cash = 1_000_000_000;
     const fee = rightsFee(g, airportById(g, 'gso'));
     expect(startNegotiation(g, 'gso')).toBeNull();
@@ -986,7 +998,7 @@ describe('landing rights', () => {
   });
 
   it('a slot opens after ~2 months and then grants rights', () => {
-    g.rights = ['crw'];
+    g.rights = ['crw', 'pit']; // past the free first slot
     g.cash = 1_000_000_000;
     const before = reputation(g);
     startNegotiation(g, 'gso');
@@ -999,7 +1011,7 @@ describe('landing rights', () => {
   });
 
   it('refuses a locked airport, a duplicate application, and when broke', () => {
-    g.rights = ['crw'];
+    g.rights = ['crw', 'pit']; // past the free first slot
     g.cash = 1_000_000_000;
     expect(startNegotiation(g, 'lax')).toMatch(/locked/i);
     expect(startNegotiation(g, 'gso')).toBeNull();
@@ -1010,12 +1022,12 @@ describe('landing rights', () => {
   });
 
   it('caps concurrent negotiations: 2 to start, growing with the network', () => {
-    g.rights = ['crw'];
+    g.rights = ['crw', 'pit']; // past the free first slot
     g.cash = 1_000_000_000;
     expect(concurrentCap(g)).toBe(2);
     expect(startNegotiation(g, 'gso')).toBeNull();
     expect(startNegotiation(g, 'cvg')).toBeNull();
-    expect(startNegotiation(g, 'pit')).toMatch(/limit/i); // 2/2 in flight
+    expect(startNegotiation(g, 'ric')).toMatch(/limit/i); // 2/2 in flight
     // A bigger network lifts the cap (+1 per 8 airports held).
     g.rights = AIRPORTS.slice(0, 8).map((a) => a.id);
     expect(concurrentCap(g)).toBe(3);
