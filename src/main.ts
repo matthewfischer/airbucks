@@ -56,6 +56,7 @@ import {
   weeklyTotals,
   weekNumber,
   currentYear,
+  priceLevel,
   START_EPOCH,
 } from './game/engine';
 import { distanceKm } from './game/geo';
@@ -1059,16 +1060,21 @@ function newRouteCard(): string {
 const PROPULSION_LABEL = { prop: 'Piston', turboprop: 'Turboprop', jet: 'Jet' };
 
 function buyCard(): string {
+  // Operating costs are quoted in current-era dollars, matching what the
+  // finance and route panels actually charge.
+  const lvl = priceLevel(game);
   const rows = game.aircraftTypes
     .filter((t) => typeAvailable(game, t))
     .map((t) => {
       const afford = game.cash >= t.price;
       const label = afford ? `Buy · ${money(t.price)}` : `Need ${money(t.price)}`;
       const owned = game.fleet.filter((p) => p.typeId === t.id).length;
+      const perKm = (t.costPerKm * lvl).toFixed(1);
+      const upkeep = money(Math.round(t.weeklyUpkeep * lvl));
       return `<div class="plane-line">
         <div class="row"><strong>${t.name}</strong>
           <button class="${afford ? 'primary' : ''}" data-act="buy" data-type="${t.id}" ${afford ? '' : 'disabled'}>${label}</button></div>
-        <div class="type-stats">${PROPULSION_LABEL[t.propulsion]} · ${t.introduced} · ${t.capacity} seats · ${t.range.toLocaleString()} km range · ${t.speed} km/h · $${t.costPerKm}/km · ${money(t.weeklyUpkeep)}/wk upkeep · <span class="owned">${owned} owned</span></div>
+        <div class="type-stats">${PROPULSION_LABEL[t.propulsion]} · ${t.introduced} · ${t.capacity} seats · ${t.range.toLocaleString()} km range · ${t.speed} km/h · $${perKm}/km · ${upkeep}/wk upkeep · <span class="owned">${owned} owned</span></div>
       </div>`;
     })
     .join('');
