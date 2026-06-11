@@ -42,6 +42,7 @@ import {
   holdsRights,
   pairDemand,
   planesOnRoute,
+  priceLevel,
   referenceFare,
   repay,
   reputation,
@@ -210,6 +211,49 @@ describe('referenceFare & pairDemand', () => {
     expect(distanceFactor(200)).toBeGreaterThan(1); // short markets are denser
     expect(distanceFactor(1600)).toBeLessThan(1); // long markets are thinner
     expect(distanceFactor(50)).toBeLessThanOrEqual(1.6); // clamped
+  });
+});
+
+describe('priceLevel (era inflation)', () => {
+  it('anchors at 1.0 in 1950 and climbs ~3x by 2025', () => {
+    const fresh = newGame('crw'); // 1950
+    expect(priceLevel(fresh)).toBeCloseTo(1, 5);
+    fresh.day = 365 * 75 + 19; // ~2025
+    expect(priceLevel(fresh)).toBeCloseTo(3.05, 1);
+  });
+
+  it('rises monotonically with the calendar', () => {
+    const fresh = newGame('crw');
+    fresh.day = 0;
+    const y1950 = priceLevel(fresh);
+    fresh.day = 365 * 35; // ~1985
+    const y1985 = priceLevel(fresh);
+    fresh.day = 365 * 75; // ~2025
+    const y2025 = priceLevel(fresh);
+    expect(y1985).toBeGreaterThan(y1950);
+    expect(y2025).toBeGreaterThan(y1985);
+  });
+
+  it('preserves the operating margin across eras — revenue and cost inflate together', () => {
+    // Same fleet and network, two modern years where the speed baseline is
+    // already capped, so demand is identical and only priceLevel differs.
+    const route = addRoute(['crw', 'clt'], 'e175', 2);
+    expect(route.stops.length).toBeGreaterThan(0);
+
+    g.day = 365 * 65 + 16; // ~2015
+    const early = evaluateNetwork(g);
+    g.day = 365 * 75 + 19; // ~2025
+    const late = evaluateNetwork(g);
+
+    // Both years carry the same passengers (demand doesn't ride priceLevel).
+    expect(late.passengers).toBeCloseTo(early.passengers, 5);
+
+    // Revenue and cost scale by the same factor → margin is unchanged.
+    const ratio = priceLevel({ ...g, day: 365 * 75 + 19 } as GameState) /
+      priceLevel({ ...g, day: 365 * 65 + 16 } as GameState);
+    expect(late.revenue / early.revenue).toBeCloseTo(ratio, 2);
+    expect(late.cost / early.cost).toBeCloseTo(ratio, 2);
+    expect(late.profit / late.revenue).toBeCloseTo(early.profit / early.revenue, 5);
   });
 });
 
@@ -515,7 +559,7 @@ describe('weeklyTotals & advanceDay', () => {
   it('charges upkeep for idle planes', () => {
     g.rights = []; // isolate upkeep from slot gate fees
     buyPlane(g, 'q400');
-    expect(weeklyTotals(g).cost).toBe(TURBOPROP.weeklyUpkeep);
+    expect(weeklyTotals(g).cost).toBeCloseTo(TURBOPROP.weeklyUpkeep * priceLevel(g), 5);
   });
 
   it('includes weekly interest on outstanding debt', () => {
@@ -768,7 +812,8 @@ describe('cost right-sizing & multi-plane capacity', () => {
     const net = evaluateNetwork(g);
     const thinCost = net.routes.get(thin.id)!.cost;
     const cappedCost = net.routes.get(capped.id)!.cost;
-    const upkeep = AIRCRAFT_TYPES.find((t) => t.id === 'saab340')!.weeklyUpkeep;
+    // Upkeep inflates with the era, same as the flying cost it's compared against.
+    const upkeep = AIRCRAFT_TYPES.find((t) => t.id === 'saab340')!.weeklyUpkeep * priceLevel(g);
     expect(thinCost).toBeLessThan(cappedCost);
     expect(thinCost).toBeGreaterThanOrEqual(upkeep); // upkeep is always paid
     expect(thinCost).toBeLessThan(upkeep * 1.7); // little actual flying

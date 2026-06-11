@@ -326,8 +326,8 @@ export function evaluateNetwork(g: GameState): NetworkResult {
       const type = typeById(g, plane.typeId);
       const circuits = tripsPerWeek(type, pathLength, rlegs.length);
       const cap = circuits * 2 * type.capacity;
-      fly += circuits * 2 * pathLength * type.costPerKm;
-      up += type.weeklyUpkeep;
+      fly += circuits * 2 * pathLength * type.costPerKm * priceLevel(g);
+      up += type.weeklyUpkeep * priceLevel(g);
       for (const l of rlegs) {
         const key = legKey(l.fromId, l.toId);
         let info = legs.get(key);
@@ -394,7 +394,11 @@ export function evaluateNetwork(g: GameState): NetworkResult {
         distanceFactor(directDist) *
         CONNECTION_PENALTY ** path.connections *
         demandMult;
-      markets.push({ path, demand, fare: referenceFare(directDist) * fareFactor });
+      markets.push({
+        path,
+        demand,
+        fare: referenceFare(directDist) * fareFactor * priceLevel(g),
+      });
     }
   }
 
@@ -526,6 +530,16 @@ const ERA_ANCHOR_YEAR = 2025;
 const ERA_INFLATION = 1.038;
 export const eraScale = (g: GameState): number =>
   ERA_INFLATION ** (currentYear(g) - ERA_ANCHOR_YEAR);
+
+// Nominal prices drift up over the decades. Fares, flying cost (fuel), and
+// upkeep all ride this single index together, anchored at 1.0 in 1950 and
+// ~3x by 2025 (~1.5%/yr — gentler than CPI, matching how jets made real
+// airfares fall). Because revenue and operating cost scale by the same factor,
+// the operating margin is preserved across every era: 1950 plays at today's
+// balance, later decades just carry bigger nominal numbers.
+const PRICE_LEVEL_RATE = 1.015;
+export const priceLevel = (g: GameState): number =>
+  PRICE_LEVEL_RATE ** (currentYear(g) - START_YEAR);
 
 // Historical fed funds rate (annual average), as sparse anchors keyed to year.
 // Linearly interpolated between, clamped at the ends. Captures the shape that
@@ -902,7 +916,8 @@ export function weeklyTotals(g: GameState): WeeklyTotals {
   let cost = net.cost;
   // Idle planes still cost upkeep.
   for (const plane of g.fleet) {
-    if (plane.routeId === null) cost += typeById(g, plane.typeId).weeklyUpkeep;
+    if (plane.routeId === null)
+      cost += typeById(g, plane.typeId).weeklyUpkeep * priceLevel(g);
   }
   cost += gateFeesWeekly(g);
   const interest = g.debt * interestRate(g) * (7 / 365);
@@ -1049,7 +1064,8 @@ function operatingNet(g: GameState): number {
   const net = evaluateNetwork(g);
   let cost = net.cost;
   for (const plane of g.fleet)
-    if (plane.routeId === null) cost += typeById(g, plane.typeId).weeklyUpkeep;
+    if (plane.routeId === null)
+      cost += typeById(g, plane.typeId).weeklyUpkeep * priceLevel(g);
   return net.revenue - cost;
 }
 
