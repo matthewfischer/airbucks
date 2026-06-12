@@ -666,8 +666,17 @@ canvas.addEventListener('mousemove', (e) => {
   const foundId = found?.id ?? null;
   if (foundId === lastHoveredAirport) return;
   lastHoveredAirport = foundId;
+  if (showPopoverTimer) { clearTimeout(showPopoverTimer); showPopoverTimer = null; }
   if (found) {
-    showAirportInfo(found, foundPx, foundPy);
+    // Brief pause before opening, so sweeping the mouse across airports
+    // doesn't flash a popover for each one.
+    const ap = found;
+    const px = foundPx;
+    const py = foundPy;
+    showPopoverTimer = setTimeout(() => {
+      showPopoverTimer = null;
+      showAirportInfo(ap, px, py);
+    }, 150);
   } else {
     // Short delay so the user can move from the airport dot to the popover.
     hidePopoverTimer = setTimeout(() => { hideAirportPopover(); }, 120);
@@ -797,9 +806,11 @@ function networkDemand(ap: Airport): number {
 
 let lastHoveredAirport: string | null = null;
 let hidePopoverTimer: ReturnType<typeof setTimeout> | null = null;
+let showPopoverTimer: ReturnType<typeof setTimeout> | null = null;
 
 function hideAirportPopover() {
   if (hidePopoverTimer) { clearTimeout(hidePopoverTimer); hidePopoverTimer = null; }
+  if (showPopoverTimer) { clearTimeout(showPopoverTimer); showPopoverTimer = null; }
   popAirport = null;
   lastHoveredAirport = null;
   popover.style.display = 'none';
@@ -808,6 +819,7 @@ function hideAirportPopover() {
 /** Show airport info popover for any airport state (held, acquirable, locked). */
 function showAirportInfo(ap: Airport, px: number, py: number) {
   if (hidePopoverTimer) { clearTimeout(hidePopoverTimer); hidePopoverTimer = null; }
+  if (showPopoverTimer) { clearTimeout(showPopoverTimer); showPopoverTimer = null; }
   popAirport = ap.id;
   const held = holdsRights(game, ap.id);
   const acquirable = !held && rightsAvailable(game, ap.id);
