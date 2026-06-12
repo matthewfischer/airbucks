@@ -421,6 +421,21 @@ input[type='number'] { width: 84px; }
 .chart-card svg .axis-label { fill: var(--muted); font-size: 11px; }
 .chart-card svg .series { fill: none; stroke-width: 2; }
 
+.slot-photo {
+  width: 100%;
+  max-height: 440px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.slot-photo.hidden,
+.slot-credit.hidden { display: none; }
+.slot-city { font-size: 16px; font-weight: 700; }
+.slot-actions { display: flex; gap: 10px; margin-top: 4px; }
+.slot-actions .primary { flex: 1; }
+.slot-actions .overlay-cancel { margin-top: 0; }
+.slot-credit { font-size: 11px; color: var(--muted); text-align: right; }
+
 .overlay-cancel {
   align-self: flex-end;
   font-size: 13px;

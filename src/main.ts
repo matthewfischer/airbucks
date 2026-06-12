@@ -90,6 +90,11 @@ if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
 /** Ordered airports the player has clicked to stage a new (possibly multi-stop) route. */
 let selected: string[] = [];
 
+/** Rights we've already announced — anything new triggers the slot-granted popup. */
+let knownRights = new Set(game.rights);
+/** Airports whose popups are waiting behind the one on screen. */
+const slotQueue: string[] = [];
+
 // Real-time clock state.
 let playing = false;
 let speed = 1;
@@ -925,6 +930,7 @@ popover.addEventListener('click', (e) => {
     flash(startNegotiation(game, popAirport));
     hideAirportPopover();
     render();
+    announceNewRights(); // the very first slot is granted instantly
   } else if (btn.dataset.pop === 'sell' && popAirport) {
     flash(sellSlot(game, popAirport));
     hideAirportPopover();
@@ -1303,12 +1309,14 @@ sidebar.addEventListener('change', (e) => {
 
 // ---- Transport controls + real-time loop ----------------------------------
 
-playBtn.addEventListener('click', () => {
-  playing = !playing;
+function setPlaying(v: boolean) {
+  playing = v;
   lastTs = 0;
   playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
   playBtn.classList.toggle('paused', playing);
-});
+}
+
+playBtn.addEventListener('click', () => setPlaying(!playing));
 
 const SAVE_KEY = 'airbucks-save';
 
@@ -1316,11 +1324,11 @@ const SAVE_KEY = 'airbucks-save';
 function afterStateSwap() {
   selected = [];
   anim.clear();
-  playing = false;
+  setPlaying(false);
   dayAccumulator = 0;
-  lastTs = 0;
-  playBtn.textContent = '▶ Play';
-  playBtn.classList.remove('paused');
+  knownRights = new Set(game.rights);
+  slotQueue.length = 0;
+  slotGrantedEl.classList.add('hidden');
 }
 
 const homeSelectEl = document.getElementById('home-select')!;
@@ -1402,7 +1410,79 @@ upgradeSelectEl.addEventListener('click', (e) => {
   if (e.target === upgradeSelectEl) hideUpgradeSelect();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') hideUpgradeSelect();
+  if (e.key === 'Escape') {
+    hideUpgradeSelect();
+    if (!slotGrantedEl.classList.contains('hidden')) hideSlotGranted();
+  }
+});
+
+// ---- "Landing rights granted" popup ----------------------------------------
+
+const slotGrantedEl = document.getElementById('slot-granted')!;
+const slotPhotoEl = document.getElementById('slot-photo') as HTMLImageElement;
+const slotCityEl = document.getElementById('slot-city')!;
+const slotStatsEl = document.getElementById('slot-stats')!;
+const slotCreditEl = document.getElementById('slot-credit')!;
+/** Airport currently shown in the popup. */
+let slotShownId: string | null = null;
+
+// The photo (a public-domain vintage postcard bundled per city) only appears
+// once it actually loads; cities without one just show the text card.
+slotPhotoEl.addEventListener('load', () => {
+  slotPhotoEl.classList.remove('hidden');
+  slotCreditEl.classList.remove('hidden');
+});
+slotPhotoEl.addEventListener('error', () => {
+  slotPhotoEl.classList.add('hidden');
+  slotCreditEl.classList.add('hidden');
+});
+
+function showSlotGranted(airportId: string) {
+  const ap = airportById(game, airportId);
+  slotShownId = airportId;
+  slotPhotoEl.classList.add('hidden');
+  slotCreditEl.classList.add('hidden');
+  slotPhotoEl.src = `/postcards/${ap.id}.jpg`;
+  slotCityEl.textContent = `${ap.city} (${ap.code})`;
+  const near = nearestHeldAirport(game, ap);
+  const parts = [
+    `Market ${'★'.repeat(ap.size)}`,
+    `${(ap.population / 1_000_000).toFixed(1)}M metro`,
+  ];
+  if (near) parts.push(`${Math.round(distanceKm(ap, near)).toLocaleString()} km from ${near.code}`);
+  slotStatsEl.textContent = parts.join(' · ');
+  slotGrantedEl.classList.remove('hidden');
+}
+
+/** Close the popup; if more grants are queued behind it, show the next one. */
+function hideSlotGranted() {
+  slotShownId = null;
+  slotGrantedEl.classList.add('hidden');
+  const next = slotQueue.shift();
+  if (next) showSlotGranted(next);
+}
+
+/** Pause and pop up a card for any airport whose rights just arrived. */
+function announceNewRights() {
+  const fresh = game.rights.filter((id) => !knownRights.has(id));
+  knownRights = new Set(game.rights);
+  if (!fresh.length) return;
+  setPlaying(false);
+  if (slotShownId === null) showSlotGranted(fresh.shift()!);
+  slotQueue.push(...fresh);
+}
+
+document.getElementById('slot-later')!.addEventListener('click', hideSlotGranted);
+slotGrantedEl.addEventListener('click', (e) => {
+  if (e.target === slotGrantedEl) hideSlotGranted();
+});
+document.getElementById('slot-plan')!.addEventListener('click', () => {
+  const id = slotShownId;
+  hideSlotGranted();
+  if (!id) return;
+  setView('map');
+  selected = [id];
+  render();
 });
 
 /** Reset to a fresh airline — shows home airport selection first. */
@@ -1486,6 +1566,7 @@ function frame(ts: number) {
       }
     }
     if (game.badges.length > badgesBefore) renderLog(); // surface freshly-earned badges
+    if (sidebarDirty) announceNewRights();
     updateAnimations(dt);
   }
   renderHud();
