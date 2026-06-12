@@ -35,8 +35,8 @@ html, body, #app {
 #topbar {
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 0 16px;
+  gap: 10px;
+  padding: 0 12px;
   background: linear-gradient(180deg, #16294180, #0b1622);
   border-bottom: 1px solid var(--border);
 }
@@ -50,17 +50,19 @@ html, body, #app {
 
 #hud {
   display: flex;
-  gap: 22px;
+  gap: 14px;
   flex: 1;
 }
 
 #views-nav { display: flex; gap: 2px; background: #0f1d2e; border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
-.view-tab { border: none; background: transparent; padding: 6px 14px; border-radius: 6px; color: var(--muted); font-weight: 600; }
+.view-tab { border: none; background: transparent; padding: 6px 10px; border-radius: 6px; color: var(--muted); font-weight: 600; }
 .view-tab.active { background: var(--panel-2); color: var(--accent); }
 
-#controls { display: flex; align-items: center; gap: 12px; }
+#controls { display: flex; align-items: center; gap: 8px; }
+/* Icon-only topbar buttons (New/Save/Load) — square, names live in tooltips. */
+.icon-btn { padding: 6px 9px; font-size: 15px; line-height: 1; }
 #speeds { display: flex; gap: 2px; background: #0f1d2e; border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
-.speed { border: none; background: transparent; padding: 5px 10px; border-radius: 6px; color: var(--muted); }
+.speed { border: none; background: transparent; padding: 5px 8px; border-radius: 6px; color: var(--muted); }
 .speed.active { background: var(--panel-2); color: var(--ink); }
 #play { min-width: 104px; }
 #play.paused { background: var(--accent-2); color: #2a1c02; }
