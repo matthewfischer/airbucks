@@ -1,6 +1,6 @@
 import type { GameState } from '../game/types';
 import { BADGES, type BadgeGroup } from '../game/badges';
-import { START_EPOCH } from '../game/engine';
+import { player, START_EPOCH } from '../game/engine';
 
 const GROUP_ORDER: BadgeGroup[] = ['Exploration', 'Network', 'Fleet', 'Milestones'];
 
@@ -12,7 +12,8 @@ const earnedDate = (day: number): string =>
 
 /** Render the trophy case: earned badges with dates, locked ones with progress. */
 export function renderAwards(g: GameState, el: HTMLElement): void {
-  const earned = new Map(g.badges.map((b) => [b.id, b.day]));
+  const al = player(g);
+  const earned = new Map(al.badges.map((b) => [b.id, b.day]));
   const total = BADGES.length;
 
   const groups = GROUP_ORDER.map((group) => {
@@ -26,7 +27,7 @@ export function renderAwards(g: GameState, el: HTMLElement): void {
             <span class="badge-date good">${earnedDate(day)}</span>
           </div>`;
         }
-        const p = b.progress?.(g);
+        const p = b.progress?.(g, al);
         const right = p ? `${p.have} / ${p.need}` : 'locked';
         return `<div class="badge-row locked">
           <span class="badge-icon">🔒</span>

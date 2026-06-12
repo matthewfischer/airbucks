@@ -35,6 +35,7 @@ import {
   openRoute,
   pairDemand,
   planesOnRoute,
+  player,
   recordFinanceSnapshot,
   repay,
   reputation,
@@ -66,16 +67,18 @@ import { renderFinance } from './ui/finance';
 import { renderAwards } from './ui/awards';
 
 const game: GameState = newGame('crw');
+/** The player's airline (always airlines[0]); resolved per call since loads/resets swap state. */
+const pl = () => player(game);
 (window as unknown as { game: GameState }).game = game;
 if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
   (window as unknown as { dbg: unknown }).dbg = {
     game,
-    openRoute: (...stops: string[]) => (openRoute(game, stops), render()),
-    buyPlane: (t: string) => (buyPlane(game, t), render()),
-    assignPlane: (p: string, r: string | null) => (assignPlane(game, p, r), render()),
+    openRoute: (...stops: string[]) => (openRoute(game, pl(), stops), render()),
+    buyPlane: (t: string) => (buyPlane(game, pl(), t), render()),
+    assignPlane: (p: string, r: string | null) => (assignPlane(game, pl(), p, r), render()),
     advanceDay: () => (advanceDay(game), render()),
-    borrow: (n: number) => (borrow(game, n), render()),
-    repay: (n: number) => (repay(game, n), render()),
+    borrow: (n: number) => (borrow(game, pl(), n), render()),
+    repay: (n: number) => (repay(game, pl(), n), render()),
     select: (...ids: string[]) => {
       selected = ids;
       render();
@@ -83,7 +86,7 @@ if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
     screenOf: (id: string) =>
       airportScreen(id, canvas.clientWidth, canvas.clientHeight),
     evaluate: (r: string) =>
-      evaluateRoute(game, game.routes.find((x) => x.id === r)!),
+      evaluateRoute(game, pl(), pl().routes.find((x) => x.id === r)!),
   };
 }
 
@@ -91,7 +94,7 @@ if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
 let selected: string[] = [];
 
 /** Rights we've already announced — anything new triggers the slot-granted popup. */
-let knownRights = new Set(game.rights);
+let knownRights = new Set(pl().rights);
 /** Airports whose popups are waiting behind the one on screen. */
 const slotQueue: string[] = [];
 
@@ -352,11 +355,11 @@ function drawMap() {
   ctx.drawImage(ensureBaseMap(w, h, dpr), 0, 0, w, h);
 
   // Routes (multi-leg polylines).
-  const net = evaluateNetwork(game);
-  for (const route of game.routes) {
+  const net = evaluateNetwork(game, pl());
+  for (const route of pl().routes) {
     const pts = pathPoints(route.stops, w, h);
     const res = net.routes.get(route.id)!;
-    const hasPlanes = planesOnRoute(game, route.id).length > 0;
+    const hasPlanes = planesOnRoute(pl(), route.id).length > 0;
     ctx.strokeStyle = !hasPlanes
       ? '#3a5675'
       : res.profit >= 0
@@ -371,9 +374,9 @@ function drawMap() {
   }
 
   // Moving plane sprites.
-  for (const plane of game.fleet) {
+  for (const plane of pl().fleet) {
     if (!plane.routeId) continue;
-    const route = game.routes.find((r) => r.id === plane.routeId);
+    const route = pl().routes.find((r) => r.id === plane.routeId);
     if (!route) continue;
     const pts = pathPoints(route.stops, w, h);
     const a = planeAnim(plane.id);
@@ -402,12 +405,12 @@ function drawMap() {
     const r = (5 + ap.size) * Math.max(0.2, Math.min(1.0, view.scale));
     // Three states: held (full), acquirable (dimmed + green "buy" ring you can
     // click on the map), and locked (faint, needs a bigger network).
-    const held = holdsRights(game, ap.id);
-    const pending = !held && isNegotiating(game, ap.id);
-    const acquirable = !held && rightsAvailable(game, ap.id);
+    const held = holdsRights(pl(), ap.id);
+    const pending = !held && isNegotiating(pl(), ap.id);
+    const acquirable = !held && rightsAvailable(game, pl(), ap.id);
     ctx.globalAlpha = held ? 1 : pending || acquirable ? 0.7 : 0.28;
 
-    if (ap.id === game.homeId) {
+    if (ap.id === pl().homeId) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, r + 5, 0, Math.PI * 2);
       ctx.strokeStyle = '#f5a623';
@@ -425,7 +428,7 @@ function drawMap() {
     else if (pending) pendingRing(p.x, p.y, r + 3);
 
     // Hide labels for small airports when zoomed out; home always shows.
-    const isHome = ap.id === game.homeId;
+    const isHome = ap.id === pl().homeId;
     const minScale = ap.size <= 1 ? 2.0 : ap.size <= 2 ? 1.4 : 0;
     const showLabel = isHome || view.scale >= minScale;
 
@@ -621,9 +624,9 @@ function planeAnim(planeId: string) {
 }
 
 function updateAnimations(dt: number) {
-  for (const plane of game.fleet) {
+  for (const plane of pl().fleet) {
     if (!plane.routeId) continue;
-    const route = game.routes.find((r) => r.id === plane.routeId);
+    const route = pl().routes.find((r) => r.id === plane.routeId);
     if (!route) continue;
     const type = typeById(game, plane.typeId);
     const flightHours = routeDistance(game, route) / type.speed;
@@ -700,10 +703,10 @@ canvas.addEventListener('click', (e) => {
         drawMap();
         return;
       }
-      if (holdsRights(game, ap.id)) {
+      if (holdsRights(pl(), ap.id)) {
         hideAirportPopover();
         addStop(ap.id);
-      } else if (rightsAvailable(game, ap.id) || isNegotiating(game, ap.id)) {
+      } else if (rightsAvailable(game, pl(), ap.id) || isNegotiating(pl(), ap.id)) {
         showAirportInfo(ap, p.x, p.y);
       } else {
         hideAirportPopover();
@@ -811,7 +814,7 @@ const formatPop = (n: number): string =>
 function networkDemand(ap: Airport): number {
   let total = 0;
   for (const other of game.airports) {
-    if (other.id === ap.id || !holdsRights(game, other.id)) continue;
+    if (other.id === ap.id || !holdsRights(pl(), other.id)) continue;
     total += pairDemand(ap, other) * distanceFactor(distanceKm(ap, other));
   }
   return total;
@@ -834,10 +837,10 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
   if (hidePopoverTimer) { clearTimeout(hidePopoverTimer); hidePopoverTimer = null; }
   if (showPopoverTimer) { clearTimeout(showPopoverTimer); showPopoverTimer = null; }
   popAirport = ap.id;
-  const held = holdsRights(game, ap.id);
-  const acquirable = !held && rightsAvailable(game, ap.id);
+  const held = holdsRights(pl(), ap.id);
+  const acquirable = !held && rightsAvailable(game, pl(), ap.id);
   const fee = rightsFee(game, ap);
-  const afford = game.cash >= fee;
+  const afford = pl().cash >= fee;
   const demand = Math.round(networkDemand(ap));
   const tier = '●'.repeat(ap.size) + '○'.repeat(Math.max(0, 6 - ap.size));
 
@@ -857,23 +860,23 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
   } else if (pathEnd && pathEnd.id !== ap.id) {
     distRow = `<div class="pop-row"><span class="muted">From ${pathEnd.code} (path end)</span><span>${distanceKm(pathEnd, ap).toLocaleString()} km</span></div>`;
   } else if (!pathEnd) {
-    const near = nearestHeldAirport(game, ap);
+    const near = nearestHeldAirport(game, pl(), ap);
     if (near)
       distRow = `<div class="pop-row"><span class="muted">From ${near.code} (your nearest)</span><span>${distanceKm(near, ap).toLocaleString()} km</span></div>`;
   }
 
-  const pending = negotiationFor(game, ap.id);
-  const cap = negotiationCapFor(game, ap);
-  const atCap = game.negotiations.length >= cap;
+  const pending = negotiationFor(pl(), ap.id);
+  const cap = negotiationCapFor(game, pl(), ap);
+  const atCap = pl().negotiations.length >= cap;
 
   let extra = '';
   if (held) {
-    const routesHere = game.routes.filter((r) => r.stops.includes(ap.id)).length;
-    const planesHere = game.fleet.filter((p) => {
-      const r = game.routes.find((r) => r.id === p.routeId);
+    const routesHere = pl().routes.filter((r) => r.stops.includes(ap.id)).length;
+    const planesHere = pl().fleet.filter((p) => {
+      const r = pl().routes.find((r) => r.id === p.routeId);
       return r?.stops.includes(ap.id);
     }).length;
-    const isHome = ap.id === game.homeId;
+    const isHome = ap.id === pl().homeId;
     const refund = sellRefund(game, ap);
     extra = `
       <div class="pop-row"><span class="muted">Your operation</span><span>${routesHere} route${routesHere !== 1 ? 's' : ''} · ${planesHere} plane${planesHere !== 1 ? 's' : ''}</span></div>
@@ -890,27 +893,27 @@ function showAirportInfo(ap: Airport, px: number, py: number) {
   } else if (slotsFull) {
     extra = `<div class="tiny muted" style="margin-top:6px">No slots available (${slotsUsed}/${slotsTotal} taken)</div>`;
   } else if (acquirable) {
-    const instant = firstSlotInstant(game);
+    const instant = firstSlotInstant(pl());
     const months = Math.round(negotiationDays(ap) / 30);
-    const easy = isEasySlot(game, ap);
+    const easy = isEasySlot(game, pl(), ap);
     const blocked = !afford || atCap;
     const label = !afford
       ? `Need ${money(fee)}`
       : atCap
-        ? `Limit reached (${game.negotiations.length}/${cap})`
+        ? `Limit reached (${pl().negotiations.length}/${cap})`
         : instant
           ? `Acquire slot · ${money(fee)}`
           : `Apply for slot · ${money(fee)}`;
     const timing = instant
       ? `<span class="good">opens immediately (first slot)</span>`
-      : `~${months} mo${easy ? ' · quick regional' : ''} · ${game.negotiations.length}/${cap} open`;
+      : `~${months} mo${easy ? ' · quick regional' : ''} · ${pl().negotiations.length}/${cap} open`;
     extra = `
       <div class="pop-row"><span class="muted">Slot fee</span><span class="${afford ? '' : 'bad'}">${money(fee)}</span></div>
       <div class="pop-row"><span class="muted">Negotiation</span><span>${timing}</span></div>
       <button class="pop-buy ${blocked ? '' : 'primary'}" data-pop="buy" ${blocked ? 'disabled' : ''}>${label}</button>`;
   } else {
     const need = requiredReputation(ap);
-    extra = `<div class="tiny muted" style="margin-top:6px">Locked — needs a ${need}-airport network (you have ${reputation(game)})</div>`;
+    extra = `<div class="tiny muted" style="margin-top:6px">Locked — needs a ${need}-airport network (you have ${reputation(pl())})</div>`;
   }
 
   popover.innerHTML = `
@@ -952,12 +955,12 @@ popover.addEventListener('click', (e) => {
   if (btn.dataset.pop === 'close') {
     hideAirportPopover();
   } else if (btn.dataset.pop === 'buy' && popAirport) {
-    flash(startNegotiation(game, popAirport));
+    flash(startNegotiation(game, pl(), popAirport));
     hideAirportPopover();
     render();
     announceNewRights(); // the very first slot is granted instantly
   } else if (btn.dataset.pop === 'sell' && popAirport) {
-    flash(sellSlot(game, popAirport));
+    flash(sellSlot(game, pl(), popAirport));
     hideAirportPopover();
     render();
   }
@@ -1022,16 +1025,16 @@ function render() {
 }
 
 function renderHud() {
-  const cashClass = game.cash >= 0 ? 'good' : 'bad';
-  const net = weeklyTotals(game).net;
+  const cashClass = pl().cash >= 0 ? 'good' : 'bad';
+  const net = weeklyTotals(game, pl()).net;
   const netClass = net >= 0 ? 'good' : 'bad';
   hud.innerHTML = `
     <div class="stat"><span class="label">Date</span><span class="value">${dateStr()}</span></div>
-    <div class="stat"><span class="label">Cash</span><span class="value ${cashClass}">${money(game.cash)}</span></div>
+    <div class="stat"><span class="label">Cash</span><span class="value ${cashClass}">${money(pl().cash)}</span></div>
     <div class="stat"><span class="label">Net / wk</span><span class="value ${netClass}">${net >= 0 ? '+' : ''}${money(net)}</span></div>
-    <div class="stat"><span class="label">Debt</span><span class="value">${money(game.debt)}</span></div>
-    <div class="stat"><span class="label">Fleet</span><span class="value">${game.fleet.length}</span></div>
-    <div class="stat"><span class="label">Routes</span><span class="value">${game.routes.length}</span></div>
+    <div class="stat"><span class="label">Debt</span><span class="value">${money(pl().debt)}</span></div>
+    <div class="stat"><span class="label">Fleet</span><span class="value">${pl().fleet.length}</span></div>
+    <div class="stat"><span class="label">Routes</span><span class="value">${pl().routes.length}</span></div>
   `;
 }
 
@@ -1097,9 +1100,9 @@ function buyCard(): string {
   const rows = game.aircraftTypes
     .filter((t) => typeAvailable(game, t))
     .map((t) => {
-      const afford = game.cash >= t.price;
+      const afford = pl().cash >= t.price;
       const label = afford ? `Buy · ${money(t.price)}` : `Need ${money(t.price)}`;
-      const owned = game.fleet.filter((p) => p.typeId === t.id).length;
+      const owned = pl().fleet.filter((p) => p.typeId === t.id).length;
       const perKm = (t.costPerKm * lvl).toFixed(1);
       const upkeep = money(Math.round(t.weeklyUpkeep * lvl));
       return `<div class="plane-line">
@@ -1121,10 +1124,10 @@ function buyCard(): string {
 }
 
 function rightsCard(): string {
-  const rep = reputation(game);
-  const notHeld = game.airports.filter((a) => !holdsRights(game, a.id));
-  const available = notHeld.filter((a) => rightsAvailable(game, a.id));
-  const locked = notHeld.filter((a) => !rightsAvailable(game, a.id));
+  const rep = reputation(pl());
+  const notHeld = game.airports.filter((a) => !holdsRights(pl(), a.id));
+  const available = notHeld.filter((a) => rightsAvailable(game, pl(), a.id));
+  const locked = notHeld.filter((a) => !rightsAvailable(game, pl(), a.id));
 
   let next: string;
   if (available.length) {
@@ -1137,9 +1140,9 @@ function rightsCard(): string {
   }
 
   const lockedNote = locked.length ? ` <span class="muted">· 🔒 ${locked.length} still locked.</span>` : '';
-  const cap = concurrentCap(game);
-  const negs = game.negotiations.length;
-  const negRows = game.negotiations
+  const cap = concurrentCap(pl());
+  const negs = pl().negotiations.length;
+  const negRows = pl().negotiations
     .slice()
     .sort((a, b) => a.opensDay - b.opensDay)
     .map((n) => {
@@ -1158,35 +1161,35 @@ function rightsCard(): string {
 }
 
 function bankCard(): string {
-  const limit = creditLimit(game);
-  const credit = Math.max(0, limit - game.debt);
-  const rate = interestRate(game);
-  const weeklyInterest = game.debt * rate * (7 / 365);
+  const limit = creditLimit(game, pl());
+  const credit = Math.max(0, limit - pl().debt);
+  const rate = interestRate(game, pl());
+  const weeklyInterest = pl().debt * rate * (7 / 365);
   const earnRate = depositRate(game);
-  const weeklyEarned = cashInterestWeekly(game);
+  const weeklyEarned = cashInterestWeekly(game, pl());
   // Right-size the buttons so the label matches what actually happens.
   const borrowAmt = Math.min(5_000_000, credit);
-  const repayAmt = Math.min(game.cash < 5_000_000 ? 1_000_000 : 5_000_000, game.debt, Math.max(0, game.cash));
+  const repayAmt = Math.min(pl().cash < 5_000_000 ? 1_000_000 : 5_000_000, pl().debt, Math.max(0, pl().cash));
   return `<div class="card"><h3>Bank</h3>
-    <div class="row"><span class="muted">Debt</span><strong>${money(game.debt)}</strong></div>
+    <div class="row"><span class="muted">Debt</span><strong>${money(pl().debt)}</strong></div>
     <div class="row"><span class="muted">Credit line</span><span>${money(credit)} of ${money(limit)}</span></div>
     <div class="row"><span class="muted">Rate</span><span>${(rate * 100).toFixed(1)}%/yr · <span class="bad">-${money(weeklyInterest)}/wk</span></span></div>
     <div class="row"><span class="muted">Cash earns</span><span>${(earnRate * 100).toFixed(1)}%/yr · <span class="good">+${money(weeklyEarned)}/wk</span></span></div>
     <div class="row" style="margin-top:10px">
       <button data-act="borrow" data-amt="${borrowAmt}" ${credit > 0 ? '' : 'disabled'}>Borrow ${money(borrowAmt)}</button>
-      <button data-act="repay" data-amt="${repayAmt}" ${game.debt > 0 && game.cash > 0 ? '' : 'disabled'}>Repay ${money(repayAmt)}</button>
+      <button data-act="repay" data-amt="${repayAmt}" ${pl().debt > 0 && pl().cash > 0 ? '' : 'disabled'}>Repay ${money(repayAmt)}</button>
     </div></div>`;
 }
 
 function routesCard(): string {
-  if (game.routes.length === 0)
+  if (pl().routes.length === 0)
     return collapsibleCard('routes', 'Routes', '<div class="muted">No routes yet.</div>');
-  const net = evaluateNetwork(game);
-  const rows = game.routes
+  const net = evaluateNetwork(game, pl());
+  const rows = pl().routes
     .map((r) => {
       const dist = routeDistance(game, r);
       const res = net.routes.get(r.id)!;
-      const n = planesOnRoute(game, r.id).length;
+      const n = planesOnRoute(pl(), r.id).length;
       const load = Math.round(res.loadFactor * 100);
       const loadCls = load >= 90 ? 'good' : load >= 75 ? 'warn' : 'bad';
       const cls = res.profit >= 0 ? 'good' : 'bad';
@@ -1211,12 +1214,12 @@ function routesCard(): string {
       </div>`;
     })
     .join('');
-  return collapsibleCard('routes', `Routes (${game.routes.length})`, rows);
+  return collapsibleCard('routes', `Routes (${pl().routes.length})`, rows);
 }
 
 /** In-range types worth upgrading a route's fleet to — strictly pricier than what it flies. */
 function upgradeCandidates(r: Route): AircraftType[] {
-  const planes = planesOnRoute(game, r.id);
+  const planes = planesOnRoute(pl(), r.id);
   if (planes.length === 0) return [];
   const longest = routeMaxLeg(game, r);
   const floor = Math.max(...planes.map((p) => typeById(game, p.typeId).price));
@@ -1224,14 +1227,14 @@ function upgradeCandidates(r: Route): AircraftType[] {
 }
 
 function fleetCard(): string {
-  if (game.fleet.length === 0)
+  if (pl().fleet.length === 0)
     return collapsibleCard('fleet', 'Fleet', '<div class="muted">No aircraft. Buy one above.</div>');
-  const rows = game.fleet
+  const rows = pl().fleet
     .map((plane) => {
       const t = typeById(game, plane.typeId);
       const options = [`<option value="">Hangar (idle)</option>`]
         .concat(
-          game.routes.map((r) => {
+          pl().routes.map((r) => {
             const tooFar = t.range < routeMaxLeg(game, r);
             const sel = plane.routeId === r.id ? 'selected' : '';
             return `<option value="${r.id}" ${sel} ${tooFar ? 'disabled' : ''}>${routeLabel(game, r)}${tooFar ? ' (out of range)' : ''}</option>`;
@@ -1246,11 +1249,11 @@ function fleetCard(): string {
       </div>`;
     })
     .join('');
-  return collapsibleCard('fleet', `Fleet (${game.fleet.length})`, rows);
+  return collapsibleCard('fleet', `Fleet (${pl().fleet.length})`, rows);
 }
 
 function renderLog() {
-  logEl.innerHTML = game.log
+  logEl.innerHTML = pl().log
     .slice(0, 20)
     .map((e) => `<div class="entry">${e}</div>`)
     .join('');
@@ -1260,7 +1263,7 @@ function renderLog() {
 
 function flash(message: string | null) {
   if (message) {
-    game.log.unshift(`⚠ ${message}`);
+    pl().log.unshift(`⚠ ${message}`);
     render();
   }
 }
@@ -1278,7 +1281,7 @@ sidebar.addEventListener('click', (e) => {
       render();
       break;
     case 'open-route': {
-      const err = openRoute(game, selected);
+      const err = openRoute(game, pl(), selected);
       if (err) flash(err);
       else {
         selected = [];
@@ -1287,15 +1290,15 @@ sidebar.addEventListener('click', (e) => {
       break;
     }
     case 'buy':
-      flash(buyPlane(game, btn.dataset.type!));
+      flash(buyPlane(game, pl(), btn.dataset.type!));
       render();
       break;
     case 'borrow':
-      borrow(game, Number(btn.dataset.amt));
+      borrow(game, pl(), Number(btn.dataset.amt));
       render();
       break;
     case 'repay':
-      repay(game, Number(btn.dataset.amt));
+      repay(game, pl(), Number(btn.dataset.amt));
       render();
       break;
     case 'toggle-card': {
@@ -1306,11 +1309,11 @@ sidebar.addEventListener('click', (e) => {
       break;
     }
     case 'close-route':
-      closeRoute(game, btn.dataset.route!);
+      closeRoute(game, pl(), btn.dataset.route!);
       render();
       break;
     case 'sell-plane':
-      flash(sellPlane(game, btn.dataset.plane!));
+      flash(sellPlane(game, pl(), btn.dataset.plane!));
       render();
       break;
     case 'open-upgrade':
@@ -1323,11 +1326,11 @@ sidebar.addEventListener('change', (e) => {
   const el = e.target as HTMLElement;
   if (el.dataset.act === 'assign') {
     const sel = el as unknown as HTMLSelectElement;
-    flash(assignPlane(game, el.dataset.plane!, sel.value || null));
+    flash(assignPlane(game, pl(), el.dataset.plane!, sel.value || null));
     render();
   } else if (el.dataset.act === 'fare') {
     const input = el as unknown as HTMLInputElement;
-    setFareFactor(game, el.dataset.route!, Number(input.value) / 100);
+    setFareFactor(pl(), el.dataset.route!, Number(input.value) / 100);
     render();
   }
 });
@@ -1351,7 +1354,7 @@ function afterStateSwap() {
   anim.clear();
   setPlaying(false);
   dayAccumulator = 0;
-  knownRights = new Set(game.rights);
+  knownRights = new Set(pl().rights);
   slotQueue.length = 0;
   slotGrantedEl.classList.add('hidden');
 }
@@ -1392,11 +1395,11 @@ const hideUpgradeSelect = () => upgradeSelectEl.classList.add('hidden');
 
 /** Popup (starter-airport style) to swap a route's whole fleet to a newer type. */
 function showUpgradeSelect(routeId: string) {
-  const r = game.routes.find((x) => x.id === routeId);
+  const r = pl().routes.find((x) => x.id === routeId);
   if (!r) return;
   const candidates = upgradeCandidates(r);
   if (candidates.length === 0) return;
-  const planes = planesOnRoute(game, r.id);
+  const planes = planesOnRoute(pl(), r.id);
   // Describe what's flying the route now, e.g. "2 × Dash 8 Q400".
   const counts = new Map<string, number>();
   for (const p of planes) counts.set(p.typeId, (counts.get(p.typeId) ?? 0) + 1);
@@ -1408,8 +1411,8 @@ function showUpgradeSelect(routeId: string) {
   upgradeSubEl.textContent = `Flying ${current} now. Picking a type sells the current plane${planes.length === 1 ? '' : 's'} and buys replacements in place — the route stays covered.`;
   upgradeListEl.innerHTML = '';
   for (const t of candidates) {
-    const q = upgradeRouteQuote(game, r.id, t.id);
-    const afford = game.cash >= q.net;
+    const q = upgradeRouteQuote(game, pl(), r.id, t.id);
+    const afford = pl().cash >= q.net;
     const delta = `${q.net >= 0 ? '+' : '−'}${money(Math.abs(q.net))}`;
     const netCls = q.net < 0 ? 'good' : afford ? '' : 'bad';
     const btn = document.createElement('button');
@@ -1422,7 +1425,7 @@ function showUpgradeSelect(routeId: string) {
       `<span class="up-net ${netCls}">${afford ? delta : `need ${money(q.net)}`}</span></div>`;
     btn.addEventListener('click', () => {
       hideUpgradeSelect();
-      flash(upgradeRoute(game, r.id, t.id));
+      flash(upgradeRoute(game, pl(), r.id, t.id));
       render();
     });
     upgradeListEl.appendChild(btn);
@@ -1470,7 +1473,7 @@ function showSlotGranted(airportId: string) {
   slotCreditEl.classList.add('hidden');
   slotPhotoEl.src = `/postcards/${ap.id}.jpg`;
   slotCityEl.textContent = `${ap.city} (${ap.code})`;
-  const near = nearestHeldAirport(game, ap);
+  const near = nearestHeldAirport(game, pl(), ap);
   const parts = [
     `Market ${'★'.repeat(ap.size)}`,
     `${(ap.population / 1_000_000).toFixed(1)}M metro`,
@@ -1490,8 +1493,8 @@ function hideSlotGranted() {
 
 /** Pause and pop up a card for any airport whose rights just arrived. */
 function announceNewRights() {
-  const fresh = game.rights.filter((id) => !knownRights.has(id));
-  knownRights = new Set(game.rights);
+  const fresh = pl().rights.filter((id) => !knownRights.has(id));
+  knownRights = new Set(pl().rights);
   if (!fresh.length) return;
   setPlaying(false);
   if (slotShownId === null) showSlotGranted(fresh.shift()!);
@@ -1521,7 +1524,7 @@ function saveGame(announce = false) {
   try {
     localStorage.setItem(SAVE_KEY, serialize(game));
     if (announce) {
-      game.log.unshift('Game saved.');
+      pl().log.unshift('Game saved.');
       renderLog();
     }
   } catch {
@@ -1548,7 +1551,7 @@ document.getElementById('save-game')!.addEventListener('click', () => saveGame(t
 
 document.getElementById('load-game')!.addEventListener('click', () => {
   if (loadGame()) {
-    game.log.unshift('Game loaded.');
+    pl().log.unshift('Game loaded.');
     render();
   } else {
     flash('No saved game found.');
@@ -1565,9 +1568,9 @@ document.getElementById('speeds')!.addEventListener('click', (e) => {
 });
 
 function logWeekly() {
-  const w = weeklyTotals(game);
+  const w = weeklyTotals(game, pl());
   const netInterest = w.interestEarned - w.interest; // +earned, −paid
-  game.log.unshift(
+  pl().log.unshift(
     `Week ${weekNumber(game) - 1}: ${Math.round(w.pax).toLocaleString()} pax · ` +
       `rev ${money(w.revenue)} · cost ${money(w.cost)} · ` +
       `int ${netInterest >= 0 ? '+' : ''}${money(netInterest)} · net ${w.net >= 0 ? '+' : ''}${money(w.net)}.`,
@@ -1581,17 +1584,17 @@ function frame(ts: number) {
   let sidebarDirty = false;
   if (playing) {
     dayAccumulator += (dt * speed) / DAY_MS;
-    const badgesBefore = game.badges.length;
+    const badgesBefore = pl().badges.length;
     while (dayAccumulator >= 1) {
       dayAccumulator -= 1;
       advanceDay(game);
       sidebarDirty = true;
       if (game.day % 7 === 0) {
         logWeekly();
-        recordFinanceSnapshot(game);
+        recordFinanceSnapshot(game, pl());
       }
     }
-    if (game.badges.length > badgesBefore) renderLog(); // surface freshly-earned badges
+    if (pl().badges.length > badgesBefore) renderLog(); // surface freshly-earned badges
     if (sidebarDirty) announceNewRights();
     updateAnimations(dt);
   }

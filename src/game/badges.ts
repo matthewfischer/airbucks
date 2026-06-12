@@ -1,4 +1,4 @@
-import type { Continent, GameState } from './types';
+import type { Airline, Continent, GameState } from './types';
 import { CONTINENTS, continentOf } from './data';
 import { currentYear, reputation, typeById, weeklyTotals } from './engine';
 
@@ -12,45 +12,45 @@ export interface BadgeDef {
   /** How to earn it — shown as the locked hint and the earned subtitle. */
   hint: string;
   /** True once the airline has met the condition. */
-  earned: (g: GameState) => boolean;
+  earned: (g: GameState, al: Airline) => boolean;
   /** Optional countable progress for the locked state (e.g. 18 / 25). */
-  progress?: (g: GameState) => { have: number; need: number };
+  progress?: (g: GameState, al: Airline) => { have: number; need: number };
 }
 
 /** Continents the airline has reached (always includes its home continent). */
-function reachedContinents(g: GameState): Set<Continent> {
+function reachedContinents(al: Airline): Set<Continent> {
   const s = new Set<Continent>();
-  for (const id of g.rights) s.add(continentOf(id));
+  for (const id of al.rights) s.add(continentOf(id));
   return s;
 }
 
 /** How many routes pass through the single busiest airport. */
-function busiestHub(g: GameState): number {
+function busiestHub(al: Airline): number {
   const counts = new Map<string, number>();
-  for (const r of g.routes)
+  for (const r of al.routes)
     for (const id of new Set(r.stops))
       counts.set(id, (counts.get(id) ?? 0) + 1);
   return counts.size ? Math.max(...counts.values()) : 0;
 }
 
 /** Average age (years) of the fleet at the current date; 0 for an empty fleet. */
-function avgFleetAge(g: GameState): number {
-  if (!g.fleet.length) return 0;
+function avgFleetAge(g: GameState, al: Airline): number {
+  if (!al.fleet.length) return 0;
   const year = currentYear(g);
-  const total = g.fleet.reduce((s, p) => s + (year - typeById(g, p.typeId).introduced), 0);
-  return total / g.fleet.length;
+  const total = al.fleet.reduce((s, p) => s + (year - typeById(g, p.typeId).introduced), 0);
+  return total / al.fleet.length;
 }
 
-const reaches = (c: Continent) => (g: GameState) => reachedContinents(g).has(c);
+const reaches = (c: Continent) => (_g: GameState, al: Airline) => reachedContinents(al).has(c);
 const network =
   (need: number): Pick<BadgeDef, 'earned' | 'progress'> => ({
-    earned: (g) => reputation(g) >= need,
-    progress: (g) => ({ have: reputation(g), need }),
+    earned: (_g, al) => reputation(al) >= need,
+    progress: (_g, al) => ({ have: reputation(al), need }),
   });
 const fleetSize =
   (need: number): Pick<BadgeDef, 'earned' | 'progress'> => ({
-    earned: (g) => g.fleet.length >= need,
-    progress: (g) => ({ have: g.fleet.length, need }),
+    earned: (_g, al) => al.fleet.length >= need,
+    progress: (_g, al) => ({ have: al.fleet.length, need }),
   });
 
 export const BADGES: BadgeDef[] = [
@@ -67,8 +67,8 @@ export const BADGES: BadgeDef[] = [
     hint: 'Reach Oceania', earned: reaches('Oceania') },
   { id: 'globetrotter', name: 'Globetrotter', icon: '🧭', group: 'Exploration',
     hint: 'Hold rights on all six continents',
-    earned: (g) => reachedContinents(g).size >= CONTINENTS.length,
-    progress: (g) => ({ have: reachedContinents(g).size, need: CONTINENTS.length }) },
+    earned: (_g, al) => reachedContinents(al).size >= CONTINENTS.length,
+    progress: (_g, al) => ({ have: reachedContinents(al).size, need: CONTINENTS.length }) },
 
   // ---- Network ------------------------------------------------------------
   { id: 'net-5', name: 'Taking Off', icon: '🛫', group: 'Network',
@@ -81,8 +81,8 @@ export const BADGES: BadgeDef[] = [
     hint: '50 airports', ...network(50) },
   { id: 'hub', name: 'Hub & Spoke', icon: '🕸', group: 'Network',
     hint: '6 routes through one airport',
-    earned: (g) => busiestHub(g) >= 6,
-    progress: (g) => ({ have: busiestHub(g), need: 6 }) },
+    earned: (_g, al) => busiestHub(al) >= 6,
+    progress: (_g, al) => ({ have: busiestHub(al), need: 6 }) },
 
   // ---- Fleet --------------------------------------------------------------
   { id: 'fleet-1', name: 'First Wings', icon: '🛬', group: 'Fleet',
@@ -93,18 +93,18 @@ export const BADGES: BadgeDef[] = [
     hint: '25 aircraft', ...fleetSize(25) },
   { id: 'all-jet', name: 'Jet Age', icon: '🚀', group: 'Fleet',
     hint: 'An all-jet fleet of 5 or more',
-    earned: (g) =>
-      g.fleet.length >= 5 && g.fleet.every((p) => typeById(g, p.typeId).propulsion === 'jet') },
+    earned: (g, al) =>
+      al.fleet.length >= 5 && al.fleet.every((p) => typeById(g, p.typeId).propulsion === 'jet') },
   { id: 'young-fleet', name: 'Cutting Edge', icon: '⚡', group: 'Fleet',
     hint: 'Average fleet age under 3 years',
-    earned: (g) => g.fleet.length >= 3 && avgFleetAge(g) < 3 },
+    earned: (g, al) => al.fleet.length >= 3 && avgFleetAge(g, al) < 3 },
 
   // ---- Milestones ---------------------------------------------------------
   { id: 'in-the-black', name: 'In the Black', icon: '💰', group: 'Milestones',
-    hint: 'Turn a weekly profit', earned: (g) => weeklyTotals(g).net > 0 },
+    hint: 'Turn a weekly profit', earned: (g, al) => weeklyTotals(g, al).net > 0 },
   { id: 'debt-free', name: 'Debt Free', icon: '🏦', group: 'Milestones',
     hint: 'Clear all debt after borrowing',
-    earned: (g) => g.debt === 0 && g.history.some((h) => h.debt > 0) },
+    earned: (_g, al) => al.debt === 0 && al.history.some((h) => h.debt > 0) },
   { id: 'long-haul', name: 'The Long Haul', icon: '⏳', group: 'Milestones',
     hint: 'Fly for 20 years',
     earned: (g) => g.day >= 20 * 365,
@@ -120,13 +120,13 @@ export const BADGE_IDS = new Set(BADGES.map((b) => b.id));
  * Returns the ids awarded this call (empty if none). Idempotent: a badge is
  * only ever earned once.
  */
-export function checkBadges(g: GameState): string[] {
-  const have = new Set(g.badges.map((b) => b.id));
+export function checkBadges(g: GameState, al: Airline): string[] {
+  const have = new Set(al.badges.map((b) => b.id));
   const newly: string[] = [];
   for (const b of BADGES) {
-    if (have.has(b.id) || !b.earned(g)) continue;
-    g.badges.push({ id: b.id, day: g.day });
-    g.log.unshift(`🏆 Badge earned: ${b.name} — ${b.hint}.`);
+    if (have.has(b.id) || !b.earned(g, al)) continue;
+    al.badges.push({ id: b.id, day: g.day });
+    al.log.unshift(`🏆 Badge earned: ${b.name} — ${b.hint}.`);
     newly.push(b.id);
   }
   return newly;

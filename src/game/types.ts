@@ -90,26 +90,38 @@ export interface Negotiation {
   fee: number;
 }
 
-export interface GameState {
-  /** Simulated days elapsed since the start date. */
-  day: number;
+/** One carrier — the player or a computer opponent. */
+export interface Airline {
+  id: string;
+  name: string;
+  /** Map color for this airline's routes and planes. */
+  color: string;
   cash: number;
   /** Outstanding loan principal. */
   debt: number;
+  /** IATA id of the airline's home airport. */
+  homeId: string;
   /** Airport ids where the airline holds landing rights (can operate). */
   rights: string[];
   /** Slot applications in progress, not yet granted. */
   negotiations: Negotiation[];
   /** Badges earned, oldest-first. */
   badges: EarnedBadge[];
-  /** IATA id of the player's chosen home airport. */
-  homeId: string;
-  airports: Airport[];
-  aircraftTypes: AircraftType[];
   fleet: Plane[];
   routes: Route[];
   /** Newest-first list of human-readable events. */
   log: string[];
   /** Oldest-first weekly financial snapshots, for the finance page. */
   history: FinanceSnapshot[];
+}
+
+export interface GameState {
+  /** Simulated days elapsed since the start date. */
+  day: number;
+  /** Deterministic RNG state (mulberry32) — advanced by rand(), persisted. */
+  rngState: number;
+  airports: Airport[];
+  aircraftTypes: AircraftType[];
+  /** All carriers. The player is always airlines[0]. */
+  airlines: Airline[];
 }

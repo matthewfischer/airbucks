@@ -1,4 +1,5 @@
 import type {
+  Airline,
   EarnedBadge,
   FinanceSnapshot,
   GameState,
@@ -11,13 +12,14 @@ import { BADGE_IDS } from './badges';
 import { reseedIds } from './engine';
 
 /** Bump when the save shape changes incompatibly. */
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
-/** The persisted slice of a game — only the dynamic fields, not static data. */
-export interface SaveData {
-  version: number;
+/** One airline's persisted slice. */
+export interface SavedAirline {
+  id: string;
+  name: string;
+  color: string;
   homeId: string;
-  day: number;
   cash: number;
   debt: number;
   rights: string[];
@@ -29,23 +31,68 @@ export interface SaveData {
   history: FinanceSnapshot[];
 }
 
+/** The persisted slice of a game — only the dynamic fields, not static data. */
+export interface SaveData {
+  version: number;
+  day: number;
+  rngState: number;
+  airlines: SavedAirline[];
+}
+
+const saveAirline = (al: Airline): SavedAirline => ({
+  id: al.id,
+  name: al.name,
+  color: al.color,
+  homeId: al.homeId,
+  cash: al.cash,
+  debt: al.debt,
+  rights: al.rights,
+  negotiations: al.negotiations,
+  badges: al.badges,
+  fleet: al.fleet,
+  routes: al.routes,
+  log: al.log,
+  history: al.history,
+});
+
 /** Serialize a game to a JSON string (airports/aircraft come from data.ts, not saved). */
 export function serialize(g: GameState): string {
   const data: SaveData = {
     version: SAVE_VERSION,
-    homeId: g.homeId,
     day: g.day,
-    cash: g.cash,
-    debt: g.debt,
-    rights: g.rights,
-    negotiations: g.negotiations,
-    badges: g.badges,
-    fleet: g.fleet,
-    routes: g.routes,
-    log: g.log,
-    history: g.history,
+    rngState: g.rngState,
+    airlines: g.airlines.map(saveAirline),
   };
   return JSON.stringify(data);
+}
+
+function parseAirline(d: unknown): SavedAirline | null {
+  if (typeof d !== 'object' || d === null) return null;
+  const s = d as Record<string, unknown>;
+  if (
+    typeof s.homeId !== 'string' ||
+    typeof s.cash !== 'number' ||
+    typeof s.debt !== 'number' ||
+    !Array.isArray(s.fleet) ||
+    !Array.isArray(s.routes)
+  ) {
+    return null;
+  }
+  return {
+    id: typeof s.id === 'string' ? s.id : 'player',
+    name: typeof s.name === 'string' ? s.name : 'Air Bucks',
+    color: typeof s.color === 'string' ? s.color : '#3fd0c9',
+    homeId: s.homeId,
+    cash: s.cash,
+    debt: s.debt,
+    rights: Array.isArray(s.rights) ? (s.rights as string[]) : [],
+    negotiations: Array.isArray(s.negotiations) ? (s.negotiations as Negotiation[]) : [],
+    badges: Array.isArray(s.badges) ? (s.badges as EarnedBadge[]) : [],
+    fleet: s.fleet as Plane[],
+    routes: s.routes as Route[],
+    log: Array.isArray(s.log) ? (s.log as string[]) : [],
+    history: Array.isArray(s.history) ? (s.history as FinanceSnapshot[]) : [],
+  };
 }
 
 /** Parse and validate a save string. Returns null on anything malformed/incompatible. */
@@ -59,41 +106,32 @@ export function deserialize(json: string): SaveData | null {
   if (typeof d !== 'object' || d === null) return null;
   const s = d as Record<string, unknown>;
   if (s.version !== SAVE_VERSION) return null;
-  if (
-    typeof s.homeId !== 'string' ||
-    typeof s.day !== 'number' ||
-    typeof s.cash !== 'number' ||
-    typeof s.debt !== 'number' ||
-    !Array.isArray(s.fleet) ||
-    !Array.isArray(s.routes)
-  ) {
+  if (typeof s.day !== 'number' || !Array.isArray(s.airlines) || s.airlines.length === 0)
     return null;
+  const airlines: SavedAirline[] = [];
+  for (const a of s.airlines) {
+    const parsed = parseAirline(a);
+    if (!parsed) return null;
+    airlines.push(parsed);
   }
   return {
     version: SAVE_VERSION,
-    homeId: s.homeId,
     day: s.day,
-    cash: s.cash,
-    debt: s.debt,
-    rights: Array.isArray(s.rights) ? (s.rights as string[]) : [],
-    negotiations: Array.isArray(s.negotiations) ? (s.negotiations as Negotiation[]) : [],
-    badges: Array.isArray(s.badges) ? (s.badges as EarnedBadge[]) : [],
-    fleet: s.fleet as Plane[],
-    routes: s.routes as Route[],
-    log: Array.isArray(s.log) ? (s.log as string[]) : [],
-    history: Array.isArray(s.history) ? (s.history as FinanceSnapshot[]) : [],
+    rngState: typeof s.rngState === 'number' ? s.rngState >>> 0 : 0,
+    airlines,
   };
 }
 
 /**
- * Apply a save onto a live game, keeping the game's current airports/aircraft.
- * Sanitizes against data drift: routes referencing unknown airports and planes
- * of unknown types are dropped, and planes on a dropped route go idle.
+ * Rebuild one live airline from its saved slice, sanitizing against data
+ * drift: routes referencing unknown airports and planes of unknown types are
+ * dropped, and planes on a dropped route go idle.
  */
-export function applySave(g: GameState, data: SaveData): void {
-  const airportIds = new Set(g.airports.map((a) => a.id));
-  const typeIds = new Set(g.aircraftTypes.map((t) => t.id));
-
+function applyAirline(
+  data: SavedAirline,
+  airportIds: Set<string>,
+  typeIds: Set<string>,
+): Airline {
   const routes = data.routes.filter(
     (r) => r.stops.length >= 2 && r.stops.every((s) => airportIds.has(s)),
   );
@@ -116,17 +154,30 @@ export function applySave(g: GameState, data: SaveData): void {
     (n) => airportIds.has(n.airportId) && !rights.has(n.airportId),
   );
 
-  g.homeId = data.homeId;
+  return {
+    id: data.id,
+    name: data.name,
+    color: data.color,
+    homeId: data.homeId,
+    cash: data.cash,
+    debt: data.debt,
+    rights: [...rights],
+    negotiations,
+    // Drop any badges whose definitions no longer exist.
+    badges: (data.badges ?? []).filter((b) => BADGE_IDS.has(b.id)),
+    fleet,
+    routes,
+    log: data.log,
+    history: data.history,
+  };
+}
+
+/** Apply a save onto a live game, keeping the game's current airports/aircraft. */
+export function applySave(g: GameState, data: SaveData): void {
+  const airportIds = new Set(g.airports.map((a) => a.id));
+  const typeIds = new Set(g.aircraftTypes.map((t) => t.id));
   g.day = data.day;
-  g.cash = data.cash;
-  g.debt = data.debt;
-  g.rights = [...rights];
-  g.negotiations = negotiations;
-  // Drop any badges whose definitions no longer exist.
-  g.badges = (data.badges ?? []).filter((b) => BADGE_IDS.has(b.id));
-  g.routes = routes;
-  g.fleet = fleet;
-  g.log = data.log;
-  g.history = data.history;
+  g.rngState = data.rngState;
+  g.airlines = data.airlines.map((a) => applyAirline(a, airportIds, typeIds));
   reseedIds(g);
 }
