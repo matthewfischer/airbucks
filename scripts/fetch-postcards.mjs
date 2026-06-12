@@ -101,7 +101,7 @@ const CITY_INFO = {
 //   https://commons.wikimedia.org/wiki/Category:Postcards_of_<City>
 //   https://commons.wikimedia.org/w/index.php?search=<city>+postcard&ns6=1
 const MANUAL_PICKS = {
-  // 'atl': 'File:Greetings from Atlanta Georgia (8343904034).jpg',
+  clt: 'File:3. Municipal Airport, Charlotte, N. C. (5756052158).jpg',
 };
 
 const US_STATES = [
@@ -242,9 +242,14 @@ async function checkLicense(title, anyProvenance = false) {
   const meta = ii.extmetadata ?? {};
   const license = meta.LicenseShortName?.value ?? '';
   const provenance = (meta.Artist?.value ?? '') + (meta.Credit?.value ?? '');
-  if (!/public domain/i.test(license)) return null;
-  if (!anyProvenance && !/tichnor|boston public library|teich|newberry/i.test(provenance))
+  // Manual picks may be CC BY (attribution lives in CREDITS.md; Commons
+  // hosts no NC/ND licenses). Auto picks stay strictly public domain.
+  if (anyProvenance) {
+    if (!/public domain|cc by/i.test(license)) return null;
+  } else if (!/public domain/i.test(license)
+      || !/tichnor|boston public library|teich|newberry/i.test(provenance)) {
     return null;
+  }
   return { title, thumb: ii.thumburl, page: ii.descriptionurl, license };
 }
 

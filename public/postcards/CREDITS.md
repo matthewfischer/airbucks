@@ -9,6 +9,7 @@ Library), and hand-picked files (see MANUAL_PICKS in the fetch script).
 - bna (Nashville): [File:Greetings from Nashville, Tennessee (74043).jpg](https://commons.wikimedia.org/wiki/File:Greetings_from_Nashville,_Tennessee_(74043).jpg) — Public domain
 - boi (Boise): [File:Boise ID - Greetings from Boise Idaho (NBY 431776).jpg](https://commons.wikimedia.org/wiki/File:Boise_ID_-_Greetings_from_Boise_Idaho_(NBY_431776).jpg) — Public domain
 - bos (Boston): [File:Massachusetts Institute of Technology, located in Cambridge, skyline across the Charles River is Boston, Mass (87236).jpg](https://commons.wikimedia.org/wiki/File:Massachusetts_Institute_of_Technology,_located_in_Cambridge,_skyline_across_the_Charles_River_is_Boston,_Mass_(87236).jpg) — Public domain
+- clt (Charlotte): [File:3. Municipal Airport, Charlotte, N. C. (5756052158).jpg](https://commons.wikimedia.org/wiki/File:3._Municipal_Airport,_Charlotte,_N._C._(5756052158).jpg) — CC BY 2.0
 - cle (Cleveland): [File:Greetings From Cleveland, Ohio (NBY 4403).jpg](https://commons.wikimedia.org/wiki/File:Greetings_From_Cleveland,_Ohio_(NBY_4403).jpg) — Public domain
 - cmh (Columbus): [File:Skyline, looking east from across Scioto River, Columbus, Ohio (73697).jpg](https://commons.wikimedia.org/wiki/File:Skyline,_looking_east_from_across_Scioto_River,_Columbus,_Ohio_(73697).jpg) — Public domain
 - crw (Charleston, WV): [File:Greetings from Charleston, W. VA (73368).jpg](https://commons.wikimedia.org/wiki/File:Greetings_from_Charleston,_W._VA_(73368).jpg) — Public domain
