@@ -1,6 +1,7 @@
 import type { GameState } from '../game/types';
 import {
   financeMetrics,
+  player,
   money,
   profitMargin,
   returnOnCapital,
@@ -25,7 +26,8 @@ const goodBad = (v: number): string => (v >= 0 ? 'good' : 'bad');
 
 /** Render the whole finance page into the given element. */
 export function renderFinance(g: GameState, el: HTMLElement): void {
-  const m = financeMetrics(g);
+  const al = player(g);
+  const m = financeMetrics(g, al);
   const kpis = `
     <div class="kpi-grid">
       ${kpi('Cash', money(m.cash), goodBad(m.cash))}
@@ -36,7 +38,7 @@ export function renderFinance(g: GameState, el: HTMLElement): void {
       ${kpi('Return on capital', pct(m.roc), goodBad(m.roc), 'annualized')}
     </div>`;
 
-  const h = g.history;
+  const h = al.history;
   if (h.length < 2) {
     el.innerHTML = `<h2 class="fin-title">Finance</h2>${kpis}
       <div class="fin-empty">Press ▶ Play to run the airline — weekly results will chart here as they accumulate.</div>`;

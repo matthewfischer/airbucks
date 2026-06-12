@@ -1,6 +1,9 @@
 # AI Players (Computer Opponents) — Design
 
-Status: agreed design, not yet built. (2026-06-11)
+Status: agreed design. (2026-06-11)
+Progress: the state refactor below landed 2026-06-12 (`Airline` extracted,
+player = `airlines[0]`, engine takes `(g, airline)`, seeded RNG via `rand(g)`,
+save format v6). AI behavior itself is not built yet.
 
 ## Overview
 
