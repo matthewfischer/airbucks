@@ -102,6 +102,8 @@ const CITY_INFO = {
 //   https://commons.wikimedia.org/w/index.php?search=<city>+postcard&ns6=1
 const MANUAL_PICKS = {
   clt: 'File:3. Municipal Airport, Charlotte, N. C. (5756052158).jpg',
+  dca: 'File:Washington National (1944).jpg',
+  ric: 'File:Greetings from Richmond, Virginia - Large Letter Postcard (14395075646).jpg',
 };
 
 const US_STATES = [

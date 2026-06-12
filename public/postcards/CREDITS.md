@@ -1,5 +1,4 @@
 # Postcard image credits
-
 Public-domain vintage postcards via Wikimedia Commons: Tichnor Brothers
 collection (Boston Public Library), Curt Teich collection (Newberry
 Library), and hand-picked files (see MANUAL_PICKS in the fetch script).
@@ -9,11 +8,12 @@ Library), and hand-picked files (see MANUAL_PICKS in the fetch script).
 - bna (Nashville): [File:Greetings from Nashville, Tennessee (74043).jpg](https://commons.wikimedia.org/wiki/File:Greetings_from_Nashville,_Tennessee_(74043).jpg) — Public domain
 - boi (Boise): [File:Boise ID - Greetings from Boise Idaho (NBY 431776).jpg](https://commons.wikimedia.org/wiki/File:Boise_ID_-_Greetings_from_Boise_Idaho_(NBY_431776).jpg) — Public domain
 - bos (Boston): [File:Massachusetts Institute of Technology, located in Cambridge, skyline across the Charles River is Boston, Mass (87236).jpg](https://commons.wikimedia.org/wiki/File:Massachusetts_Institute_of_Technology,_located_in_Cambridge,_skyline_across_the_Charles_River_is_Boston,_Mass_(87236).jpg) — Public domain
-- clt (Charlotte): [File:3. Municipal Airport, Charlotte, N. C. (5756052158).jpg](https://commons.wikimedia.org/wiki/File:3._Municipal_Airport,_Charlotte,_N._C._(5756052158).jpg) — CC BY 2.0
 - cle (Cleveland): [File:Greetings From Cleveland, Ohio (NBY 4403).jpg](https://commons.wikimedia.org/wiki/File:Greetings_From_Cleveland,_Ohio_(NBY_4403).jpg) — Public domain
+- clt (Charlotte): [File:3. Municipal Airport, Charlotte, N. C. (5756052158).jpg](https://commons.wikimedia.org/wiki/File:3._Municipal_Airport,_Charlotte,_N._C._(5756052158).jpg) — CC BY 2.0
 - cmh (Columbus): [File:Skyline, looking east from across Scioto River, Columbus, Ohio (73697).jpg](https://commons.wikimedia.org/wiki/File:Skyline,_looking_east_from_across_Scioto_River,_Columbus,_Ohio_(73697).jpg) — Public domain
 - crw (Charleston, WV): [File:Greetings from Charleston, W. VA (73368).jpg](https://commons.wikimedia.org/wiki/File:Greetings_from_Charleston,_W._VA_(73368).jpg) — Public domain
 - cvg (Cincinnati): [File:Greetings from Cincinnati, Ohio (66548).jpg](https://commons.wikimedia.org/wiki/File:Greetings_from_Cincinnati,_Ohio_(66548).jpg) — Public domain
+- dca (Washington): [File:Washington National (1944).jpg](https://commons.wikimedia.org/wiki/File:Washington_National_(1944).jpg) — Public domain
 - den (Denver): [File:Panorama of the city and county building and portion of the civic center from the capitol dome, Denver, Colorado (7725175274).jpg](https://commons.wikimedia.org/wiki/File:Panorama_of_the_city_and_county_building_and_portion_of_the_civic_center_from_the_capitol_dome,_Denver,_Colorado_(7725175274).jpg) — Public domain
 - dtw (Detroit): [File:Aerial view of downtown Detroit, Mich (62399).jpg](https://commons.wikimedia.org/wiki/File:Aerial_view_of_downtown_Detroit,_Mich_(62399).jpg) — Public domain
 - hav (Havana): [File:Cuba - Greetings from Havana.jpg](https://commons.wikimedia.org/wiki/File:Cuba_-_Greetings_from_Havana.jpg) — Public domain
@@ -31,6 +31,7 @@ Library), and hand-picked files (see MANUAL_PICKS in the fetch script).
 - pdx (Portland): [File:Air view of Portland, Oregon, Business District, 5 main bridges and east side in background (74164).jpg](https://commons.wikimedia.org/wiki/File:Air_view_of_Portland,_Oregon,_Business_District,_5_main_bridges_and_east_side_in_background_(74164).jpg) — Public domain
 - phl (Philadelphia): [File:Aerial view of Municipal Stadium, Philadelphia, Pa (65080).jpg](https://commons.wikimedia.org/wiki/File:Aerial_view_of_Municipal_Stadium,_Philadelphia,_Pa_(65080).jpg) — Public domain
 - pit (Pittsburgh): [File:Aerial view of Pittsburgh skyscrapers, Pittsburgh, Pa (89387).jpg](https://commons.wikimedia.org/wiki/File:Aerial_view_of_Pittsburgh_skyscrapers,_Pittsburgh,_Pa_(89387).jpg) — Public domain
+- ric (Richmond): [File:Greetings from Richmond, Virginia - Large Letter Postcard (14395075646).jpg](https://commons.wikimedia.org/wiki/File:Greetings_from_Richmond,_Virginia_-_Large_Letter_Postcard_(14395075646).jpg) — CC BY 2.0
 - san (San Diego): [File:Aerial view showing portion of downtown San Diego, Calif (80017).jpg](https://commons.wikimedia.org/wiki/File:Aerial_view_showing_portion_of_downtown_San_Diego,_Calif_(80017).jpg) — Public domain
 - sea (Seattle): [File:Skyline, Seattle, Washington (69007).jpg](https://commons.wikimedia.org/wiki/File:Skyline,_Seattle,_Washington_(69007).jpg) — Public domain
 - sfo (San Francisco): [File:Span of the San Francisco-Oakland Bay Bridge and skyline of San Francisco, Calif (74176).jpg](https://commons.wikimedia.org/wiki/File:Span_of_the_San_Francisco-Oakland_Bay_Bridge_and_skyline_of_San_Francisco,_Calif_(74176).jpg) — Public domain
