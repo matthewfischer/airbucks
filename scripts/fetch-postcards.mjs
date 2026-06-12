@@ -1,8 +1,12 @@
-// Fetch public-domain vintage postcards (Tichnor Brothers collection, Boston
-// Public Library, via Wikimedia Commons) for each airport city, into
-// public/postcards/<airport id>.jpg. Only cities in CITY_INFO are attempted —
-// the collection is US-centric; everywhere else the slot-granted popup falls
-// back to a text-only card.
+// Fetch public-domain vintage postcards (Tichnor Brothers / Boston Public
+// Library and Curt Teich / Newberry Library collections, via Wikimedia
+// Commons) for each airport city, into public/postcards/<airport id>.jpg.
+// Only cities in CITY_INFO are attempted — the collections are US-centric;
+// everywhere else the slot-granted popup falls back to a text-only card.
+//
+// For cities the search can't crack (including non-US ones), browse Commons
+// yourself and paste the exact file title into MANUAL_PICKS below; the
+// license is still verified but the subject is taken on trust.
 //
 // Usage: node scripts/fetch-postcards.mjs [--force]
 // Re-runnable; skips ids that already have a file unless --force.
@@ -89,6 +93,15 @@ const CITY_INFO = {
   'Havana': { state: 'Cuba' },
   'Nassau': { state: 'Bahamas' },
   'Bermuda': { state: 'Bermuda' },
+};
+
+// Hand-picked Commons file titles by airport id. These skip the search and
+// the provenance check (you vouch for the subject), but must still be
+// public domain. Browse e.g.
+//   https://commons.wikimedia.org/wiki/Category:Postcards_of_<City>
+//   https://commons.wikimedia.org/w/index.php?search=<city>+postcard&ns6=1
+const MANUAL_PICKS = {
+  // 'atl': 'File:Greetings from Atlanta Georgia (8343904034).jpg',
 };
 
 const US_STATES = [
@@ -205,53 +218,80 @@ async function findPostcard(city) {
     .map((title) => ({ title, s: score(title, name, info.state, info.mustMatch) }))
     .filter((r) => r.s > 0)
     .sort((a, b) => b.s - a.s);
-  for (const hit of hits.slice(0, 12)) {
-    const q = await api({
-      action: 'query', titles: hit.title, prop: 'imageinfo',
-      iiprop: 'url|extmetadata', iiurlwidth: String(THUMB_WIDTH),
-    });
-    const page = Object.values(q.query.pages)[0];
-    const ii = page.imageinfo?.[0];
-    if (!ii) continue;
-    const meta = ii.extmetadata ?? {};
-    const license = meta.LicenseShortName?.value ?? '';
-    const provenance = (meta.Artist?.value ?? '') + (meta.Credit?.value ?? '');
-    // Only confirmed public-domain scans from the Tichnor collection (many are
-    // credited to its holder, the Boston Public Library, rather than Tichnor).
-    if (!/public domain/i.test(license) || !/tichnor|boston public library/i.test(provenance))
-      continue;
-    return { title: hit.title, thumb: ii.thumburl, page: ii.descriptionurl, license };
+  // Title score alone ranks modern CC-licensed skyline photos above genuine
+  // vintage scans, so the license gate must see well past the top few — a
+  // rank-14 public-domain card behind 13 CC photos is the common case.
+  for (const hit of hits.slice(0, 40)) {
+    const card = await checkLicense(hit.title);
+    if (card) return card;
   }
   return null;
 }
 
-const credits = ['# Postcard image credits', '',
-  'All images: Tichnor Brothers postcard collection, Boston Public Library,',
-  'via Wikimedia Commons. Public domain.', ''];
-const byCity = new Map(); // first downloaded file per city, for shared-city airports
+/** Fetch imageinfo and pass only confirmed public-domain scans from a known
+ *  vintage-postcard archive: Tichnor Brothers (credited to its holder, the
+ *  Boston Public Library) or Curt Teich (Newberry Library, "NBY" files).
+ *  With `anyProvenance` (manual picks) the archive check is skipped. */
+async function checkLicense(title, anyProvenance = false) {
+  const q = await api({
+    action: 'query', titles: title, prop: 'imageinfo',
+    iiprop: 'url|extmetadata', iiurlwidth: String(THUMB_WIDTH),
+  });
+  const ii = Object.values(q.query.pages)[0].imageinfo?.[0];
+  if (!ii) return null;
+  const meta = ii.extmetadata ?? {};
+  const license = meta.LicenseShortName?.value ?? '';
+  const provenance = (meta.Artist?.value ?? '') + (meta.Credit?.value ?? '');
+  if (!/public domain/i.test(license)) return null;
+  if (!anyProvenance && !/tichnor|boston public library|teich|newberry/i.test(provenance))
+    return null;
+  return { title, thumb: ii.thumburl, page: ii.descriptionurl, license };
+}
+
+// Credit lines keyed by airport id, seeded from the existing CREDITS.md so a
+// re-run that skips files doesn't lose their attributions.
+const creditsPath = resolve(outDir, 'CREDITS.md');
+const creditById = new Map(
+  (existsSync(creditsPath) ? readFileSync(creditsPath, 'utf8').split('\n') : [])
+    .filter((l) => l.startsWith('- '))
+    .map((l) => [l.slice(2).split(' ')[0], l]),
+);
+const byCity = new Map(); // first downloaded file + credit per city, for shared-city airports
 let found = 0;
 
 for (const { id, city } of airports()) {
   const out = resolve(outDir, `${id}.jpg`);
   if (existsSync(out) && !force) { found++; continue; }
-  if (byCity.has(city)) {
-    copyFileSync(byCity.get(city), out);
+  if (!MANUAL_PICKS[id] && byCity.has(city)) {
+    const shared = byCity.get(city);
+    copyFileSync(shared.file, out);
+    creditById.set(id, shared.credit.replace(/^- \w+ /, `- ${id} `));
     found++;
     continue;
   }
-  const card = await findPostcard(city).catch(() => null);
+  const card = MANUAL_PICKS[id]
+    ? await checkLicense(MANUAL_PICKS[id], true).catch(() => null)
+    : await findPostcard(city).catch((e) => (console.log(`  !! ${city}: ${e.message}`), null));
   if (!card) {
-    if (CITY_INFO[city]) console.log(`  -- ${city}: no match`);
+    if (MANUAL_PICKS[id]) console.log(`  !! ${id}: manual pick missing or not public domain — ${MANUAL_PICKS[id]}`);
+    else if (CITY_INFO[city]) console.log(`  -- ${city}: no match`);
     continue;
   }
   const img = await fetch(card.thumb, { headers: HEADERS });
   writeFileSync(out, Buffer.from(await img.arrayBuffer()));
-  byCity.set(city, out);
+  const credit = `- ${id} (${city}): [${card.title}](${card.page}) — ${card.license}`;
+  byCity.set(city, { file: out, credit });
+  creditById.set(id, credit);
   found++;
-  credits.push(`- ${id} (${city}): [${card.title}](${card.page}) — ${card.license}`);
   console.log(`  ok ${city}: ${card.title}`);
   await new Promise((r) => setTimeout(r, 200));
 }
 
-writeFileSync(resolve(outDir, 'CREDITS.md'), credits.join('\n') + '\n');
+writeFileSync(creditsPath, [
+  '# Postcard image credits', '',
+  'Public-domain vintage postcards via Wikimedia Commons: Tichnor Brothers',
+  'collection (Boston Public Library), Curt Teich collection (Newberry',
+  'Library), and hand-picked files (see MANUAL_PICKS in the fetch script).', '',
+  ...[...creditById.values()].sort(),
+].join('\n') + '\n');
 console.log(`\n${found} of ${airports().length} airports have postcards.`);
