@@ -103,7 +103,9 @@ const CITY_INFO = {
 const MANUAL_PICKS = {
   clt: 'File:3. Municipal Airport, Charlotte, N. C. (5756052158).jpg',
   dca: 'File:Washington National (1944).jpg',
+  gso: 'File:Greetings from Greensboro, North Carolina - Large Letter Postcard (8555919882).jpg',
   ric: 'File:Greetings from Richmond, Virginia - Large Letter Postcard (14395075646).jpg',
+  sdf: 'File:Postcard showing Bowman Field, Kentucky. Administration Building and Hangar c.1939.jpg',
 };
 
 const US_STATES = [
@@ -170,6 +172,7 @@ function score(title, name, state, mustMatch) {
   if (/skyline|skyscraper/.test(t)) sc += 6;
   if (/aerial|air view|airplane view|bird'?s.eye/.test(t)) sc += 5;
   if (/greeting/.test(t)) sc += 5;
+  if (/large letter postcard/.test(t)) sc += 2;
   if (/general view|panorama|night scene/.test(t)) sc += 4;
   if (/waterfront|harbor|beach|capitol|downtown|business district|city hall/.test(t)) sc += 2;
   if (sc === 0) return -1;
@@ -200,6 +203,7 @@ async function candidates(name, state) {
   const searches = [
     `Tichnor ${name} ${state}`,
     `Greetings from ${name}`,
+    `Greetings from ${name} large letter postcard`,
     `${name} ${state} skyline`,
     `${name} ${state} aerial view postcard`,
   ];
@@ -245,8 +249,10 @@ async function checkLicense(title, anyProvenance = false) {
   const license = meta.LicenseShortName?.value ?? '';
   const provenance = (meta.Artist?.value ?? '') + (meta.Credit?.value ?? '');
   // Manual picks may be CC BY (attribution lives in CREDITS.md; Commons
-  // hosts no NC/ND licenses). Auto picks stay strictly public domain.
-  if (anyProvenance) {
+  // hosts no NC/ND licenses). Auto picks must be public domain from a known
+  // archive — except the "Large Letter Postcard" Flickr series, a uniformly
+  // vintage set that is CC BY: there the title alone vouches for the style.
+  if (anyProvenance || /large letter postcard/i.test(title)) {
     if (!/public domain|cc by/i.test(license)) return null;
   } else if (!/public domain/i.test(license)
       || !/tichnor|boston public library|teich|newberry/i.test(provenance)) {
