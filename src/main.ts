@@ -726,6 +726,19 @@ function resetView() {
   drawMap();
 }
 
+/** Center the view on an airport at a regional zoom (e.g. a new game's home). */
+function zoomToAirport(id: string, scale = 5) {
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  if (w === 0 || h === 0) return;
+  const a = airportById(game, id);
+  const p = projectPoint(a.lat, a.lon, w, h);
+  view.scale = clampScale(scale);
+  view.offsetX = w / 2 - p.x * view.scale;
+  view.offsetY = h / 2 - p.y * view.scale;
+  drawMap();
+}
+
 // Wheel zoom, keeping the point under the cursor fixed.
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
@@ -1363,6 +1376,7 @@ function showHomeSelect() {
       Object.assign(game, newGame(ap.id));
       afterStateSwap();
       render();
+      zoomToAirport(ap.id);
     });
     homeAirportList.appendChild(btn);
   }
