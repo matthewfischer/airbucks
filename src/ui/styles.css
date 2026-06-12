@@ -421,9 +421,12 @@ input[type='number'] { width: 84px; }
 .chart-card svg .axis-label { fill: var(--muted); font-size: 11px; }
 .chart-card svg .series { fill: none; stroke-width: 2; }
 
+/* The postcard popup gets a wider box than other overlays — the card is the star. */
+.slot-box { width: min(775px, 92vw); }
 .slot-photo {
   width: 100%;
-  max-height: 440px;
+  /* Leave room below the photo for title + buttons within the box's 80vh cap. */
+  max-height: 50vh;
   object-fit: cover;
   border-radius: 8px;
   border: 1px solid var(--border);
