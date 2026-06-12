@@ -8,6 +8,23 @@ Status: agreed design, not yet built. (2026-06-11)
 heuristics, not ML. Each AI gets a generated name, a map color, and a home
 airport drawn from cities the player didn't pick.
 
+## Home airports: North America only
+
+Decided 2026-06-11. The map is deliberately player-centric — a dense taper
+of small cheap cities around the Appalachian core, but abroad only the
+biggest 2–4 metros per region. A foreign-based AI has no regional ladder to
+climb (no size-1/2 feeders, only expensive gateway slots), and with v1
+competition being slots-only it would never contest anything the player
+touches. So AI homes are drawn from a curated pool of North American medium
+hubs (e.g. ATL, ORD, DFW, DEN, MSP, MIA, YYZ, MEX, BNA, STL, SEA),
+excluding the player's home and its nearest neighbors, spread one-per-region
+so eight AIs don't pile into one corner.
+
+Default count may prove too high at 8 — wait and see; tune the default,
+not the design. If v2 adds demand-splitting, one or two foreign "flag
+carrier" AIs flying transatlantic into the player's gateways could work
+without densifying Europe.
+
 ## State refactor
 
 `GameState` currently holds one airline. Introduce an `Airline` object with
