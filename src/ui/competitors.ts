@@ -14,12 +14,30 @@ function health(g: GameState, al: Airline): { label: string; score: number; cls:
     : { label: 'Stable', score: 4, cls: 'good' };
 }
 
-function healthBlock(g: GameState, al: Airline): string {
+/** Round to 2 significant figures, so a figure reads as an estimate not exact books. */
+function approxMoney(n: number): string {
+  if (n === 0) return money(0);
+  const sign = n < 0 ? -1 : 1;
+  const abs = Math.abs(n);
+  const mag = 10 ** (Math.floor(Math.log10(abs)) - 1);
+  return money(sign * Math.round(abs / mag) * mag);
+}
+
+/** Net-worth estimate + a profit/loss trend — substance without exact books. */
+function standingsBlock(g: GameState, al: Airline): string {
   const h = health(g, al);
-  return `<div class="comp-health">
-    <div class="health-bar"><div class="health-fill ${h.cls}" style="width:${(h.score / 6) * 100}%"></div></div>
-    <span class="${h.cls}">${h.label}</span>
-  </div>`;
+  const net = weeklyTotals(g, al).net;
+  const trend =
+    net > 0
+      ? '<span class="good">↗ profitable</span>'
+      : net < 0
+        ? '<span class="bad">↘ losing money</span>'
+        : '<span class="muted">→ breaking even</span>';
+  return `<div class="comp-money">Net worth ~${approxMoney(equity(g, al))} · ${trend}</div>
+    <div class="comp-health">
+      <div class="health-bar"><div class="health-fill ${h.cls}" style="width:${(h.score / 6) * 100}%"></div></div>
+      <span class="${h.cls}">${h.label}</span>
+    </div>`;
 }
 
 /** For-sale block: the one place a rival's books open up, with an inline Buy. */
@@ -45,7 +63,7 @@ function card(g: GameState, al: Airline): string {
     </div>
     <div class="comp-home">${home.code} · ${home.city}</div>
     <div class="comp-stats">${al.rights.length} cities · ${al.routes.length} routes · ${al.fleet.length} planes</div>
-    ${al.forSale ? saleBlock(g, al) : healthBlock(g, al)}
+    ${al.forSale ? saleBlock(g, al) : standingsBlock(g, al)}
   </div>`;
 }
 
@@ -68,7 +86,7 @@ export function renderCompetitors(g: GameState, el: HTMLElement): void {
   const youStrip = `<div class="comp-you">
     <span class="comp-dot" style="background:${you.color}"></span>
     <strong>You · ${you.name}</strong>
-    <span class="muted">${you.homeId.toUpperCase()} · ${you.rights.length} cities · ${you.routes.length} routes · ${you.fleet.length} planes</span>
+    <span class="muted">${you.homeId.toUpperCase()} · ${you.rights.length} cities · ${you.routes.length} routes · ${you.fleet.length} planes · net worth ${money(equity(g, you))}</span>
   </div>`;
 
   // Rank by network reach (cities), the most visible measure of standing.
