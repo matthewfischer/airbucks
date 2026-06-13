@@ -94,6 +94,9 @@ if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
 /** Ordered airports the player has clicked to stage a new (possibly multi-stop) route. */
 let selected: string[] = [];
 
+/** Whether competitor route networks are drawn on the map (toggleable). */
+let showCompetitors = true;
+
 /** Rights we've already announced — anything new triggers the slot-granted popup. */
 let knownRights = new Set(pl().rights);
 /** Airports whose popups are waiting behind the one on screen. */
@@ -354,6 +357,26 @@ function drawMap() {
   const dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, w, h);
   ctx.drawImage(ensureBaseMap(w, h, dpr), 0, 0, w, h);
+
+  // Competitor route networks, drawn first so the player's sit on top — thin
+  // and dim, in each airline's color (a for-sale rival's network is dashed).
+  if (showCompetitors) {
+    ctx.lineWidth = 1;
+    for (const airline of game.airlines) {
+      if (airline === pl()) continue;
+      ctx.strokeStyle = airline.color;
+      ctx.globalAlpha = 0.32;
+      ctx.setLineDash(airline.forSale ? [3, 4] : []);
+      for (const route of airline.routes) {
+        const pts = pathPoints(route.stops, w, h);
+        ctx.beginPath();
+        pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([]);
+  }
 
   // Routes (multi-leg polylines).
   const net = evaluateNetwork(game, pl());
@@ -790,6 +813,13 @@ window.addEventListener('mouseup', () => {
 
 canvas.addEventListener('dblclick', resetView);
 document.getElementById('reset-view')!.addEventListener('click', resetView);
+
+const toggleCompetitorsBtn = document.getElementById('toggle-competitors')!;
+toggleCompetitorsBtn.addEventListener('click', () => {
+  showCompetitors = !showCompetitors;
+  toggleCompetitorsBtn.classList.toggle('active', showCompetitors);
+  drawMap();
+});
 
 /** Append a stop to the staged path, allowing revisits (hub-and-spoke). */
 function addStop(id: string) {

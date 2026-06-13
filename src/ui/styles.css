@@ -120,6 +120,19 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   backdrop-filter: blur(2px);
 }
 
+/* Map overlay toggle (competitor lines), sits next to Reset view. */
+.map-toggle {
+  position: absolute;
+  top: 12px;
+  left: 130px;
+  font-size: 12px;
+  padding: 5px 10px;
+  background: #0f1d2ecc;
+  backdrop-filter: blur(2px);
+  color: var(--muted);
+}
+.map-toggle.active { color: var(--accent); border-color: var(--accent); }
+
 #airport-pop {
   position: absolute;
   z-index: 20;
