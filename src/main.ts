@@ -5,6 +5,7 @@ import {
   airportById,
   assignPlane,
   availableTypes,
+  financeMetrics,
   borrow,
   buyPlane,
   cashInterestWeekly,
@@ -101,6 +102,14 @@ let selected: string[] = [];
 
 /** Whether competitor route networks are drawn on the map (toggleable). */
 let showCompetitors = true;
+
+/** Aircraft type whose Buy button is mid "✓ Added" confirmation flash, if any. */
+let justBoughtType: string | null = null;
+let boughtTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Win tracking: once the player has had rivals, being the last airline wins. */
+let everHadRivals = false;
+let winShown = false;
 
 /** Rights we've already announced — anything new triggers the slot-granted popup. */
 let knownRights = new Set(pl().rights);
@@ -1154,13 +1163,16 @@ function buyCard(): string {
     .filter((t) => typeAvailable(game, t))
     .map((t) => {
       const afford = pl().cash >= t.price;
-      const label = afford ? `Buy · ${money(t.price)}` : `Need ${money(t.price)}`;
+      // Briefly confirm a just-bought type so the click visibly "lands".
+      const justBought = t.id === justBoughtType;
+      const label = justBought ? '✓ Added' : afford ? `Buy · ${money(t.price)}` : `Need ${money(t.price)}`;
+      const cls = justBought ? 'primary bought' : afford ? 'primary' : '';
       const owned = pl().fleet.filter((p) => p.typeId === t.id).length;
       const perKm = (t.costPerKm * lvl).toFixed(1);
       const upkeep = money(Math.round(t.weeklyUpkeep * lvl));
       return `<div class="plane-line">
         <div class="row"><strong>${t.name}</strong>
-          <button class="${afford ? 'primary' : ''}" data-act="buy" data-type="${t.id}" ${afford ? '' : 'disabled'}>${label}</button></div>
+          <button class="${cls}" data-act="buy" data-type="${t.id}" ${afford ? '' : 'disabled'}>${label}</button></div>
         <div class="type-stats">${PROPULSION_LABEL[t.propulsion]} · ${t.introduced} · ${t.capacity} seats · ${t.range.toLocaleString()} km range · ${t.speed} km/h · $${perKm}/km · ${upkeep}/wk upkeep · <span class="owned">${owned} owned</span></div>
       </div>`;
     })
@@ -1345,10 +1357,22 @@ sidebar.addEventListener('click', (e) => {
       }
       break;
     }
-    case 'buy':
-      flash(buyPlane(game, pl(), btn.dataset.type!));
+    case 'buy': {
+      const err = buyPlane(game, pl(), btn.dataset.type!);
+      if (err) {
+        flash(err);
+      } else {
+        // Flash a "✓ Added" confirmation on the button, then revert.
+        justBoughtType = btn.dataset.type!;
+        if (boughtTimer) clearTimeout(boughtTimer);
+        boughtTimer = setTimeout(() => {
+          justBoughtType = null;
+          renderSidebar();
+        }, 850);
+      }
       render();
       break;
+    }
     case 'borrow':
       borrow(game, pl(), Number(btn.dataset.amt));
       render();
@@ -1413,6 +1437,10 @@ function afterStateSwap() {
   knownRights = new Set(pl().rights);
   slotQueue.length = 0;
   slotGrantedEl.classList.add('hidden');
+  justBoughtType = null;
+  everHadRivals = false;
+  winShown = false;
+  document.getElementById('win-screen')!.classList.add('hidden');
 }
 
 const homeSelectEl = document.getElementById('home-select')!;
@@ -1655,6 +1683,37 @@ function logWeekly() {
   renderLog();
 }
 
+// ---- Victory ---------------------------------------------------------------
+
+const winScreenEl = document.getElementById('win-screen')!;
+const winSubEl = document.getElementById('win-sub')!;
+
+/** You win once every competitor is gone — but only if you ever had any. */
+function checkWin() {
+  if (game.airlines.length > 1) {
+    everHadRivals = true;
+    return;
+  }
+  if (everHadRivals && !winShown) {
+    winShown = true;
+    showWin();
+  }
+}
+
+function showWin() {
+  setPlaying(false);
+  const m = financeMetrics(game, pl());
+  winSubEl.textContent =
+    `${dateStr()} — every competitor has been bought out or driven under. ` +
+    `Air Bucks stands alone with ${pl().rights.length} cities and a net worth of ${money(m.equity)}.`;
+  winScreenEl.classList.remove('hidden');
+}
+
+document.getElementById('win-keep')!.addEventListener('click', () => {
+  winScreenEl.classList.add('hidden'); // play on; winShown stays true so it won't nag
+});
+document.getElementById('win-quit')!.addEventListener('click', () => window.close());
+
 function frame(ts: number) {
   const dt = lastTs ? ts - lastTs : 0;
   lastTs = ts;
@@ -1676,6 +1735,7 @@ function frame(ts: number) {
     if (sidebarDirty) announceNewRights();
     updateAnimations(dt);
   }
+  checkWin();
   renderHud();
   if (sidebarDirty && !sidebar.contains(document.activeElement)) renderSidebar();
   if (sidebarDirty && currentView === 'finance') renderFinance(game, financeEl);

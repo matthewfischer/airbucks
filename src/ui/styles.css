@@ -214,6 +214,18 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   padding-top: 8px;
   margin-top: 8px;
 }
+/* Brief "✓ Added" confirmation pulse when a plane is purchased. */
+button.bought {
+  background: var(--good);
+  color: #06221f;
+  border-color: var(--good);
+  animation: bought-pulse 0.85s ease-out;
+}
+@keyframes bought-pulse {
+  0% { box-shadow: 0 0 0 0 var(--good); transform: scale(1.06); }
+  60% { box-shadow: 0 0 0 6px transparent; transform: scale(1); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
 .route-line .row > strong {
   flex: 1 1 0;
   min-width: 0;
