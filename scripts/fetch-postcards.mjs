@@ -103,7 +103,9 @@ const CITY_INFO = {
 const MANUAL_PICKS = {
   clt: 'File:3. Municipal Airport, Charlotte, N. C. (5756052158).jpg',
   dca: 'File:Washington National (1944).jpg',
+  gcm: 'File:AA flight from Quito, Ecuador to Miami, Florida...Grand Cayman Islands.Georgetown near the airport... (26692786390).jpg',
   gso: 'File:Greetings from Greensboro, North Carolina - Large Letter Postcard (8555919882).jpg',
+  mid: 'File:Mérida International Airport (Aeropuerto Internacional de Mérida Manuel Crescencio Rejón) Feb 2021 - 02.jpg',
   ric: 'File:Greetings from Richmond, Virginia - Large Letter Postcard (14395075646).jpg',
   sdf: 'File:Postcard showing Bowman Field, Kentucky. Administration Building and Hangar c.1939.jpg',
 };
