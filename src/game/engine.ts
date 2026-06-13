@@ -15,15 +15,14 @@ const WEEKLY_FLY_HOURS = 112;
 /** Hours lost to boarding/turnaround on each round trip. */
 const TURNAROUND_HOURS = 4;
 
-let nextId = 1;
-const makeId = (prefix: string) => `${prefix}-${nextId++}`;
+const makeId = (g: GameState, prefix: string) => `${prefix}-${g.nextId++}`;
 const idNum = (id: string) => {
   const n = Number(id.split('-')[1]);
   return Number.isFinite(n) ? n : 0;
 };
 
 /**
- * Advance the id counter past every id already in the game, so ids minted
+ * Advance the game's id counter past every id already in it, so ids minted
  * after loading a save can't collide with the loaded ones.
  */
 export function reseedIds(g: GameState): void {
@@ -32,11 +31,16 @@ export function reseedIds(g: GameState): void {
     for (const r of al.routes) max = Math.max(max, idNum(r.id));
     for (const p of al.fleet) max = Math.max(max, idNum(p.id));
   }
-  nextId = Math.max(nextId, max + 1);
+  g.nextId = Math.max(g.nextId, max + 1);
 }
 
 /** The human player's airline — by convention always airlines[0]. */
 export const player = (g: GameState): Airline => g.airlines[0];
+
+/** Push a one-line item to the player's news feed (airlines[0]'s log). */
+export function playerNews(g: GameState, line: string): void {
+  g.airlines[0]?.log.unshift(line);
+}
 
 /**
  * Deterministic uniform random in [0, 1): mulberry32 over g.rngState.
@@ -134,6 +138,7 @@ export function newGame(homeId: string, seed?: number): GameState {
   return {
     day: 0,
     rngState: (seed ?? Math.floor(Math.random() * 2 ** 32)) >>> 0,
+    nextId: 1,
     airports: AIRPORTS,
     aircraftTypes: AIRCRAFT_TYPES,
     airlines: [newAirline('player', 'Air Bucks', '#3fd0c9', homeId)],
@@ -398,12 +403,14 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
   }
   const markets: Mkt[] = [];
   const baseline = baselineSpeed(g);
-  const aps = g.airports;
-  for (let i = 0; i < aps.length; i++) {
-    for (let j = i + 1; j < aps.length; j++) {
-      const A = aps[i];
-      const B = aps[j];
-      if (!adj.has(A.id) || !adj.has(B.id)) continue;
+  // Only airports this airline actually touches can anchor a market. Filtering
+  // here (preserving g.airports order) turns an all-pairs O(airports²) scan into
+  // O(served²) — a large win once a network spans only a few dozen of the cities.
+  const served = g.airports.filter((a) => adj.has(a.id));
+  for (let i = 0; i < served.length; i++) {
+    for (let j = i + 1; j < served.length; j++) {
+      const A = served[i];
+      const B = served[j];
       const directDist = distanceKm(A, B);
       const path = bestPath(legs, adj, A.id, B.id, directDist);
       if (!path) continue;
@@ -634,7 +641,7 @@ export function buyPlane(g: GameState, al: Airline, typeId: string): string | nu
   }
   if (al.cash < type.price) return `Not enough cash to buy ${type.name}.`;
   al.cash -= type.price;
-  al.fleet.push({ id: makeId('plane'), typeId, routeId: null, kmFlown: 0 });
+  al.fleet.push({ id: makeId(g, 'plane'), typeId, routeId: null, kmFlown: 0 });
   al.log.unshift(`Bought a ${type.name} for ${money(type.price)}.`);
   return null;
 }
@@ -814,7 +821,7 @@ export function openRoute(g: GameState, al: Airline, stops: string[]): string | 
   if (al.routes.some((r) => key(r.stops) === norm || key(r.stops) === rev))
     return 'That route already exists.';
 
-  const route: Route = { id: makeId('route'), stops: [...stops], fareFactor: 1 };
+  const route: Route = { id: makeId(g, 'route'), stops: [...stops], fareFactor: 1 };
   al.routes.push(route);
   al.log.unshift(`Opened route ${routeLabel(g, route)}.`);
   return null;
@@ -908,7 +915,7 @@ export function upgradeRoute(g: GameState, al: Airline, routeId: string, newType
   if (al.cash < quote.net) return `Not enough cash to upgrade (net ${money(quote.net)}).`;
   al.cash -= quote.net;
   al.fleet = al.fleet.map((p) =>
-    p.routeId === routeId ? { id: makeId('plane'), typeId: newTypeId, routeId, kmFlown: 0 } : p,
+    p.routeId === routeId ? { id: makeId(g, 'plane'), typeId: newTypeId, routeId, kmFlown: 0 } : p,
   );
   al.log.unshift(
     `Upgraded ${routeLabel(g, route)} to ${quote.count} × ${type.name} (net ${money(quote.net)}).`,
@@ -976,10 +983,14 @@ export function advanceDay(g: GameState): void {
     // Clear any slot applications that have come through.
     if (al.negotiations.length) {
       const cleared = al.negotiations.filter((n) => g.day >= n.opensDay);
+      const isPlayer = al === g.airlines[0];
       for (const n of cleared) {
         grantRights(al, n.airportId);
         const a = airportById(g, n.airportId);
         al.log.unshift(`Slot at ${a.code} (${a.city}) is open — you're now flying there.`);
+        // A rival landing a slot at a city you also hold is worth a heads-up.
+        if (!isPlayer && g.airlines[0].rights.includes(n.airportId))
+          playerNews(g, `✈ ${al.name} won a slot at ${a.code} (${a.city}) — a rival in your market.`);
       }
       if (cleared.length)
         al.negotiations = al.negotiations.filter((n) => g.day < n.opensDay);

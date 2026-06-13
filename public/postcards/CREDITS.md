@@ -1,5 +1,4 @@
 # Postcard image credits
-
 Public-domain vintage postcards via Wikimedia Commons: Tichnor Brothers
 collection (Boston Public Library), Curt Teich collection (Newberry
 Library), and hand-picked files (see MANUAL_PICKS in the fetch script).
@@ -24,6 +23,7 @@ Library), and hand-picked files (see MANUAL_PICKS in the fetch script).
 - dfw (Dallas): [File:Greetings from Dallas Texas - Large Letter Postcard (8014957889).jpg](https://commons.wikimedia.org/wiki/File:Greetings_from_Dallas_Texas_-_Large_Letter_Postcard_(8014957889).jpg) — CC BY 2.0
 - dsm (Des Moines): [File:Greetings from Des Moines, Iowa - Large Letter Postcard (14141110572).jpg](https://commons.wikimedia.org/wiki/File:Greetings_from_Des_Moines,_Iowa_-_Large_Letter_Postcard_(14141110572).jpg) — CC BY 2.0
 - dtw (Detroit): [File:Aerial view of downtown Detroit, Mich (62399).jpg](https://commons.wikimedia.org/wiki/File:Aerial_view_of_downtown_Detroit,_Mich_(62399).jpg) — Public domain
+- gcm (Grand Cayman): [File:AA flight from Quito, Ecuador to Miami, Florida...Grand Cayman Islands.Georgetown near the airport... (26692786390).jpg](https://commons.wikimedia.org/wiki/File:AA_flight_from_Quito,_Ecuador_to_Miami,_Florida...Grand_Cayman_Islands.Georgetown_near_the_airport..._(26692786390).jpg) — CC BY-SA 2.0
 - gso (Greensboro): [File:Greetings from Greensboro, North Carolina - Large Letter Postcard (8555919882).jpg](https://commons.wikimedia.org/wiki/File:Greetings_from_Greensboro,_North_Carolina_-_Large_Letter_Postcard_(8555919882).jpg) — CC BY 2.0
 - hav (Havana): [File:Cuba - Greetings from Havana.jpg](https://commons.wikimedia.org/wiki/File:Cuba_-_Greetings_from_Havana.jpg) — Public domain
 - hnl (Honolulu): [File:Thanksgiving Greeting, Honolulu (General) (NBY 3805).jpg](https://commons.wikimedia.org/wiki/File:Thanksgiving_Greeting,_Honolulu_(General)_(NBY_3805).jpg) — Public domain
@@ -37,6 +37,7 @@ Library), and hand-picked files (see MANUAL_PICKS in the fetch script).
 - mco (Orlando): [File:Greetings from Orlando, Florida, The City Beautiful - Large Letter Postcard (8648259792).jpg](https://commons.wikimedia.org/wiki/File:Greetings_from_Orlando,_Florida,_The_City_Beautiful_-_Large_Letter_Postcard_(8648259792).jpg) — CC BY 2.0
 - mem (Memphis): [File:Aerial View of Memphis Business District (NBY 2544).jpg](https://commons.wikimedia.org/wiki/File:Aerial_View_of_Memphis_Business_District_(NBY_2544).jpg) — Public domain
 - mia (Miami): [File:Tichnor Bros. 499 (79451) - Miami Skyline from MacArthur Causeway, Miami, Florida front.jpg](https://commons.wikimedia.org/wiki/File:Tichnor_Bros._499_(79451)_-_Miami_Skyline_from_MacArthur_Causeway,_Miami,_Florida_front.jpg) — Public domain
+- mid (Mérida): [File:Mérida International Airport (Aeropuerto Internacional de Mérida Manuel Crescencio Rejón) Feb 2021 - 02.jpg](https://commons.wikimedia.org/wiki/File:M%C3%A9rida_International_Airport_(Aeropuerto_Internacional_de_M%C3%A9rida_Manuel_Crescencio_Rej%C3%B3n)_Feb_2021_-_02.jpg) — CC BY 2.0
 - mke (Milwaukee): [File:Greetings from Milwaukee, aerial view of Lake Park and Drive (NBY 20806).jpg](https://commons.wikimedia.org/wiki/File:Greetings_from_Milwaukee,_aerial_view_of_Lake_Park_and_Drive_(NBY_20806).jpg) — Public domain
 - msp (Minneapolis): [File:Skyline Minneapolis, Minnesota - DPLA - df4a4b0ba8f87afa7dc7f441994a714b.jpg](https://commons.wikimedia.org/wiki/File:Skyline_Minneapolis,_Minnesota_-_DPLA_-_df4a4b0ba8f87afa7dc7f441994a714b.jpg) — Public domain
 - msy (New Orleans): [File:Greetings from New Orleans (NBY 8983).jpg](https://commons.wikimedia.org/wiki/File:Greetings_from_New_Orleans_(NBY_8983).jpg) — Public domain

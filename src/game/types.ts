@@ -90,12 +90,32 @@ export interface Negotiation {
   fee: number;
 }
 
+/** Brain state for a computer-controlled airline. Absent on the player. */
+export interface AiState {
+  /** Personality id (see PERSONALITIES in ai.ts) — fixed at creation. */
+  personality: string;
+  /** Next simulated day this airline will take a decision pass. */
+  nextDecisionDay: number;
+}
+
+/** A distressed airline listed for sale: buyable until the deadline, then liquidated. */
+export interface ForSale {
+  /** Day the airline was listed. */
+  listedDay: number;
+  /** Day it liquidates if still unsold. */
+  deadlineDay: number;
+  /** Sticker price to acquire it (the buyer also assumes its debt). */
+  price: number;
+}
+
 /** One carrier — the player or a computer opponent. */
 export interface Airline {
   id: string;
   name: string;
   /** Map color for this airline's routes and planes. */
   color: string;
+  /** AI brain; the player airline has none. */
+  ai?: AiState;
   cash: number;
   /** Outstanding loan principal. */
   debt: number;
@@ -113,6 +133,12 @@ export interface Airline {
   log: string[];
   /** Oldest-first weekly financial snapshots, for the finance page. */
   history: FinanceSnapshot[];
+  /** Day cash first went negative in the current streak (distress tracking). */
+  cashNegSince?: number;
+  /** Day equity first went negative in the current streak. */
+  equityNegSince?: number;
+  /** Distress listing, when the airline is up for sale. */
+  forSale?: ForSale;
 }
 
 export interface GameState {
@@ -120,6 +146,8 @@ export interface GameState {
   day: number;
   /** Deterministic RNG state (mulberry32) — advanced by rand(), persisted. */
   rngState: number;
+  /** Next plane/route id to mint — per-game so identical seeds replay identically. */
+  nextId: number;
   airports: Airport[];
   aircraftTypes: AircraftType[];
   /** All carriers. The player is always airlines[0]. */

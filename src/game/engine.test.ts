@@ -1321,4 +1321,27 @@ describe('multiple airlines', () => {
     // The rival holds two slots now (one beyond home), so gate fees accrue.
     expect(rival.cash).not.toBe(rivalCash);
   });
+
+  it('news: a rival winning a slot in a city you hold notifies the player', () => {
+    al.rights = ['crw', 'gso']; // you already serve GSO
+    const rival = newAirline('ai-1', 'Rival Air', '#f5a623', 'bna');
+    rival.ai = { personality: 'cheapskate', nextDecisionDay: 1e9 };
+    g.airlines.push(rival);
+    rival.negotiations.push({ airportId: 'gso', opensDay: g.day + 1, fee: 0 });
+    advanceDay(g);
+    expect(al.log[0]).toMatch(/Rival Air won a slot at GSO/i);
+  });
+
+  it('news: a rival slot in a city you do NOT hold stays quiet', () => {
+    al.rights = ['crw']; // you don't serve GSO
+    const rival = newAirline('ai-1', 'Rival Air', '#f5a623', 'bna');
+    rival.ai = { personality: 'cheapskate', nextDecisionDay: 1e9 };
+    g.airlines.push(rival);
+    rival.negotiations.push({ airportId: 'gso', opensDay: g.day + 1, fee: 0 });
+    const before = al.log.length;
+    advanceDay(g);
+    expect(al.log.some((l) => /Rival Air won a slot/i.test(l))).toBe(false);
+    // The player's own log only grew (if at all) from non-rival lines.
+    expect(al.log.length).toBeGreaterThanOrEqual(before);
+  });
 });

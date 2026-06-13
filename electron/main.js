@@ -8,9 +8,9 @@ if (isDev) app.commandLine.appendSwitch('remote-debugging-port', '9222');
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1280,
+    width: 1300,
     height: 820,
-    minWidth: 1024,
+    minWidth: 1040,
     minHeight: 700,
     backgroundColor: '#0b1622',
     title: 'Air Bucks',

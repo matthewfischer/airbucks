@@ -61,9 +61,12 @@ import {
   START_EPOCH,
 } from './game/engine';
 import { distanceKm } from './game/geo';
+import { addAiAirlines, MAX_AI_AIRLINES, runAI } from './game/ai';
+import { acquire } from './game/distress';
 import { applySave, deserialize, serialize } from './game/persist';
 import { AIRPORTS } from './game/data';
 import { renderFinance } from './ui/finance';
+import { renderCompetitors } from './ui/competitors';
 import { renderAwards } from './ui/awards';
 
 const game: GameState = newGame('crw');
@@ -76,7 +79,7 @@ if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
     openRoute: (...stops: string[]) => (openRoute(game, pl(), stops), render()),
     buyPlane: (t: string) => (buyPlane(game, pl(), t), render()),
     assignPlane: (p: string, r: string | null) => (assignPlane(game, pl(), p, r), render()),
-    advanceDay: () => (advanceDay(game), render()),
+    advanceDay: () => (advanceDay(game), runAI(game), render()),
     borrow: (n: number) => (borrow(game, pl(), n), render()),
     repay: (n: number) => (repay(game, pl(), n), render()),
     select: (...ids: string[]) => {
@@ -92,6 +95,9 @@ if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
 
 /** Ordered airports the player has clicked to stage a new (possibly multi-stop) route. */
 let selected: string[] = [];
+
+/** Whether competitor route networks are drawn on the map (toggleable). */
+let showCompetitors = true;
 
 /** Rights we've already announced — anything new triggers the slot-granted popup. */
 let knownRights = new Set(pl().rights);
@@ -117,6 +123,7 @@ const logEl = document.getElementById('log')!;
 const playBtn = document.getElementById('play') as HTMLButtonElement;
 const stageEl = document.getElementById('stage')!;
 const financeEl = document.getElementById('finance')!;
+const competitorsEl = document.getElementById('competitors')!;
 const awardsEl = document.getElementById('awards')!;
 
 const mapWrap = document.getElementById('map-wrap')!;
@@ -353,6 +360,26 @@ function drawMap() {
   const dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, w, h);
   ctx.drawImage(ensureBaseMap(w, h, dpr), 0, 0, w, h);
+
+  // Competitor route networks, drawn first so the player's sit on top — thin
+  // and dim, in each airline's color (a for-sale rival's network is dashed).
+  if (showCompetitors) {
+    ctx.lineWidth = 1;
+    for (const airline of game.airlines) {
+      if (airline === pl()) continue;
+      ctx.strokeStyle = airline.color;
+      ctx.globalAlpha = 0.32;
+      ctx.setLineDash(airline.forSale ? [3, 4] : []);
+      for (const route of airline.routes) {
+        const pts = pathPoints(route.stops, w, h);
+        ctx.beginPath();
+        pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([]);
+  }
 
   // Routes (multi-leg polylines).
   const net = evaluateNetwork(game, pl());
@@ -790,6 +817,13 @@ window.addEventListener('mouseup', () => {
 canvas.addEventListener('dblclick', resetView);
 document.getElementById('reset-view')!.addEventListener('click', resetView);
 
+const toggleCompetitorsBtn = document.getElementById('toggle-competitors')!;
+toggleCompetitorsBtn.addEventListener('click', () => {
+  showCompetitors = !showCompetitors;
+  toggleCompetitorsBtn.classList.toggle('active', showCompetitors);
+  drawMap();
+});
+
 /** Append a stop to the staged path, allowing revisits (hub-and-spoke). */
 function addStop(id: string) {
   // Ignore a double-click on the current endpoint (no zero-length leg).
@@ -994,18 +1028,20 @@ function monthYear(day: number): string {
   });
 }
 
-type View = 'map' | 'finance' | 'awards';
+type View = 'map' | 'finance' | 'competitors' | 'awards';
 let currentView: View = 'map';
 
 function setView(view: View) {
   currentView = view;
   stageEl.classList.toggle('hidden', view !== 'map');
   financeEl.classList.toggle('hidden', view !== 'finance');
+  competitorsEl.classList.toggle('hidden', view !== 'competitors');
   awardsEl.classList.toggle('hidden', view !== 'awards');
   document
     .querySelectorAll('#views-nav .view-tab')
     .forEach((b) => b.classList.toggle('active', (b as HTMLElement).dataset.view === view));
   if (view === 'finance') renderFinance(game, financeEl);
+  else if (view === 'competitors') renderCompetitors(game, competitorsEl);
   else if (view === 'awards') renderAwards(game, awardsEl);
   else resizeCanvas(); // map was hidden (zero-size); re-fit now that it's visible
 }
@@ -1021,8 +1057,22 @@ function render() {
   renderLog();
   drawMap();
   if (currentView === 'finance') renderFinance(game, financeEl);
+  else if (currentView === 'competitors') renderCompetitors(game, competitorsEl);
   else if (currentView === 'awards') renderAwards(game, awardsEl);
 }
+
+// Buy a distressed rival off the Competitors tab. The acquisition logs to the
+// player's news feed; sync knownRights so the bulk of inherited cities doesn't
+// fire a postcard popup per city.
+competitorsEl.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest('[data-act="buy-airline"]') as HTMLElement | null;
+  if (!btn) return;
+  const target = game.airlines.find((a) => a.id === btn.dataset.airline);
+  if (!target || !target.forSale || pl().cash < target.forSale.price) return;
+  acquire(game, pl(), target);
+  knownRights = new Set(pl().rights);
+  render();
+});
 
 function renderHud() {
   const cashClass = pl().cash >= 0 ? 'good' : 'bad';
@@ -1361,6 +1411,20 @@ function afterStateSwap() {
 
 const homeSelectEl = document.getElementById('home-select')!;
 const homeAirportList = document.getElementById('home-airport-list')!;
+const aiCountEl = document.getElementById('ai-count')!;
+
+/** Competitor count for the next new game. Remembered for the session. */
+let chosenAiCount = 4;
+for (let n = 0; n <= MAX_AI_AIRLINES; n++) {
+  const btn = document.createElement('button');
+  btn.textContent = String(n);
+  btn.classList.toggle('active', n === chosenAiCount);
+  btn.addEventListener('click', () => {
+    chosenAiCount = n;
+    aiCountEl.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === btn));
+  });
+  aiCountEl.appendChild(btn);
+}
 
 function showHomeSelect() {
   const eligible = AIRPORTS.filter((a) => a.size <= MAX_HOME_SIZE)
@@ -1377,6 +1441,13 @@ function showHomeSelect() {
     btn.addEventListener('click', () => {
       homeSelectEl.classList.add('hidden');
       Object.assign(game, newGame(ap.id));
+      addAiAirlines(game, chosenAiCount);
+      if (chosenAiCount > 0) {
+        pl().log.unshift(
+          `${chosenAiCount} rival airline${chosenAiCount === 1 ? ' is' : 's are'} setting up: ` +
+            game.airlines.slice(1).map((a) => `${a.name} (${a.homeId.toUpperCase()})`).join(', ') + '.',
+        );
+      }
       afterStateSwap();
       render();
       zoomToAirport(ap.id);
@@ -1588,6 +1659,7 @@ function frame(ts: number) {
     while (dayAccumulator >= 1) {
       dayAccumulator -= 1;
       advanceDay(game);
+      runAI(game);
       sidebarDirty = true;
       if (game.day % 7 === 0) {
         logWeekly();
@@ -1601,6 +1673,7 @@ function frame(ts: number) {
   renderHud();
   if (sidebarDirty && !sidebar.contains(document.activeElement)) renderSidebar();
   if (sidebarDirty && currentView === 'finance') renderFinance(game, financeEl);
+  if (sidebarDirty && currentView === 'competitors') renderCompetitors(game, competitorsEl);
   if (sidebarDirty && currentView === 'awards') renderAwards(game, awardsEl);
   drawMap();
   requestAnimationFrame(frame);

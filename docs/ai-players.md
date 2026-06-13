@@ -18,10 +18,17 @@ of small cheap cities around the Appalachian core, but abroad only the
 biggest 2–4 metros per region. A foreign-based AI has no regional ladder to
 climb (no size-1/2 feeders, only expensive gateway slots), and with v1
 competition being slots-only it would never contest anything the player
-touches. So AI homes are drawn from a curated pool of North American medium
-hubs (e.g. ATL, ORD, DFW, DEN, MSP, MIA, YYZ, MEX, BNA, STL, SEA),
+touches. So AI homes are drawn from a curated pool of North American hubs,
 excluding the player's home and its nearest neighbors, spread one-per-region
 so eight AIs don't pile into one corner.
+
+Revised 2026-06-13: capped AI homes at **size 3–4 secondary hubs** (PDX, SLC,
+DEN, AUS, STL, MCI, BNA, MEM, TPA, YYC, GDL, SJU, …), close to the player's
+own size-≤3 starting tier. Previously the pool reached the size-5/6 majors
+(ATL, ORD, YYZ, MEX), which let an AI spawn on a top-tier hub the player needs
+a 6-airport network even to apply for — too much of a free head start. Now an
+AI must climb the same reputation ladder to reach the majors. The Appalachian
+core (PIT/CVG/CMH/CLE/SDF) stays out of the pool — that's the player's ladder.
 
 Default count may prove too high at 8 — wait and see; tune the default,
 not the design. If v2 adds demand-splitting, one or two foreign "flag

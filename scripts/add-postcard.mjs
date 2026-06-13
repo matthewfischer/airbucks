@@ -17,7 +17,8 @@ if (!id || !title) {
   process.exit(1);
 }
 if (/^https?:\/\//.test(title))
-  title = 'File:' + decodeURIComponent(new URL(title).pathname.split('/').pop()).replace(/_/g, ' ');
+  title = decodeURIComponent(new URL(title).pathname.split('/').pop()).replace(/_/g, ' ');
+if (!/^File:/.test(title)) title = 'File:' + title;
 
 const dataSrc = readFileSync(resolve(root, 'src/game/data.ts'), 'utf8');
 const m = dataSrc.match(new RegExp(`id: '${id}', code: '\\w+', city: '([^']+)'`));

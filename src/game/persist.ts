@@ -1,7 +1,9 @@
 import type {
+  AiState,
   Airline,
   EarnedBadge,
   FinanceSnapshot,
+  ForSale,
   GameState,
   Negotiation,
   Plane,
@@ -12,7 +14,7 @@ import { BADGE_IDS } from './badges';
 import { reseedIds } from './engine';
 
 /** Bump when the save shape changes incompatibly. */
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 /** One airline's persisted slice. */
 export interface SavedAirline {
@@ -29,6 +31,12 @@ export interface SavedAirline {
   routes: Route[];
   log: string[];
   history: FinanceSnapshot[];
+  /** AI brain state; absent on the player airline. */
+  ai?: AiState;
+  /** Distress streak markers + for-sale listing (AI airlines only). */
+  cashNegSince?: number;
+  equityNegSince?: number;
+  forSale?: ForSale;
 }
 
 /** The persisted slice of a game — only the dynamic fields, not static data. */
@@ -36,6 +44,7 @@ export interface SaveData {
   version: number;
   day: number;
   rngState: number;
+  nextId: number;
   airlines: SavedAirline[];
 }
 
@@ -53,7 +62,33 @@ const saveAirline = (al: Airline): SavedAirline => ({
   routes: al.routes,
   log: al.log,
   history: al.history,
+  ...(al.ai ? { ai: al.ai } : {}),
+  ...(al.cashNegSince !== undefined ? { cashNegSince: al.cashNegSince } : {}),
+  ...(al.equityNegSince !== undefined ? { equityNegSince: al.equityNegSince } : {}),
+  ...(al.forSale ? { forSale: al.forSale } : {}),
 });
+
+const parseAi = (d: unknown): AiState | undefined => {
+  if (typeof d !== 'object' || d === null) return undefined;
+  const s = d as Record<string, unknown>;
+  if (typeof s.personality !== 'string' || typeof s.nextDecisionDay !== 'number')
+    return undefined;
+  return { personality: s.personality, nextDecisionDay: s.nextDecisionDay };
+};
+
+const parseForSale = (d: unknown): ForSale | undefined => {
+  if (typeof d !== 'object' || d === null) return undefined;
+  const s = d as Record<string, unknown>;
+  if (
+    typeof s.listedDay !== 'number' ||
+    typeof s.deadlineDay !== 'number' ||
+    typeof s.price !== 'number'
+  )
+    return undefined;
+  return { listedDay: s.listedDay, deadlineDay: s.deadlineDay, price: s.price };
+};
+
+const optNum = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
 
 /** Serialize a game to a JSON string (airports/aircraft come from data.ts, not saved). */
 export function serialize(g: GameState): string {
@@ -61,6 +96,7 @@ export function serialize(g: GameState): string {
     version: SAVE_VERSION,
     day: g.day,
     rngState: g.rngState,
+    nextId: g.nextId,
     airlines: g.airlines.map(saveAirline),
   };
   return JSON.stringify(data);
@@ -78,6 +114,10 @@ function parseAirline(d: unknown): SavedAirline | null {
   ) {
     return null;
   }
+  const ai = parseAi(s.ai);
+  const forSale = parseForSale(s.forSale);
+  const cashNegSince = optNum(s.cashNegSince);
+  const equityNegSince = optNum(s.equityNegSince);
   return {
     id: typeof s.id === 'string' ? s.id : 'player',
     name: typeof s.name === 'string' ? s.name : 'Air Bucks',
@@ -92,6 +132,10 @@ function parseAirline(d: unknown): SavedAirline | null {
     routes: s.routes as Route[],
     log: Array.isArray(s.log) ? (s.log as string[]) : [],
     history: Array.isArray(s.history) ? (s.history as FinanceSnapshot[]) : [],
+    ...(ai ? { ai } : {}),
+    ...(cashNegSince !== undefined ? { cashNegSince } : {}),
+    ...(equityNegSince !== undefined ? { equityNegSince } : {}),
+    ...(forSale ? { forSale } : {}),
   };
 }
 
@@ -118,6 +162,8 @@ export function deserialize(json: string): SaveData | null {
     version: SAVE_VERSION,
     day: s.day,
     rngState: typeof s.rngState === 'number' ? s.rngState >>> 0 : 0,
+    // Missing/garbage counter is fine — applySave reseeds past every loaded id.
+    nextId: typeof s.nextId === 'number' ? s.nextId : 1,
     airlines,
   };
 }
@@ -169,6 +215,10 @@ function applyAirline(
     routes,
     log: data.log,
     history: data.history,
+    ...(data.ai ? { ai: data.ai } : {}),
+    ...(data.cashNegSince !== undefined ? { cashNegSince: data.cashNegSince } : {}),
+    ...(data.equityNegSince !== undefined ? { equityNegSince: data.equityNegSince } : {}),
+    ...(data.forSale ? { forSale: data.forSale } : {}),
   };
 }
 
@@ -178,6 +228,7 @@ export function applySave(g: GameState, data: SaveData): void {
   const typeIds = new Set(g.aircraftTypes.map((t) => t.id));
   g.day = data.day;
   g.rngState = data.rngState;
+  g.nextId = data.nextId;
   g.airlines = data.airlines.map((a) => applyAirline(a, airportIds, typeIds));
   reseedIds(g);
 }
