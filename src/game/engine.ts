@@ -398,12 +398,14 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
   }
   const markets: Mkt[] = [];
   const baseline = baselineSpeed(g);
-  const aps = g.airports;
-  for (let i = 0; i < aps.length; i++) {
-    for (let j = i + 1; j < aps.length; j++) {
-      const A = aps[i];
-      const B = aps[j];
-      if (!adj.has(A.id) || !adj.has(B.id)) continue;
+  // Only airports this airline actually touches can anchor a market. Filtering
+  // here (preserving g.airports order) turns an all-pairs O(airports²) scan into
+  // O(served²) — a large win once a network spans only a few dozen of the cities.
+  const served = g.airports.filter((a) => adj.has(a.id));
+  for (let i = 0; i < served.length; i++) {
+    for (let j = i + 1; j < served.length; j++) {
+      const A = served[i];
+      const B = served[j];
       const directDist = distanceKm(A, B);
       const path = bestPath(legs, adj, A.id, B.id, directDist);
       if (!path) continue;
