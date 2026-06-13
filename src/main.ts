@@ -62,9 +62,11 @@ import {
 } from './game/engine';
 import { distanceKm } from './game/geo';
 import { addAiAirlines, MAX_AI_AIRLINES, runAI } from './game/ai';
+import { acquire } from './game/distress';
 import { applySave, deserialize, serialize } from './game/persist';
 import { AIRPORTS } from './game/data';
 import { renderFinance } from './ui/finance';
+import { renderCompetitors } from './ui/competitors';
 import { renderAwards } from './ui/awards';
 
 const game: GameState = newGame('crw');
@@ -121,6 +123,7 @@ const logEl = document.getElementById('log')!;
 const playBtn = document.getElementById('play') as HTMLButtonElement;
 const stageEl = document.getElementById('stage')!;
 const financeEl = document.getElementById('finance')!;
+const competitorsEl = document.getElementById('competitors')!;
 const awardsEl = document.getElementById('awards')!;
 
 const mapWrap = document.getElementById('map-wrap')!;
@@ -1025,18 +1028,20 @@ function monthYear(day: number): string {
   });
 }
 
-type View = 'map' | 'finance' | 'awards';
+type View = 'map' | 'finance' | 'competitors' | 'awards';
 let currentView: View = 'map';
 
 function setView(view: View) {
   currentView = view;
   stageEl.classList.toggle('hidden', view !== 'map');
   financeEl.classList.toggle('hidden', view !== 'finance');
+  competitorsEl.classList.toggle('hidden', view !== 'competitors');
   awardsEl.classList.toggle('hidden', view !== 'awards');
   document
     .querySelectorAll('#views-nav .view-tab')
     .forEach((b) => b.classList.toggle('active', (b as HTMLElement).dataset.view === view));
   if (view === 'finance') renderFinance(game, financeEl);
+  else if (view === 'competitors') renderCompetitors(game, competitorsEl);
   else if (view === 'awards') renderAwards(game, awardsEl);
   else resizeCanvas(); // map was hidden (zero-size); re-fit now that it's visible
 }
@@ -1052,8 +1057,22 @@ function render() {
   renderLog();
   drawMap();
   if (currentView === 'finance') renderFinance(game, financeEl);
+  else if (currentView === 'competitors') renderCompetitors(game, competitorsEl);
   else if (currentView === 'awards') renderAwards(game, awardsEl);
 }
+
+// Buy a distressed rival off the Competitors tab. The acquisition logs to the
+// player's news feed; sync knownRights so the bulk of inherited cities doesn't
+// fire a postcard popup per city.
+competitorsEl.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest('[data-act="buy-airline"]') as HTMLElement | null;
+  if (!btn) return;
+  const target = game.airlines.find((a) => a.id === btn.dataset.airline);
+  if (!target || !target.forSale || pl().cash < target.forSale.price) return;
+  acquire(game, pl(), target);
+  knownRights = new Set(pl().rights);
+  render();
+});
 
 function renderHud() {
   const cashClass = pl().cash >= 0 ? 'good' : 'bad';
@@ -1654,6 +1673,7 @@ function frame(ts: number) {
   renderHud();
   if (sidebarDirty && !sidebar.contains(document.activeElement)) renderSidebar();
   if (sidebarDirty && currentView === 'finance') renderFinance(game, financeEl);
+  if (sidebarDirty && currentView === 'competitors') renderCompetitors(game, competitorsEl);
   if (sidebarDirty && currentView === 'awards') renderAwards(game, awardsEl);
   drawMap();
   requestAnimationFrame(frame);
