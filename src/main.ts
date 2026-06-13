@@ -61,7 +61,7 @@ import {
   START_EPOCH,
 } from './game/engine';
 import { distanceKm } from './game/geo';
-import { runAI } from './game/ai';
+import { addAiAirlines, MAX_AI_AIRLINES, runAI } from './game/ai';
 import { applySave, deserialize, serialize } from './game/persist';
 import { AIRPORTS } from './game/data';
 import { renderFinance } from './ui/finance';
@@ -1362,6 +1362,20 @@ function afterStateSwap() {
 
 const homeSelectEl = document.getElementById('home-select')!;
 const homeAirportList = document.getElementById('home-airport-list')!;
+const aiCountEl = document.getElementById('ai-count')!;
+
+/** Competitor count for the next new game. Remembered for the session. */
+let chosenAiCount = 4;
+for (let n = 0; n <= MAX_AI_AIRLINES; n++) {
+  const btn = document.createElement('button');
+  btn.textContent = String(n);
+  btn.classList.toggle('active', n === chosenAiCount);
+  btn.addEventListener('click', () => {
+    chosenAiCount = n;
+    aiCountEl.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === btn));
+  });
+  aiCountEl.appendChild(btn);
+}
 
 function showHomeSelect() {
   const eligible = AIRPORTS.filter((a) => a.size <= MAX_HOME_SIZE)
@@ -1378,6 +1392,13 @@ function showHomeSelect() {
     btn.addEventListener('click', () => {
       homeSelectEl.classList.add('hidden');
       Object.assign(game, newGame(ap.id));
+      addAiAirlines(game, chosenAiCount);
+      if (chosenAiCount > 0) {
+        pl().log.unshift(
+          `${chosenAiCount} rival airline${chosenAiCount === 1 ? ' is' : 's are'} setting up: ` +
+            game.airlines.slice(1).map((a) => `${a.name} (${a.homeId.toUpperCase()})`).join(', ') + '.',
+        );
+      }
       afterStateSwap();
       render();
       zoomToAirport(ap.id);
