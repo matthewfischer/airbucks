@@ -16,18 +16,19 @@ failures, which are rare by design in v1.
 
 ## Next
 
-- [ ] **AI visibility** (in progress)
+- [x] **AI visibility** — DONE
   - [x] Map route lines in each airline's color (thin/dim, with a toggle)
   - [x] Competitors tab: cities/routes/planes + vague health band
   - [x] For-sale listing + inline buy of a distressed rival (Competitors tab)
-  - [ ] News log events for AI moves (routes opened, slots won) — distress
-        & acquisitions already log; ordinary AI moves are still invisible
+  - [x] News events for rival moves in your network (route opens / slot wins,
+        gated to cities you hold; distress & acquisitions also log)
 - [ ] **v2 demand-splitting** (own feature, not a consolidation hack):
   competition-aware `evaluateNetwork` so overlapping networks pressure
   each other. This is what makes consolidation real.
 - [ ] **Balance**: study sim runs (`npm run sim -- 8 30 <seed>`, now fast
   after the evaluateNetwork perf fix); tune personalities, default count (4).
-- [ ] **Merge `ai-players` → main** once playable end-to-end.
+- [ ] **Merge `ai-players` → main** — v1 is now feature-complete (engine, sim,
+      setup, distress chain, full visibility). Ready to merge after a playtest.
 
 ## Done
 
