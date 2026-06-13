@@ -142,6 +142,8 @@ export interface Airline {
   /** Day a post-acquisition integration boost expires (faster, wider slot
    *  expansion). Absent when no boost is active. */
   mergerBoostUntil?: number;
+  /** Extra concurrent slot applications the active boost grants (size-scaled). */
+  mergerBoostBonus?: number;
 }
 
 export interface GameState {

@@ -103,9 +103,12 @@ const GATE_FEE_RATE = 0.1;
 const SELL_REFUND_RATE = 0.25;
 // Post-acquisition integration boost: for a while after buying an airline, the
 // merged carrier runs more slot applications at once and clears them faster —
-// digesting the merger into a burst of expansion.
+// digesting the merger into a burst of expansion. The extra-applications bonus
+// scales with the size of the airline absorbed, so a minnow gives a nudge and a
+// major gives a land-grab (and you can't cheese it by buying junk).
 const MERGER_BOOST_DAYS = 2 * 365;
-const MERGER_NEG_BONUS = 3; // extra concurrent applications while boosted
+const MERGER_BONUS_PER = 5; // ~+1 concurrent application per 5 cities absorbed
+const MERGER_BONUS_MAX = 5; // capped so even a giant merger stays sane
 const MERGER_SPEEDUP = 0.3; // negotiations clear 30% faster while boosted
 
 export const MAX_HOME_SIZE = 3;
@@ -699,14 +702,20 @@ export const mergerBoostActive = (g: GameState, al: Airline): boolean =>
 export const mergerBoostUntil = (g: GameState, al: Airline): number =>
   mergerBoostActive(g, al) ? al.mergerBoostUntil! : 0;
 
-/** Start (or refresh) the 2-year post-merger expansion boost on an airline. */
-export function grantMergerBoost(g: GameState, al: Airline): void {
+/** Extra concurrent applications a merger grants, scaled to the cities absorbed. */
+export const mergerBonusForCities = (cities: number): number =>
+  Math.max(1, Math.min(MERGER_BONUS_MAX, Math.round(cities / MERGER_BONUS_PER)));
+
+/** Start (or refresh) the 2-year post-merger expansion boost, with a `bonus`
+ *  to the concurrent-application cap (scaled to the acquired airline's size). */
+export function grantMergerBoost(g: GameState, al: Airline, bonus: number): void {
   al.mergerBoostUntil = g.day + MERGER_BOOST_DAYS;
+  al.mergerBoostBonus = bonus;
 }
 
 /** Concurrent slot applications including the post-merger bonus while it lasts. */
 export const effectiveConcurrentCap = (g: GameState, al: Airline): number =>
-  concurrentCap(al) + (mergerBoostActive(g, al) ? MERGER_NEG_BONUS : 0);
+  concurrentCap(al) + (mergerBoostActive(g, al) ? (al.mergerBoostBonus ?? 0) : 0);
 
 /** How long an airport's slot takes to negotiate, in days (bigger = slower). */
 export const negotiationDays = (a: Airport): number =>

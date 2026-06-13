@@ -37,8 +37,9 @@ export interface SavedAirline {
   cashNegSince?: number;
   equityNegSince?: number;
   forSale?: ForSale;
-  /** Post-acquisition integration boost expiry day. */
+  /** Post-acquisition integration boost expiry day + size-scaled bonus. */
   mergerBoostUntil?: number;
+  mergerBoostBonus?: number;
 }
 
 /** The persisted slice of a game — only the dynamic fields, not static data. */
@@ -69,6 +70,7 @@ const saveAirline = (al: Airline): SavedAirline => ({
   ...(al.equityNegSince !== undefined ? { equityNegSince: al.equityNegSince } : {}),
   ...(al.forSale ? { forSale: al.forSale } : {}),
   ...(al.mergerBoostUntil !== undefined ? { mergerBoostUntil: al.mergerBoostUntil } : {}),
+  ...(al.mergerBoostBonus !== undefined ? { mergerBoostBonus: al.mergerBoostBonus } : {}),
 });
 
 const parseAi = (d: unknown): AiState | undefined => {
@@ -122,6 +124,7 @@ function parseAirline(d: unknown): SavedAirline | null {
   const cashNegSince = optNum(s.cashNegSince);
   const equityNegSince = optNum(s.equityNegSince);
   const mergerBoostUntil = optNum(s.mergerBoostUntil);
+  const mergerBoostBonus = optNum(s.mergerBoostBonus);
   return {
     id: typeof s.id === 'string' ? s.id : 'player',
     name: typeof s.name === 'string' ? s.name : 'Air Bucks',
@@ -141,6 +144,7 @@ function parseAirline(d: unknown): SavedAirline | null {
     ...(equityNegSince !== undefined ? { equityNegSince } : {}),
     ...(forSale ? { forSale } : {}),
     ...(mergerBoostUntil !== undefined ? { mergerBoostUntil } : {}),
+    ...(mergerBoostBonus !== undefined ? { mergerBoostBonus } : {}),
   };
 }
 
@@ -225,6 +229,7 @@ function applyAirline(
     ...(data.equityNegSince !== undefined ? { equityNegSince: data.equityNegSince } : {}),
     ...(data.forSale ? { forSale: data.forSale } : {}),
     ...(data.mergerBoostUntil !== undefined ? { mergerBoostUntil: data.mergerBoostUntil } : {}),
+    ...(data.mergerBoostBonus !== undefined ? { mergerBoostBonus: data.mergerBoostBonus } : {}),
   };
 }
 
