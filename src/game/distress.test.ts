@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Airline, GameState } from './types';
-import { newAirline, newGame, player } from './engine';
+import { mergerBoostActive, newAirline, newGame, player } from './engine';
 import {
   acquire,
   acquisitionPrice,
@@ -159,6 +159,15 @@ describe('buying a healthy airline (not distressed)', () => {
     expect(buyer.cash).toBe(20_000_000 + 4_000_000 - price); // inherited cash, then paid
     expect(buyer.debt).toBe(1_000_000);
     expect(buyer.rights).toEqual(expect.arrayContaining(['bna', 'sea', 'pdx']));
+  });
+
+  it('acquiring grants the buyer a post-merger integration boost', () => {
+    const buyer = aiAirline('ai-1', 'bna');
+    buyer.cash = 50_000_000;
+    const target = aiAirline('ai-2', 'sea');
+    target.rights = ['sea', 'pdx'];
+    acquire(g, buyer, target);
+    expect(mergerBoostActive(g, buyer)).toBe(true);
   });
 });
 

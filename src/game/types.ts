@@ -139,6 +139,9 @@ export interface Airline {
   equityNegSince?: number;
   /** Distress listing, when the airline is up for sale. */
   forSale?: ForSale;
+  /** Day a post-acquisition integration boost expires (faster, wider slot
+   *  expansion). Absent when no boost is active. */
+  mergerBoostUntil?: number;
 }
 
 export interface GameState {

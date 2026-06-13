@@ -23,6 +23,9 @@ import {
   negotiationCapFor,
   isEasySlot,
   concurrentCap,
+  effectiveConcurrentCap,
+  mergerBoostActive,
+  mergerBoostUntil,
   gateFee,
   sellSlot,
   sellRefund,
@@ -1190,7 +1193,10 @@ function rightsCard(): string {
   }
 
   const lockedNote = locked.length ? ` <span class="muted">· 🔒 ${locked.length} still locked.</span>` : '';
-  const cap = concurrentCap(pl());
+  const cap = effectiveConcurrentCap(game, pl());
+  const boostNote = mergerBoostActive(game, pl())
+    ? `<div class="tiny good">⚡ Merger boost: +${cap - concurrentCap(pl())} applications, slots clear faster (until ${monthYear(mergerBoostUntil(game, pl()))}).</div>`
+    : '';
   const negs = pl().negotiations.length;
   const negRows = pl().negotiations
     .slice()
@@ -1202,7 +1208,7 @@ function rightsCard(): string {
     .join('');
   const negBlock = `
     <div class="row" style="margin-top:6px"><span class="muted">Negotiations</span><strong>${negs} in progress</strong></div>
-    <div class="tiny muted">${cap} at a time (+1 for a quick regional slot)</div>${negRows}`;
+    <div class="tiny muted">${cap} at a time (+1 for a quick regional slot)</div>${boostNote}${negRows}`;
   const body = `
     <div class="row"><span class="muted">Network</span><strong>${rep} airport${rep === 1 ? '' : 's'}${lockedNote}</strong></div>
     ${negBlock}

@@ -101,6 +101,12 @@ const EASY_SLOT_RANGE_KM = 1800; // DC-3 range
 const GATE_FEE_RATE = 0.1;
 // Fraction of the rights fee refunded when you sell a slot back.
 const SELL_REFUND_RATE = 0.25;
+// Post-acquisition integration boost: for a while after buying an airline, the
+// merged carrier runs more slot applications at once and clears them faster —
+// digesting the merger into a burst of expansion.
+const MERGER_BOOST_DAYS = 2 * 365;
+const MERGER_NEG_BONUS = 3; // extra concurrent applications while boosted
+const MERGER_SPEEDUP = 0.3; // negotiations clear 30% faster while boosted
 
 export const MAX_HOME_SIZE = 3;
 
@@ -685,6 +691,23 @@ export const airportSlotsUsed = (g: GameState, airportId: string): number =>
 export const concurrentCap = (al: Airline): number =>
   NEGOTIATION_BASE + Math.floor(reputation(al) / NEGOTIATION_PER_AIRPORTS);
 
+/** True while a post-acquisition integration boost is running. */
+export const mergerBoostActive = (g: GameState, al: Airline): boolean =>
+  al.mergerBoostUntil !== undefined && g.day < al.mergerBoostUntil;
+
+/** Day the active merger boost ends (0 if none / expired). */
+export const mergerBoostUntil = (g: GameState, al: Airline): number =>
+  mergerBoostActive(g, al) ? al.mergerBoostUntil! : 0;
+
+/** Start (or refresh) the 2-year post-merger expansion boost on an airline. */
+export function grantMergerBoost(g: GameState, al: Airline): void {
+  al.mergerBoostUntil = g.day + MERGER_BOOST_DAYS;
+}
+
+/** Concurrent slot applications including the post-merger bonus while it lasts. */
+export const effectiveConcurrentCap = (g: GameState, al: Airline): number =>
+  concurrentCap(al) + (mergerBoostActive(g, al) ? MERGER_NEG_BONUS : 0);
+
 /** How long an airport's slot takes to negotiate, in days (bigger = slower). */
 export const negotiationDays = (a: Airport): number =>
   NEGOTIATION_DAYS_BY_SIZE[a.size] ?? 60;
@@ -697,10 +720,10 @@ export const isEasySlot = (g: GameState, al: Airline, a: Airport): boolean => {
   return near !== null && distanceKm(a, near) <= EASY_SLOT_RANGE_KM;
 };
 
-/** Concurrent applications allowed when filing for this airport: the base cap,
- *  plus one if it qualifies as an easy slot. */
+/** Concurrent applications allowed when filing for this airport: the effective
+ *  cap (incl. any merger boost), plus one if it qualifies as an easy slot. */
 export const negotiationCapFor = (g: GameState, al: Airline, a: Airport): number =>
-  concurrentCap(al) + (isEasySlot(g, al, a) ? 1 : 0);
+  effectiveConcurrentCap(g, al) + (isEasySlot(g, al, a) ? 1 : 0);
 
 /** Annual gate fee to keep one airport's slot, in era dollars. */
 export const gateFee = (g: GameState, a: Airport): number =>
@@ -776,7 +799,9 @@ export function startNegotiation(g: GameState, al: Airline, airportId: string): 
     al.log.unshift(`Acquired your first slot at ${a.code} (${a.city}) for ${money(fee)}.`);
     return null;
   }
-  const days = negotiationDays(a);
+  const days = mergerBoostActive(g, al)
+    ? Math.round(negotiationDays(a) * (1 - MERGER_SPEEDUP))
+    : negotiationDays(a);
   al.negotiations.push({ airportId, opensDay: g.day + days, fee });
   al.log.unshift(
     `Filed for a slot at ${a.code} (${a.city}) — ${money(fee)}, ~${Math.round(days / 30)} months.`,

@@ -4,6 +4,7 @@ import {
   equity,
   eraScale,
   fleetValue,
+  grantMergerBoost,
   money,
   playerNews,
   rightsFee,
@@ -85,6 +86,7 @@ export function acquire(g: GameState, buyer: Airline, target: Airline): void {
   for (const id of target.rights) if (!buyer.rights.includes(id)) buyer.rights.push(id);
   buyer.fleet.push(...target.fleet);
   buyer.routes.push(...target.routes);
+  grantMergerBoost(g, buyer); // integration team: file slots faster & wider for a while
   const debtNote = target.debt > 0 ? `, assuming ${money(target.debt)} debt` : '';
   removeAirline(g, target);
   playerNews(
