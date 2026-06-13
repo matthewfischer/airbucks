@@ -61,24 +61,26 @@ function standings(year: number): void {
   console.log();
 }
 
+// Stream consolidation events (distress / acquisition / bankruptcy) as they
+// happen, year-stamped, so a long run is legible live and killable early.
+const isEvent = (l: string) => /distress|acquired|bankrupt/i.test(l);
+let printedEvents = 0;
+function flushEvents(year: number): void {
+  const events = g.airlines[0].log.filter(isEvent).reverse(); // oldest-first
+  for (const line of events.slice(printedEvents)) console.log(`  ${1950 + year}  ${line}`);
+  printedEvents = events.length;
+}
+
 const start = Date.now();
 for (let y = 1; y <= Number(years); y++) {
   for (let d = 0; d < 365; d++) {
     advanceDay(g);
     runAI(g);
   }
+  flushEvents(y);
   if (y % 5 === 0 || y === 1) standings(y);
 }
 console.log(`(${((Date.now() - start) / 1000).toFixed(1)}s simulated wall time)`);
-
-// Consolidation log: every distress / acquisition / bankruptcy event, in order.
-const news = g.airlines[0].log
-  .filter((l) => /distress|acquired|bankrupt/i.test(l))
-  .reverse();
-if (news.length) {
-  console.log('\nConsolidation events:');
-  for (const line of news) console.log('  ' + line);
-}
 
 // Quick personality scoreboard across the final year.
 console.log('Final equity by personality:');
