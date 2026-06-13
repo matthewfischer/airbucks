@@ -37,6 +37,11 @@ export function reseedIds(g: GameState): void {
 /** The human player's airline — by convention always airlines[0]. */
 export const player = (g: GameState): Airline => g.airlines[0];
 
+/** Push a one-line item to the player's news feed (airlines[0]'s log). */
+export function playerNews(g: GameState, line: string): void {
+  g.airlines[0]?.log.unshift(line);
+}
+
 /**
  * Deterministic uniform random in [0, 1): mulberry32 over g.rngState.
  * All in-game randomness (AI decisions) must draw from here so a given
@@ -978,10 +983,14 @@ export function advanceDay(g: GameState): void {
     // Clear any slot applications that have come through.
     if (al.negotiations.length) {
       const cleared = al.negotiations.filter((n) => g.day >= n.opensDay);
+      const isPlayer = al === g.airlines[0];
       for (const n of cleared) {
         grantRights(al, n.airportId);
         const a = airportById(g, n.airportId);
         al.log.unshift(`Slot at ${a.code} (${a.city}) is open — you're now flying there.`);
+        // A rival landing a slot at a city you also hold is worth a heads-up.
+        if (!isPlayer && g.airlines[0].rights.includes(n.airportId))
+          playerNews(g, `✈ ${al.name} won a slot at ${a.code} (${a.city}) — a rival in your market.`);
       }
       if (cleared.length)
         al.negotiations = al.negotiations.filter((n) => g.day < n.opensDay);

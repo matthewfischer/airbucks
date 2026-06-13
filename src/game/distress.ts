@@ -5,6 +5,7 @@ import {
   eraScale,
   fleetValue,
   money,
+  playerNews,
   rightsFee,
 } from './engine';
 
@@ -44,11 +45,6 @@ export const isForSale = (al: Airline): boolean => al.forSale !== undefined;
 export const forSaleAirlines = (g: GameState): Airline[] =>
   g.airlines.filter((al) => al.ai && al.forSale);
 
-/** Push a news line to the player's log (airlines[0] is the player). */
-function news(g: GameState, line: string): void {
-  g.airlines[0]?.log.unshift(line);
-}
-
 /** Remove an airline from the game. Never removes the player (index 0). */
 function removeAirline(g: GameState, al: Airline): void {
   const i = g.airlines.indexOf(al);
@@ -69,7 +65,7 @@ export function acquire(g: GameState, buyer: Airline, target: Airline): void {
   buyer.fleet.push(...target.fleet);
   buyer.routes.push(...target.routes);
   removeAirline(g, target);
-  news(
+  playerNews(
     g,
     `🤝 ${buyer.name} acquired ${target.name} for ${money(price)} — ${cities} cities, ` +
       `assuming ${money(target.debt)} debt.`,
@@ -82,13 +78,13 @@ function list(g: GameState, al: Airline): void {
   al.forSale = { listedDay: g.day, deadlineDay: g.day + FOR_SALE_DAYS, price };
   al.cashNegSince = undefined;
   al.equityNegSince = undefined;
-  news(g, `⚠ ${al.name} is in distress — up for sale at ${money(price)} (assumes its debt).`);
+  playerNews(g, `⚠ ${al.name} is in distress — up for sale at ${money(price)} (assumes its debt).`);
 }
 
 /** Liquidate an unsold airline; its slots return to the pool. */
 function liquidate(g: GameState, al: Airline): void {
   removeAirline(g, al);
-  news(g, `💥 ${al.name} has gone bankrupt and ceased operations — its slots are free again.`);
+  playerNews(g, `💥 ${al.name} has gone bankrupt and ceased operations — its slots are free again.`);
 }
 
 /**

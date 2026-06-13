@@ -19,6 +19,7 @@ import {
   openRoute,
   pairDemand,
   planesOnRoute,
+  playerNews,
   priceLevel,
   rand,
   recordFinanceSnapshot,
@@ -319,6 +320,11 @@ function routeActions(g: GameState, al: Airline, p: Personality): Action[] {
         run: () => {
           if (openRoute(g, al, [a.id, b.id]) === null) {
             staffRoute(g, al, p, al.routes[al.routes.length - 1].id);
+            // Flag the move only if it touches a city you serve — keeps the
+            // news feed about your world, not every distant AI route.
+            const youHold = g.airlines[0].rights;
+            if (youHold.includes(a.id) || youHold.includes(b.id))
+              playerNews(g, `✈ ${al.name} opened ${a.code} → ${b.code} — moving into your network.`);
           }
         },
       });
