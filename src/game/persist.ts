@@ -1,4 +1,5 @@
 import type {
+  AiState,
   Airline,
   EarnedBadge,
   FinanceSnapshot,
@@ -29,6 +30,8 @@ export interface SavedAirline {
   routes: Route[];
   log: string[];
   history: FinanceSnapshot[];
+  /** AI brain state; absent on the player airline. */
+  ai?: AiState;
 }
 
 /** The persisted slice of a game — only the dynamic fields, not static data. */
@@ -36,6 +39,7 @@ export interface SaveData {
   version: number;
   day: number;
   rngState: number;
+  nextId: number;
   airlines: SavedAirline[];
 }
 
@@ -53,7 +57,16 @@ const saveAirline = (al: Airline): SavedAirline => ({
   routes: al.routes,
   log: al.log,
   history: al.history,
+  ...(al.ai ? { ai: al.ai } : {}),
 });
+
+const parseAi = (d: unknown): AiState | undefined => {
+  if (typeof d !== 'object' || d === null) return undefined;
+  const s = d as Record<string, unknown>;
+  if (typeof s.personality !== 'string' || typeof s.nextDecisionDay !== 'number')
+    return undefined;
+  return { personality: s.personality, nextDecisionDay: s.nextDecisionDay };
+};
 
 /** Serialize a game to a JSON string (airports/aircraft come from data.ts, not saved). */
 export function serialize(g: GameState): string {
@@ -61,6 +74,7 @@ export function serialize(g: GameState): string {
     version: SAVE_VERSION,
     day: g.day,
     rngState: g.rngState,
+    nextId: g.nextId,
     airlines: g.airlines.map(saveAirline),
   };
   return JSON.stringify(data);
@@ -78,6 +92,7 @@ function parseAirline(d: unknown): SavedAirline | null {
   ) {
     return null;
   }
+  const ai = parseAi(s.ai);
   return {
     id: typeof s.id === 'string' ? s.id : 'player',
     name: typeof s.name === 'string' ? s.name : 'Air Bucks',
@@ -92,6 +107,7 @@ function parseAirline(d: unknown): SavedAirline | null {
     routes: s.routes as Route[],
     log: Array.isArray(s.log) ? (s.log as string[]) : [],
     history: Array.isArray(s.history) ? (s.history as FinanceSnapshot[]) : [],
+    ...(ai ? { ai } : {}),
   };
 }
 
@@ -118,6 +134,8 @@ export function deserialize(json: string): SaveData | null {
     version: SAVE_VERSION,
     day: s.day,
     rngState: typeof s.rngState === 'number' ? s.rngState >>> 0 : 0,
+    // Missing/garbage counter is fine — applySave reseeds past every loaded id.
+    nextId: typeof s.nextId === 'number' ? s.nextId : 1,
     airlines,
   };
 }
@@ -169,6 +187,7 @@ function applyAirline(
     routes,
     log: data.log,
     history: data.history,
+    ...(data.ai ? { ai: data.ai } : {}),
   };
 }
 
@@ -178,6 +197,7 @@ export function applySave(g: GameState, data: SaveData): void {
   const typeIds = new Set(g.aircraftTypes.map((t) => t.id));
   g.day = data.day;
   g.rngState = data.rngState;
+  g.nextId = data.nextId;
   g.airlines = data.airlines.map((a) => applyAirline(a, airportIds, typeIds));
   reseedIds(g);
 }

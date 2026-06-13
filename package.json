@@ -9,7 +9,8 @@
     "build": "vite build",
     "start": "electron .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "sim": "vite-node scripts/sim.ts"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

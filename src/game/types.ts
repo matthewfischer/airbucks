@@ -90,12 +90,22 @@ export interface Negotiation {
   fee: number;
 }
 
+/** Brain state for a computer-controlled airline. Absent on the player. */
+export interface AiState {
+  /** Personality id (see PERSONALITIES in ai.ts) — fixed at creation. */
+  personality: string;
+  /** Next simulated day this airline will take a decision pass. */
+  nextDecisionDay: number;
+}
+
 /** One carrier — the player or a computer opponent. */
 export interface Airline {
   id: string;
   name: string;
   /** Map color for this airline's routes and planes. */
   color: string;
+  /** AI brain; the player airline has none. */
+  ai?: AiState;
   cash: number;
   /** Outstanding loan principal. */
   debt: number;
@@ -120,6 +130,8 @@ export interface GameState {
   day: number;
   /** Deterministic RNG state (mulberry32) — advanced by rand(), persisted. */
   rngState: number;
+  /** Next plane/route id to mint — per-game so identical seeds replay identically. */
+  nextId: number;
   airports: Airport[];
   aircraftTypes: AircraftType[];
   /** All carriers. The player is always airlines[0]. */

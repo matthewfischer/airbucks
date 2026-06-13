@@ -61,6 +61,7 @@ import {
   START_EPOCH,
 } from './game/engine';
 import { distanceKm } from './game/geo';
+import { runAI } from './game/ai';
 import { applySave, deserialize, serialize } from './game/persist';
 import { AIRPORTS } from './game/data';
 import { renderFinance } from './ui/finance';
@@ -76,7 +77,7 @@ if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
     openRoute: (...stops: string[]) => (openRoute(game, pl(), stops), render()),
     buyPlane: (t: string) => (buyPlane(game, pl(), t), render()),
     assignPlane: (p: string, r: string | null) => (assignPlane(game, pl(), p, r), render()),
-    advanceDay: () => (advanceDay(game), render()),
+    advanceDay: () => (advanceDay(game), runAI(game), render()),
     borrow: (n: number) => (borrow(game, pl(), n), render()),
     repay: (n: number) => (repay(game, pl(), n), render()),
     select: (...ids: string[]) => {
@@ -1588,6 +1589,7 @@ function frame(ts: number) {
     while (dayAccumulator >= 1) {
       dayAccumulator -= 1;
       advanceDay(game);
+      runAI(game);
       sidebarDirty = true;
       if (game.day % 7 === 0) {
         logWeekly();
