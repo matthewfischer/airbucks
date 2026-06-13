@@ -74,10 +74,26 @@ const personalityById = new Map(PERSONALITIES.map((p) => [p.id, p]));
 
 // ---- Airline generation -----------------------------------------------------
 
-/** North American medium/large hubs AIs may call home (see docs/ai-players.md). */
+// North American size-3/4 secondary hubs AIs may call home — close to the
+// player's own starting tier, so an AI must climb the same reputation ladder
+// to reach the size-5/6 majors (ATL, ORD, JFK, LAX…) rather than spawning on
+// one. Spread across regions (West, Texas, Midwest, South, Canada, Mexico,
+// Caribbean) so up to eight AIs don't pile into one corner. The Appalachian
+// core (PIT/CVG/CMH/CLE/SDF) is left out — that's the player's home ladder.
+// See docs/ai-players.md.
 export const AI_HOME_POOL = [
-  'atl', 'ord', 'dfw', 'den', 'msp', 'mia', 'yyz', 'mex', 'bna', 'stl', 'sea',
-  'dtw', 'iah', 'phx', 'mco',
+  // West & Mountain
+  'pdx', 'slc', 'den', 'san', 'smf', 'abq',
+  // Texas & South-central
+  'aus', 'sat',
+  // Midwest
+  'stl', 'mci', 'mke', 'ind', 'dtw',
+  // South & Southeast
+  'bna', 'mem', 'msy', 'jax', 'tpa',
+  // Canada
+  'yyc', 'yeg', 'yow',
+  // Mexico & Caribbean
+  'gdl', 'mty', 'sju', 'pty',
 ];
 
 /** Don't seed an AI this close to the player's home base, in km. */

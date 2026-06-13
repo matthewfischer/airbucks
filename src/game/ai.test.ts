@@ -61,6 +61,17 @@ describe('addAiAirlines', () => {
     }
   });
 
+  it('every home in the pool exists and is a size-3/4 secondary hub (not a major)', () => {
+    const g = newGame('crw');
+    expect(AI_HOME_POOL.length).toBeGreaterThanOrEqual(MAX_AI_AIRLINES);
+    for (const id of AI_HOME_POOL) {
+      const ap = g.airports.find((a) => a.id === id);
+      expect(ap, id).toBeDefined();
+      expect(ap!.size, `${id} size`).toBeLessThanOrEqual(4);
+      expect(ap!.size, `${id} size`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
   it('gives each AI a distinct name and color', () => {
     const g = gameWith(8);
     const names = g.airlines.slice(1).map((al) => al.name);
