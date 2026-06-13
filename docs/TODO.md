@@ -18,11 +18,10 @@ failures, which are rare by design in v1.
 
 - [ ] **AI visibility** (in progress)
   - [x] Map route lines in each airline's color (thin/dim, with a toggle)
-  - [ ] Competitors tab: fleet size, cities served, vague health indicator
-        — also the entry point for the for-sale buying UI below
-  - [ ] News log events for AI moves (routes opened, slots won)
-  - [ ] **For-sale listing UI + player can buy a distressed rival**
-        (engine `acquire()` already buyer-agnostic & tested; just needs UI)
+  - [x] Competitors tab: cities/routes/planes + vague health band
+  - [x] For-sale listing + inline buy of a distressed rival (Competitors tab)
+  - [ ] News log events for AI moves (routes opened, slots won) — distress
+        & acquisitions already log; ordinary AI moves are still invisible
 - [ ] **v2 demand-splitting** (own feature, not a consolidation hack):
   competition-aware `evaluateNetwork` so overlapping networks pressure
   each other. This is what makes consolidation real.
