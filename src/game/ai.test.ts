@@ -13,6 +13,7 @@ import {
   airportSlotsTotal,
   airportSlotsUsed,
   equity,
+  newAirline,
   newGame,
   player,
 } from './engine';
@@ -95,6 +96,18 @@ describe('AI decisions', () => {
       expect(al.routes.length, al.name).toBeGreaterThanOrEqual(1);
       expect(al.rights.length, al.name).toBeGreaterThanOrEqual(2);
     }
+  });
+
+  it('an AI at an isolated home (ABQ) bootstraps instead of idling forever', () => {
+    // Regression: seed-1 Gulf Stream sat at 1 city for 25 years from ABQ, where
+    // every reachable market was below the profit floor. Bootstrap must unstick it.
+    const g = newGame('crw', 5);
+    const ai = newAirline('ai-x', 'Isolated Air', '#ffffff', 'abq');
+    ai.ai = { personality: 'cheapskate', nextDecisionDay: 0 };
+    g.airlines.push(ai);
+    run(g, 365 * 3);
+    expect(ai.rights.length).toBeGreaterThanOrEqual(2);
+    expect(ai.routes.length).toBeGreaterThanOrEqual(1);
   });
 
   it('AIs keep weekly finance history', () => {

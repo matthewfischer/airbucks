@@ -434,6 +434,44 @@ function slotActions(g: GameState, al: Airline, p: Personality): Action[] {
 }
 
 /**
+ * Bootstrap: an airline with only its home and nothing pending must land a
+ * second city before it can fly anything. From an isolated home (e.g. ABQ)
+ * every reachable market can sit below the profit floor, freezing a cautious
+ * AI forever — so here we ignore that floor and grab the best reachable,
+ * unlocked, affordable slot (closest, then biggest). Its first slot is granted
+ * instantly, so this unsticks the airline in a single pass.
+ */
+function bootstrapActions(g: GameState, al: Airline, p: Personality): Action[] {
+  if (al.rights.length !== 1 || al.negotiations.length > 0) return [];
+  const budget = spendable(g, al, p);
+  const home = airportById(g, al.homeId);
+  let target: Airport | null = null;
+  let bestScore = -Infinity;
+  for (const ap of g.airports) {
+    if (!rightsAvailable(g, al, ap.id)) continue;
+    if (rightsFee(g, ap) > budget) continue;
+    const d = distanceKm(ap, home);
+    if (!bestTypeFor(g, ap, home, d, budget)) continue; // no affordable plane can reach it
+    const s = (ap.size * home.size) / Math.max(1, d); // closer & bigger = better
+    if (s > bestScore) {
+      bestScore = s;
+      target = ap;
+    }
+  }
+  if (!target) return [];
+  const pick = target;
+  // Floor-level urgency: outranks idling/repay, yields to any profitable move.
+  return [
+    {
+      score: minProfit(g),
+      run: () => {
+        if (coverCost(g, al, p, rightsFee(g, pick))) startNegotiation(g, al, pick.id);
+      },
+    },
+  ];
+}
+
+/**
  * Candidate: buy a distressed rival off the block. Only a healthy airline with
  * the credit headroom to shoulder the target's debt will bid — so consolidation
  * flows from the strong to the weak, and overexpanders become the consolidators.
@@ -522,6 +560,7 @@ function decide(g: GameState, al: Airline, p: Personality): void {
   const actions = expanding
     ? [
         ...acquisitionActions(g, al, p),
+        ...bootstrapActions(g, al, p),
         ...routeActions(g, al, p),
         ...capacityActions(g, al, p),
         ...upgradeActions(g, al, p),
