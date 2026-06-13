@@ -16,9 +16,10 @@ failures, which are rare by design in v1.
 
 ## Next
 
-- [ ] **AI visibility**
-  - [ ] Map route lines in each airline's color (thinner/dimmer than player's)
+- [ ] **AI visibility** (in progress)
+  - [x] Map route lines in each airline's color (thin/dim, with a toggle)
   - [ ] Competitors tab: fleet size, cities served, vague health indicator
+        — also the entry point for the for-sale buying UI below
   - [ ] News log events for AI moves (routes opened, slots won)
   - [ ] **For-sale listing UI + player can buy a distressed rival**
         (engine `acquire()` already buyer-agnostic & tested; just needs UI)
@@ -35,6 +36,8 @@ failures, which are rare by design in v1.
   for-sale countdown, AI-to-AI acquisition (assumes debt), liquidation frees
   slots, news to player log. Save v7.
 - [x] Perf: evaluateNetwork served-airports-only (bit-identical, big speedup).
+- [x] AI homes capped to size 3-4 secondary hubs (no free size-5/6 major).
+- [x] Map route lines for competitors + map toggle.
 
 ## Small
 
