@@ -1,5 +1,6 @@
 import type { AircraftType, Airline, Airport, GameState } from './types';
 import { distanceKm } from './geo';
+import { acquire, updateDistress } from './distress';
 import {
   airportById,
   assignPlane,
@@ -10,6 +11,7 @@ import {
   closeRoute,
   creditLimit,
   distanceFactor,
+  equity,
   evaluateNetwork,
   gateFee,
   isNegotiating,
@@ -409,6 +411,25 @@ function slotActions(g: GameState, al: Airline, p: Personality): Action[] {
   return actions;
 }
 
+/**
+ * Candidate: buy a distressed rival off the block. Only a healthy airline with
+ * the credit headroom to shoulder the target's debt will bid — so consolidation
+ * flows from the strong to the weak, and overexpanders become the consolidators.
+ */
+function acquisitionActions(g: GameState, al: Airline, p: Personality): Action[] {
+  const actions: Action[] = [];
+  for (const target of g.airlines) {
+    if (target === al || !target.forSale) continue;
+    if (al.cash < target.forSale.price) continue; // sticker paid from cash
+    if (equity(g, al) <= 0) continue; // only solvent airlines acquire
+    if (target.debt > p.debtAppetite * creditLimit(g, al)) continue; // can carry the debt
+    // Strategic value: the franchise's revenue base (its network reach).
+    const score = evaluateNetwork(g, target).revenue;
+    actions.push({ score, run: () => acquire(g, al, target) });
+  }
+  return actions;
+}
+
 /** Candidate: a debt-shy airline pays its loan down when cash allows. */
 function repayActions(g: GameState, al: Airline, p: Personality): Action[] {
   if (al.debt <= 0 || al.cash <= 0) return [];
@@ -478,6 +499,7 @@ function decide(g: GameState, al: Airline, p: Personality): void {
     w.net >= 0 || spendable(g, al, p) > -w.net * p.runwayWeeks;
   const actions = expanding
     ? [
+        ...acquisitionActions(g, al, p),
         ...routeActions(g, al, p),
         ...capacityActions(g, al, p),
         ...upgradeActions(g, al, p),
@@ -503,10 +525,13 @@ function decide(g: GameState, al: Airline, p: Personality): void {
  * non-decision days: each airline acts only when its jittered cadence comes up.
  */
 export function runAI(g: GameState): void {
-  for (const al of g.airlines) {
-    if (!al.ai) continue;
+  updateDistress(g); // list the failing, liquidate the unsold (self-gates weekly)
+  // Snapshot: an acquisition or liquidation can remove an airline mid-pass.
+  for (const al of [...g.airlines]) {
+    if (!al.ai || !g.airlines.includes(al)) continue; // gone this tick — skip
     // AI airlines keep finance history too (distress checks, acquisitions UI).
     if (g.day % 7 === 0) recordFinanceSnapshot(g, al);
+    if (al.forSale) continue; // in limbo on the block — no new moves
     if (g.day < al.ai.nextDecisionDay) continue;
     const p = personalityById.get(al.ai.personality) ?? PERSONALITIES[0];
     decide(g, al, p);

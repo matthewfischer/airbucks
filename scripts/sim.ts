@@ -26,8 +26,15 @@ console.log(`Simulating ${g.airlines.length - 1} AI airlines, ${years} years, se
 const pad = (s: string, n: number) => s.padEnd(n);
 const num = (s: string, n: number) => s.padStart(n);
 
+const startCount = g.airlines.length - 1;
+
 function standings(year: number): void {
-  console.log(`==== ${1950 + year} ` + '='.repeat(96));
+  const alive = g.airlines.length - 1;
+  const onBlock = g.airlines.filter((al) => al.forSale).length;
+  console.log(
+    `==== ${1950 + year}  (${alive}/${startCount} airlines` +
+      (onBlock ? `, ${onBlock} for sale` : '') + ') ' + '='.repeat(72),
+  );
   console.log(
     pad('airline', 26) + pad('personality', 14) + pad('home', 6) +
     num('cities', 7) + num('routes', 7) + num('planes', 7) +
@@ -39,7 +46,7 @@ function standings(year: number): void {
   for (const al of rows) {
     const w = weeklyTotals(g, al);
     console.log(
-      pad(al.name, 26) +
+      pad(al.name + (al.forSale ? ' ⚠' : ''), 26) +
       pad(al.ai?.personality ?? '-', 14) +
       pad(al.homeId.toUpperCase(), 6) +
       num(String(al.rights.length), 7) +
@@ -63,6 +70,15 @@ for (let y = 1; y <= Number(years); y++) {
   if (y % 5 === 0 || y === 1) standings(y);
 }
 console.log(`(${((Date.now() - start) / 1000).toFixed(1)}s simulated wall time)`);
+
+// Consolidation log: every distress / acquisition / bankruptcy event, in order.
+const news = g.airlines[0].log
+  .filter((l) => /distress|acquired|bankrupt/i.test(l))
+  .reverse();
+if (news.length) {
+  console.log('\nConsolidation events:');
+  for (const line of news) console.log('  ' + line);
+}
 
 // Quick personality scoreboard across the final year.
 console.log('Final equity by personality:');

@@ -98,6 +98,16 @@ export interface AiState {
   nextDecisionDay: number;
 }
 
+/** A distressed airline listed for sale: buyable until the deadline, then liquidated. */
+export interface ForSale {
+  /** Day the airline was listed. */
+  listedDay: number;
+  /** Day it liquidates if still unsold. */
+  deadlineDay: number;
+  /** Sticker price to acquire it (the buyer also assumes its debt). */
+  price: number;
+}
+
 /** One carrier — the player or a computer opponent. */
 export interface Airline {
   id: string;
@@ -123,6 +133,12 @@ export interface Airline {
   log: string[];
   /** Oldest-first weekly financial snapshots, for the finance page. */
   history: FinanceSnapshot[];
+  /** Day cash first went negative in the current streak (distress tracking). */
+  cashNegSince?: number;
+  /** Day equity first went negative in the current streak. */
+  equityNegSince?: number;
+  /** Distress listing, when the airline is up for sale. */
+  forSale?: ForSale;
 }
 
 export interface GameState {
