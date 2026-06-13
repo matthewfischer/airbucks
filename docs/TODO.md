@@ -27,8 +27,8 @@ failures, which are rare by design in v1.
   each other. This is what makes consolidation real.
 - [ ] **Balance**: study sim runs (`npm run sim -- 8 30 <seed>`, now fast
   after the evaluateNetwork perf fix); tune personalities, default count (4).
-- [ ] **Merge `ai-players` → main** — v1 is now feature-complete (engine, sim,
-      setup, distress chain, full visibility). Ready to merge after a playtest.
+- [x] **Merged `ai-players` → main** (2026-06-13). v1 AI is feature-complete:
+      engine, sim, setup, distress chain, full visibility, competitor net-worth.
 
 ## Done
 
@@ -41,7 +41,5 @@ failures, which are rare by design in v1.
 
 ## Small
 
-- [ ] Grand Cayman postcard (gcm) is CC BY-SA 2.0, not plain CC BY —
-  decide: accept SA for manual picks or swap the image.
-- [ ] AI weekly log lines? (AIs log slots/purchases but the player never sees
-  them until the news-log visibility item lands.)
+- (none — postcard licensing is a non-issue; this is a personal game.
+  AI news to the player now ships via the visibility work.)
