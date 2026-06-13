@@ -491,7 +491,9 @@ input[type='number'] { width: 84px; }
   width: 100%;
   /* Leave room below the photo for title + buttons within the box's 80vh cap. */
   max-height: 50vh;
-  object-fit: cover;
+  /* Show the whole postcard (contain, not cover) so tall cards aren't cropped
+     at the top; landscape cards fill the width with no letterboxing. */
+  object-fit: contain;
   border-radius: 8px;
   border: 1px solid var(--border);
 }
