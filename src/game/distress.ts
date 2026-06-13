@@ -7,6 +7,7 @@ import {
   money,
   playerNews,
   rightsFee,
+  weeklyTotals,
 } from './engine';
 
 // An airline fails slowly, on purpose — the all-day pacing means consolidation
@@ -23,6 +24,8 @@ const FOR_SALE_DAYS = 60;
 const DISTRESS_DISCOUNT = 0.5;
 /** Sticker price never drops below this (era-scaled) floor. */
 const MIN_PRICE = 100_000;
+/** Years of profit paid as goodwill when buying a healthy, going-concern airline. */
+const GOODWILL_YEARS = 2;
 
 /** Nominal cost to acquire the held slots today — a proxy for "slot fees paid". */
 function slotInvestment(g: GameState, al: Airline): number {
@@ -39,6 +42,22 @@ export function acquisitionPrice(g: GameState, t: Airline): number {
   return Math.max(Math.round(MIN_PRICE * eraScale(g)), Math.round(book * DISTRESS_DISCOUNT));
 }
 
+/**
+ * Price to buy a healthy, going-concern airline: its net worth plus a goodwill
+ * premium for its earnings (no fire-sale discount — its owners aren't desperate).
+ * The buyer also inherits its cash and debt, so this is what you pay over the
+ * net assets you receive. Floored.
+ */
+export function marketPrice(g: GameState, t: Airline): number {
+  const annualNet = weeklyTotals(g, t).net * 52;
+  const goodwill = Math.max(0, annualNet) * GOODWILL_YEARS;
+  return Math.max(Math.round(MIN_PRICE * eraScale(g)), Math.round(equity(g, t) + goodwill));
+}
+
+/** What it costs to buy `t` right now: the fire-sale ask if distressed, else market. */
+export const buyoutPrice = (g: GameState, t: Airline): number =>
+  t.forSale ? t.forSale.price : marketPrice(g, t);
+
 export const isForSale = (al: Airline): boolean => al.forSale !== undefined;
 
 /** Airlines currently on the block (excludes the player). */
@@ -52,23 +71,25 @@ function removeAirline(g: GameState, al: Airline): void {
 }
 
 /**
- * Hand a distressed airline's whole network to `buyer` and dissolve it. The
- * buyer pays the sticker, assumes the debt, and inherits rights (duplicates
- * collapse), fleet (mileage intact), and routes (planes stay assigned).
+ * Hand an airline's whole business to `buyer` and dissolve it. The buyer pays
+ * the sticker, inherits its cash, assumes its debt, and takes its rights
+ * (duplicates collapse), fleet (mileage intact), and routes (planes stay
+ * assigned). Works for a distressed listing or a healthy going concern.
  */
 export function acquire(g: GameState, buyer: Airline, target: Airline): void {
-  const price = target.forSale?.price ?? acquisitionPrice(g, target);
+  const price = buyoutPrice(g, target);
   const cities = target.rights.length;
-  buyer.cash -= price;
+  buyer.cash += target.cash; // inherit the bank account…
+  buyer.cash -= price; // …then pay the sticker
   buyer.debt += target.debt;
   for (const id of target.rights) if (!buyer.rights.includes(id)) buyer.rights.push(id);
   buyer.fleet.push(...target.fleet);
   buyer.routes.push(...target.routes);
+  const debtNote = target.debt > 0 ? `, assuming ${money(target.debt)} debt` : '';
   removeAirline(g, target);
   playerNews(
     g,
-    `🤝 ${buyer.name} acquired ${target.name} for ${money(price)} — ${cities} cities, ` +
-      `assuming ${money(target.debt)} debt.`,
+    `🤝 ${buyer.name} acquired ${target.name} for ${money(price)} — ${cities} cities${debtNote}.`,
   );
 }
 

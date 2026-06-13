@@ -62,7 +62,7 @@ import {
 } from './game/engine';
 import { distanceKm } from './game/geo';
 import { addAiAirlines, MAX_AI_AIRLINES, runAI } from './game/ai';
-import { acquire } from './game/distress';
+import { acquire, buyoutPrice } from './game/distress';
 import { applySave, deserialize, serialize } from './game/persist';
 import { AIRPORTS } from './game/data';
 import { renderFinance } from './ui/finance';
@@ -1061,14 +1061,14 @@ function render() {
   else if (currentView === 'awards') renderAwards(game, awardsEl);
 }
 
-// Buy a distressed rival off the Competitors tab. The acquisition logs to the
-// player's news feed; sync knownRights so the bulk of inherited cities doesn't
-// fire a postcard popup per city.
+// Buy a rival off the Competitors tab — distressed (fire-sale) or healthy
+// (market price). The acquisition logs to the player's news feed; sync
+// knownRights so the bulk of inherited cities doesn't fire a postcard per city.
 competitorsEl.addEventListener('click', (e) => {
   const btn = (e.target as HTMLElement).closest('[data-act="buy-airline"]') as HTMLElement | null;
   if (!btn) return;
   const target = game.airlines.find((a) => a.id === btn.dataset.airline);
-  if (!target || !target.forSale || pl().cash < target.forSale.price) return;
+  if (!target || target === pl() || pl().cash < buyoutPrice(game, target)) return;
   acquire(game, pl(), target);
   knownRights = new Set(pl().rights);
   render();

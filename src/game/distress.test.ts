@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Airline, GameState } from './types';
 import { newAirline, newGame, player } from './engine';
-import { acquire, acquisitionPrice, forSaleAirlines, isForSale, updateDistress } from './distress';
+import {
+  acquire,
+  acquisitionPrice,
+  buyoutPrice,
+  forSaleAirlines,
+  isForSale,
+  marketPrice,
+  updateDistress,
+} from './distress';
 
 let g: GameState;
 beforeEach(() => {
@@ -100,6 +108,7 @@ describe('acquire', () => {
     buyer.cash = 10_000_000;
     buyer.rights = ['bna', 'clt'];
     const target = aiAirline('ai-2', 'sea');
+    target.cash = 0; // a fire-sale airline is broke
     target.debt = 2_000_000;
     target.rights = ['sea', 'clt', 'pdx'];
     target.fleet = [{ id: 'plane-99', typeId: 'dc3', routeId: 'route-99', kmFlown: 500 }];
@@ -109,12 +118,47 @@ describe('acquire', () => {
     acquire(g, buyer, target);
 
     expect(g.airlines).not.toContain(target);
-    expect(buyer.cash).toBe(10_000_000 - 500_000);
+    expect(buyer.cash).toBe(10_000_000 - 500_000); // inherits target cash (0) − sticker
     expect(buyer.debt).toBe(2_000_000); // assumed
     expect(buyer.rights).toEqual(['bna', 'clt', 'sea', 'pdx']); // CLT duplicate collapses
     expect(buyer.fleet.find((p) => p.id === 'plane-99')?.kmFlown).toBe(500); // mileage intact
     expect(buyer.routes.some((r) => r.id === 'route-99')).toBe(true);
     expect(player(g).log[0]).toMatch(/acquired/i);
+  });
+});
+
+describe('buying a healthy airline (not distressed)', () => {
+  it('market price is net worth + goodwill, above the fire-sale price', () => {
+    const t = aiAirline('ai-1', 'bna');
+    t.cash = 5_000_000;
+    t.debt = 0; // equity 5M, no routes → no goodwill premium
+    expect(marketPrice(g, t)).toBe(5_000_000);
+    expect(marketPrice(g, t)).toBeGreaterThan(acquisitionPrice(g, t));
+  });
+
+  it('buyoutPrice uses the fire-sale ask when listed, the market price otherwise', () => {
+    const t = aiAirline('ai-1', 'bna');
+    t.cash = 5_000_000;
+    expect(buyoutPrice(g, t)).toBe(marketPrice(g, t));
+    t.forSale = { listedDay: 0, deadlineDay: 60, price: 250_000 };
+    expect(buyoutPrice(g, t)).toBe(250_000);
+  });
+
+  it('acquiring a healthy airline inherits its cash, assumes its debt, pays market', () => {
+    const buyer = aiAirline('ai-1', 'bna');
+    buyer.cash = 20_000_000;
+    const target = aiAirline('ai-2', 'sea');
+    target.cash = 4_000_000;
+    target.debt = 1_000_000;
+    target.rights = ['sea', 'pdx'];
+    const price = marketPrice(g, target);
+
+    acquire(g, buyer, target);
+
+    expect(g.airlines).not.toContain(target);
+    expect(buyer.cash).toBe(20_000_000 + 4_000_000 - price); // inherited cash, then paid
+    expect(buyer.debt).toBe(1_000_000);
+    expect(buyer.rights).toEqual(expect.arrayContaining(['bna', 'sea', 'pdx']));
   });
 });
 

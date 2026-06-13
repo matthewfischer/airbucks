@@ -1,5 +1,6 @@
 import type { Airline, GameState } from '../game/types';
 import { airportById, equity, money, player, weeklyTotals } from '../game/engine';
+import { buyoutPrice } from '../game/distress';
 
 /** A vague health read — qualitative band + a 0..6 bar score. No exact books. */
 function health(g: GameState, al: Airline): { label: string; score: number; cls: string } {
@@ -40,13 +41,18 @@ function standingsBlock(g: GameState, al: Airline): string {
     </div>`;
 }
 
-/** For-sale block: the one place a rival's books open up, with an inline Buy. */
-function saleBlock(g: GameState, al: Airline): string {
-  const price = al.forSale!.price;
+/** Buy block on every card: price (fire-sale ask if distressed, else market),
+ *  the debt you'd assume, and an inline Buy button. */
+function buyBlock(g: GameState, al: Airline): string {
+  const price = buyoutPrice(g, al);
   const afford = player(g).cash >= price;
+  const priceLabel = al.forSale ? 'Asking' : 'Buy price';
+  const debtRow = al.debt > 0
+    ? `<div class="comp-sale-row"><span class="muted">You assume</span><span class="bad">${money(al.debt)} debt ⚠</span></div>`
+    : '';
   return `<div class="comp-sale">
-    <div class="comp-sale-row"><span class="muted">Asking</span><span>${money(price)}</span></div>
-    <div class="comp-sale-row"><span class="muted">You assume</span><span class="bad">${money(al.debt)} debt ⚠</span></div>
+    <div class="comp-sale-row"><span class="muted">${priceLabel}</span><span>${money(price)}</span></div>
+    ${debtRow}
     <button class="comp-buy ${afford ? 'primary' : ''}" data-act="buy-airline" data-airline="${al.id}" ${afford ? '' : 'disabled'}>
       ${afford ? `Buy · ${money(price)}` : `Need ${money(price)}`}
     </button>
@@ -63,7 +69,8 @@ function card(g: GameState, al: Airline): string {
     </div>
     <div class="comp-home">${home.code} · ${home.city}</div>
     <div class="comp-stats">${al.rights.length} cities · ${al.routes.length} routes · ${al.fleet.length} planes</div>
-    ${al.forSale ? saleBlock(g, al) : standingsBlock(g, al)}
+    ${standingsBlock(g, al)}
+    ${buyBlock(g, al)}
   </div>`;
 }
 
