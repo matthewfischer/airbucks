@@ -729,10 +729,17 @@ export const isEasySlot = (g: GameState, al: Airline, a: Airport): boolean => {
   return near !== null && distanceKm(a, near) <= EASY_SLOT_RANGE_KM;
 };
 
+/** True if any in-progress negotiation is for an easy (regional) slot. */
+export const hasEasyNegotiation = (g: GameState, al: Airline): boolean =>
+  al.negotiations.some((n) => isEasySlot(g, al, airportById(g, n.airportId)));
+
 /** Concurrent applications allowed when filing for this airport: the effective
- *  cap (incl. any merger boost), plus one if it qualifies as an easy slot. */
+ *  cap (incl. any merger boost), plus the bonus regional slot. The bonus stays
+ *  reserved for an easy slot — it counts whenever this airport is easy or an
+ *  easy negotiation is already running — so a regional never eats a base slot. */
 export const negotiationCapFor = (g: GameState, al: Airline, a: Airport): number =>
-  effectiveConcurrentCap(g, al) + (isEasySlot(g, al, a) ? 1 : 0);
+  effectiveConcurrentCap(g, al) +
+  (isEasySlot(g, al, a) || hasEasyNegotiation(g, al) ? 1 : 0);
 
 /** Annual gate fee to keep one airport's slot, in era dollars. */
 export const gateFee = (g: GameState, a: Airport): number =>

@@ -1146,6 +1146,20 @@ describe('landing rights', () => {
     expect(isEasySlot(fresh, player(fresh), airportById(fresh, 'lax'))).toBe(false); // size 6
   });
 
+  it('a regional negotiation in progress still leaves the base slot for a real airport', () => {
+    al.rights = ['crw', 'clt']; // base cap 1
+    al.cash = 1_000_000_000;
+    // File an easy regional first — it should take the reserved bonus slot.
+    expect(isEasySlot(g, al, airportById(g, 'gso'))).toBe(true);
+    expect(startNegotiation(g, al, 'gso')).toBeNull();
+    // A real (non-easy) hub must still be filable on the base slot.
+    expect(isEasySlot(g, al, airportById(g, 'cvg'))).toBe(false);
+    expect(startNegotiation(g, al, 'cvg')).toBeNull();
+    expect(al.negotiations).toHaveLength(2);
+    // But that exhausts base(1) + bonus(1): a second real hub is blocked.
+    expect(startNegotiation(g, al, 'cmh')).toMatch(/limit/i);
+  });
+
   it('bootstraps: growing the network unlocks the bigger regional hubs', () => {
     al.cash = 1_000_000_000;
     al.rights = ['crw'];
