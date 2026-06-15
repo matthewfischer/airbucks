@@ -1,5 +1,5 @@
 import './ui/styles.css';
-import type { AircraftType, Airport, GameState, Route } from './game/types';
+import type { AircraftType, Airline, Airport, GameState, Route } from './game/types';
 import {
   advanceDay,
   airportById,
@@ -115,6 +115,11 @@ let winShown = false;
 let knownRights = new Set(pl().rights);
 /** Airports whose popups are waiting behind the one on screen. */
 const slotQueue: string[] = [];
+
+/** AI airlines already announced as for-sale, so a listing only pops once. */
+let knownForSale = new Set(game.airlines.filter((a) => a.forSale).map((a) => a.id));
+/** Distressed airlines waiting behind the popup on screen. */
+const distressQueue: string[] = [];
 
 // Real-time clock state.
 let playing = false;
@@ -1437,6 +1442,10 @@ function afterStateSwap() {
   knownRights = new Set(pl().rights);
   slotQueue.length = 0;
   slotGrantedEl.classList.add('hidden');
+  knownForSale = new Set(game.airlines.filter((a) => a.forSale).map((a) => a.id));
+  distressQueue.length = 0;
+  distressShownId = null;
+  distressEl.classList.add('hidden');
   justBoughtType = null;
   everHadRivals = false;
   winShown = false;
@@ -1594,6 +1603,7 @@ function hideSlotGranted() {
   slotGrantedEl.classList.add('hidden');
   const next = slotQueue.shift();
   if (next) showSlotGranted(next);
+  else pumpDistress(); // a distress listing may have been deferred behind this
 }
 
 /** Pause and pop up a card for any airport whose rights just arrived. */
@@ -1617,6 +1627,65 @@ document.getElementById('slot-plan')!.addEventListener('click', () => {
   setView('map');
   selected = [id];
   render();
+});
+
+// ---- "Airline in distress" popup -------------------------------------------
+
+const distressEl = document.getElementById('distress')!;
+const distressNameEl = document.getElementById('distress-name')!;
+const distressStatsEl = document.getElementById('distress-stats')!;
+/** Airline currently shown in the popup. */
+let distressShownId: string | null = null;
+
+function showDistress(al: Airline) {
+  distressShownId = al.id;
+  distressNameEl.textContent = al.name;
+  const fs = al.forSale!;
+  const debtNote = al.debt > 0 ? `, assumes ${money(al.debt)} debt` : '';
+  distressStatsEl.textContent =
+    `Up for sale at ${money(fs.price)}${debtNote} · ` +
+    `liquidates ${monthYear(fs.deadlineDay)} if no buyer.`;
+  distressEl.classList.remove('hidden');
+}
+
+/** Close the popup and show the next queued listing, if any. */
+function hideDistress() {
+  distressShownId = null;
+  distressEl.classList.add('hidden');
+  pumpDistress();
+}
+
+/** Show the next queued listing — unless a slot popup is up; defer to it. */
+function pumpDistress() {
+  if (distressShownId || slotShownId) return;
+  let id = distressQueue.shift();
+  // Skip any that were acquired or liquidated before we got to them.
+  while (id && !game.airlines.some((a) => a.id === id && a.forSale)) {
+    id = distressQueue.shift();
+  }
+  if (!id) return;
+  setPlaying(false);
+  showDistress(game.airlines.find((a) => a.id === id)!);
+}
+
+/** Pause and pop up a card for any AI airline that just entered distress. */
+function announceDistress() {
+  for (const al of game.airlines) {
+    if (al.ai && al.forSale && !knownForSale.has(al.id)) {
+      knownForSale.add(al.id);
+      distressQueue.push(al.id);
+    }
+  }
+  pumpDistress();
+}
+
+document.getElementById('distress-later')!.addEventListener('click', hideDistress);
+distressEl.addEventListener('click', (e) => {
+  if (e.target === distressEl) hideDistress();
+});
+document.getElementById('distress-view')!.addEventListener('click', () => {
+  hideDistress();
+  setView('competitors');
 });
 
 /** Reset to a fresh airline — shows home airport selection first. */
@@ -1732,7 +1801,10 @@ function frame(ts: number) {
       }
     }
     if (pl().badges.length > badgesBefore) renderLog(); // surface freshly-earned badges
-    if (sidebarDirty) announceNewRights();
+    if (sidebarDirty) {
+      announceNewRights();
+      announceDistress();
+    }
     updateAnimations(dt);
   }
   checkWin();
