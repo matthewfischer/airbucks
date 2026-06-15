@@ -506,7 +506,20 @@ input[type='number'] { width: 84px; }
 .chart-card svg .series { fill: none; stroke-width: 2; }
 
 /* The postcard popup gets a wider box than other overlays — the card is the star. */
-.slot-box { width: min(775px, 92vw); }
+.slot-box { width: min(775px, 92vw); position: relative; }
+.slot-x {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  padding: 2px 8px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.slot-x:hover { color: var(--ink); }
 .slot-photo {
   width: 100%;
   /* Leave room below the photo for title + buttons within the box's 80vh cap. */
@@ -521,8 +534,8 @@ input[type='number'] { width: 84px; }
 .slot-credit.hidden { display: none; }
 .slot-city { font-size: 16px; font-weight: 700; }
 .slot-actions { display: flex; gap: 10px; margin-top: 4px; }
-.slot-actions .primary { flex: 1; }
-.slot-actions .overlay-cancel { margin-top: 0; }
+/* Size to its label instead of stretching the full popup width. */
+.slot-actions .primary { flex: 0 0 auto; }
 .slot-credit { font-size: 11px; color: var(--muted); text-align: right; }
 
 .overlay-cancel {
