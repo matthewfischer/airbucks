@@ -161,6 +161,21 @@ export const AIRPORTS: Airport[] = [
   { id: 'msq', code: 'MSQ', city: 'Minsk', lat: 53.88, lon: 28.03, size: 3, population: 2_000_000 },
   { id: 'kbp', code: 'KBP', city: 'Kyiv', lat: 50.34, lon: 30.89, size: 4, population: 3_300_000 },
   { id: 'led', code: 'LED', city: 'St. Petersburg', lat: 59.8, lon: 30.26, size: 4, population: 5_600_000 },
+  // Smaller regional fields, so a European start has a near-home easy slot.
+  { id: 'fao', code: 'FAO', city: 'Faro', lat: 37.01, lon: -7.97, size: 1, population: 450_000 },
+  { id: 'bio', code: 'BIO', city: 'Bilbao', lat: 43.3, lon: -2.91, size: 2, population: 1_100_000 },
+  { id: 'tls', code: 'TLS', city: 'Toulouse', lat: 43.63, lon: 1.37, size: 2, population: 1_400_000 },
+  { id: 'nte', code: 'NTE', city: 'Nantes', lat: 47.16, lon: -1.61, size: 2, population: 1_000_000 },
+  { id: 'haj', code: 'HAJ', city: 'Hannover', lat: 52.46, lon: 9.69, size: 2, population: 1_100_000 },
+  { id: 'nue', code: 'NUE', city: 'Nuremberg', lat: 49.5, lon: 11.08, size: 2, population: 1_000_000 },
+  { id: 'gdn', code: 'GDN', city: 'Gdańsk', lat: 54.38, lon: 18.47, size: 2, population: 1_500_000 },
+  { id: 'krk', code: 'KRK', city: 'Kraków', lat: 50.08, lon: 19.79, size: 2, population: 1_500_000 },
+  { id: 'blq', code: 'BLQ', city: 'Bologna', lat: 44.53, lon: 11.29, size: 2, population: 1_000_000 },
+  { id: 'skg', code: 'SKG', city: 'Thessaloniki', lat: 40.52, lon: 22.97, size: 2, population: 1_000_000 },
+  { id: 'bgo', code: 'BGO', city: 'Bergen', lat: 60.29, lon: 5.22, size: 1, population: 420_000 },
+  { id: 'got', code: 'GOT', city: 'Gothenburg', lat: 57.67, lon: 12.3, size: 2, population: 1_000_000 },
+  { id: 'tll', code: 'TLL', city: 'Tallinn', lat: 59.41, lon: 24.83, size: 1, population: 450_000 },
+  { id: 'rix', code: 'RIX', city: 'Riga', lat: 56.92, lon: 23.97, size: 2, population: 1_000_000 },
 
   // ---- Middle East ------------------------------------------------------
   { id: 'dxb', code: 'DXB', city: 'Dubai', lat: 25.25, lon: 55.36, size: 6, population: 3_500_000 },
@@ -176,6 +191,21 @@ export const AIRPORTS: Airport[] = [
   { id: 'nbo', code: 'NBO', city: 'Nairobi', lat: -1.32, lon: 36.93, size: 4, population: 4_900_000 },
   { id: 'jnb', code: 'JNB', city: 'Johannesburg', lat: -26.13, lon: 28.25, size: 5, population: 6_200_000 },
   { id: 'cpt', code: 'CPT', city: 'Cape Town', lat: -33.97, lon: 18.6, size: 3, population: 4_600_000 },
+  // Fill the continental interior and the west/east coasts.
+  { id: 'alg', code: 'ALG', city: 'Algiers', lat: 36.69, lon: 3.22, size: 4, population: 3_400_000 },
+  { id: 'tun', code: 'TUN', city: 'Tunis', lat: 36.85, lon: 10.23, size: 3, population: 2_800_000 },
+  { id: 'dss', code: 'DSS', city: 'Dakar', lat: 14.67, lon: -17.07, size: 3, population: 3_100_000 },
+  { id: 'acc', code: 'ACC', city: 'Accra', lat: 5.61, lon: -0.17, size: 4, population: 4_000_000 },
+  { id: 'abj', code: 'ABJ', city: 'Abidjan', lat: 5.26, lon: -3.93, size: 4, population: 5_100_000 },
+  { id: 'abv', code: 'ABV', city: 'Abuja', lat: 9.01, lon: 7.26, size: 3, population: 3_500_000 },
+  { id: 'krt', code: 'KRT', city: 'Khartoum', lat: 15.59, lon: 32.55, size: 4, population: 6_000_000 },
+  { id: 'add', code: 'ADD', city: 'Addis Ababa', lat: 8.98, lon: 38.8, size: 4, population: 5_000_000 },
+  { id: 'ebb', code: 'EBB', city: 'Kampala', lat: 0.04, lon: 32.44, size: 3, population: 3_700_000 },
+  { id: 'dar', code: 'DAR', city: 'Dar es Salaam', lat: -6.87, lon: 39.2, size: 4, population: 7_000_000 },
+  { id: 'fih', code: 'FIH', city: 'Kinshasa', lat: -4.39, lon: 15.44, size: 5, population: 15_000_000 },
+  { id: 'lad', code: 'LAD', city: 'Luanda', lat: -8.86, lon: 13.23, size: 4, population: 8_500_000 },
+  { id: 'hre', code: 'HRE', city: 'Harare', lat: -17.93, lon: 31.1, size: 3, population: 2_400_000 },
+  { id: 'mpm', code: 'MPM', city: 'Maputo', lat: -25.92, lon: 32.57, size: 3, population: 2_700_000 },
 
   // ---- Asia -------------------------------------------------------------
   { id: 'del', code: 'DEL', city: 'Delhi', lat: 28.57, lon: 77.1, size: 6, population: 32_000_000 },
@@ -223,10 +253,14 @@ export const AIRPORTS: Airport[] = [
 // and the ocean refuel bridges — counts as North America for badge purposes.
 export const CONTINENT_AIRPORTS: Record<Exclude<Continent, 'North America'>, string[]> = {
   Europe: ['lhr', 'cdg', 'ams', 'fra', 'mad', 'bcn', 'fco', 'muc', 'zrh', 'cph',
-    'osl', 'arn', 'waw', 'ath', 'dub', 'lis', 'svo', 'ist'],
+    'osl', 'arn', 'waw', 'ath', 'dub', 'lis', 'svo', 'ist', 'gla', 'bru', 'mrs',
+    'mxp', 'nap', 'ber', 'vie', 'prg', 'bud', 'otp', 'msq', 'kbp', 'led', 'fao',
+    'bio', 'tls', 'nte', 'haj', 'nue', 'gdn', 'krk', 'blq', 'skg', 'bgo', 'got',
+    'tll', 'rix'],
   Asia: ['dxb', 'doh', 'tlv', 'ruh', 'thr', 'del', 'bom', 'bkk', 'sin', 'kul',
     'cgk', 'hkg', 'pek', 'pvg', 'icn', 'nrt', 'mnl', 'tpe'],
-  Africa: ['cai', 'cmn', 'los', 'nbo', 'jnb', 'cpt'],
+  Africa: ['cai', 'cmn', 'los', 'nbo', 'jnb', 'cpt', 'alg', 'tun', 'dss', 'acc',
+    'abj', 'abv', 'krt', 'add', 'ebb', 'dar', 'fih', 'lad', 'hre', 'mpm'],
   Oceania: ['syd', 'mel', 'bne', 'per', 'akl'],
   'South America': ['bog', 'ccs', 'uio', 'lim', 'gru', 'gig', 'scl', 'eze'],
 };
