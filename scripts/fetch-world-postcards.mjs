@@ -51,6 +51,7 @@ const ARTICLE = {
   snn: 'Shannon, County Clare',
   gum: 'Hagåtña, Guam',
   led: 'Saint Petersburg',
+  fao: 'Faro, Portugal', // plain "Faro" is a disambiguation page
 };
 
 // Reject candidates whose title smells like a non-scenic asset.
