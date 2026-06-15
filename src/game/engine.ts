@@ -94,9 +94,12 @@ const NEGOTIATION_DAYS_BY_SIZE = [0, 60, 90, 120, 180, 270, 365];
 const NEGOTIATION_BASE = 1;
 const NEGOTIATION_PER_AIRPORTS = 10;
 // Plus one bonus negotiation reserved for an "easy" slot: a small airport close
-// enough to reach with a starter plane, so a young airline can get cash flowing.
+// to home, so a young airline can get cash flowing. It's an opening-game
+// bootstrap only — it switches off once the network has its feet (5 airports),
+// and "close" means close to the hub, not to a sprawling worldwide network.
 const EASY_SLOT_MAX_SIZE = 2;
-const EASY_SLOT_RANGE_KM = 1800; // DC-3 range
+const EASY_SLOT_RANGE_KM = 1600; // ~1000 mi — one starter-plane hop from home
+const EASY_SLOT_MAX_HELD = 5; // bonus only while still bootstrapping
 // Annual gate fee to keep a slot, as a share of its one-time rights fee.
 const GATE_FEE_RATE = 0.1;
 // Fraction of the rights fee refunded when you sell a slot back.
@@ -721,12 +724,15 @@ export const effectiveConcurrentCap = (g: GameState, al: Airline): number =>
 export const negotiationDays = (a: Airport): number =>
   NEGOTIATION_DAYS_BY_SIZE[a.size] ?? 60;
 
-/** An "easy" slot — small and within starter-plane range of the network — gets
- *  a bonus concurrent negotiation so a young airline can expand near home. */
+/** An "easy" slot — a small airport close to home — grants a bonus concurrent
+ *  negotiation so a young airline can get cash flowing. It's an opening-game
+ *  bootstrap: it only applies while the airline still holds fewer than
+ *  EASY_SLOT_MAX_HELD airports, and "close" is measured from the hub. */
 export const isEasySlot = (g: GameState, al: Airline, a: Airport): boolean => {
   if (a.size > EASY_SLOT_MAX_SIZE) return false;
-  const near = nearestHeldAirport(g, al, a);
-  return near !== null && distanceKm(a, near) <= EASY_SLOT_RANGE_KM;
+  if (reputation(al) >= EASY_SLOT_MAX_HELD) return false;
+  const home = airportById(g, al.homeId);
+  return distanceKm(a, home) <= EASY_SLOT_RANGE_KM;
 };
 
 /** True if any in-progress negotiation is for an easy (regional) slot. */

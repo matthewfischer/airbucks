@@ -1146,6 +1146,24 @@ describe('landing rights', () => {
     expect(isEasySlot(fresh, player(fresh), airportById(fresh, 'lax'))).toBe(false); // size 6
   });
 
+  it('the bonus is measured from home, not a far-flung network airport', () => {
+    // Home is crw; the airline also holds a distant west-coast slot.
+    al.rights = ['crw', 'sea'];
+    // boi is small and close to sea (~600km) but far from home crw (~3000km),
+    // so on a worldwide map it must NOT count as an easy near-home slot.
+    expect(isEasySlot(g, al, airportById(g, 'boi'))).toBe(false);
+  });
+
+  it('the bonus switches off once the airline holds 5+ airports', () => {
+    al.cash = 1_000_000_000;
+    // gso is small and right next to home — an easy slot while bootstrapping.
+    al.rights = ['crw', 'clt'];
+    expect(isEasySlot(g, al, airportById(g, 'gso'))).toBe(true);
+    // Past the bootstrap window (5 airports held), the freebie is gone.
+    al.rights = ['crw', 'clt', 'ric', 'tys', 'cvg'];
+    expect(isEasySlot(g, al, airportById(g, 'gso'))).toBe(false);
+  });
+
   it('a regional negotiation in progress still leaves the base slot for a real airport', () => {
     al.rights = ['crw', 'clt']; // base cap 1
     al.cash = 1_000_000_000;
