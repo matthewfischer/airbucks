@@ -77,6 +77,10 @@ function removeAirline(g: GameState, al: Airline): void {
  * the sticker, inherits its cash, assumes its debt, and takes its rights
  * (duplicates collapse), fleet (mileage intact), and routes (planes stay
  * assigned). Works for a distressed listing or a healthy going concern.
+ *
+ * The target's in-progress slot negotiations are NOT inherited — they're
+ * dropped when it dissolves. Instead the buyer gets a merger boost (file slots
+ * faster and wider for a while), so pending deals are refiled, not carried over.
  */
 export function acquire(g: GameState, buyer: Airline, target: Airline): void {
   const price = buyoutPrice(g, target);
