@@ -1153,6 +1153,66 @@ export function financeMetrics(g: GameState, al: Airline): FinanceMetrics {
   };
 }
 
+export interface FinalStats {
+  /** Longest route by total path distance, or null with no routes. */
+  longestRoute: { label: string; distanceKm: number } | null;
+  /** Lifetime passengers flown, summed across weekly history. */
+  paxCarried: number;
+  /** Highest net worth ever recorded (peaks above the final figure on a downturn). */
+  peakNetWorth: number;
+  fleetSize: number;
+  /** Most-flown aircraft type in the fleet, ties broken by capacity. */
+  flagship: { name: string; count: number } | null;
+  rivalsAbsorbed: number;
+  awards: number;
+  routes: number;
+  /** Total one-way legs across every route. */
+  legs: number;
+}
+
+/** End-of-game scorecard for an airline: the standout numbers from its run. */
+export function finalStats(g: GameState, al: Airline): FinalStats {
+  let longestRoute: FinalStats['longestRoute'] = null;
+  let legs = 0;
+  for (const r of al.routes) {
+    legs += r.stops.length - 1;
+    const distanceKm = routeDistance(g, r);
+    if (!longestRoute || distanceKm > longestRoute.distanceKm)
+      longestRoute = { label: routeLabel(g, r), distanceKm };
+  }
+
+  const paxCarried = al.history.reduce((sum, s) => sum + s.pax, 0);
+  const peakNetWorth = al.history.reduce(
+    (peak, s) => Math.max(peak, s.cash + s.fleetValue - s.debt),
+    equity(g, al),
+  );
+
+  // Flagship: the type the airline owns the most of; ties go to the roomier plane.
+  const counts = new Map<string, number>();
+  for (const p of al.fleet) counts.set(p.typeId, (counts.get(p.typeId) ?? 0) + 1);
+  let flagship: FinalStats['flagship'] = null;
+  let best = { count: 0, capacity: 0 };
+  for (const [typeId, count] of counts) {
+    const t = typeById(g, typeId);
+    if (count > best.count || (count === best.count && t.capacity > best.capacity)) {
+      best = { count, capacity: t.capacity };
+      flagship = { name: t.name, count };
+    }
+  }
+
+  return {
+    longestRoute,
+    paxCarried,
+    peakNetWorth,
+    fleetSize: al.fleet.length,
+    flagship,
+    rivalsAbsorbed: al.acquisitions ?? 0,
+    awards: al.badges.length,
+    routes: al.routes.length,
+    legs,
+  };
+}
+
 /** Append a weekly financial snapshot, capping history to keep saves small. */
 export function recordFinanceSnapshot(g: GameState, al: Airline): void {
   const w = weeklyTotals(g, al);

@@ -7,6 +7,7 @@ import {
   assignPlane,
   availableTypes,
   financeMetrics,
+  finalStats,
   borrow,
   buyPlane,
   cashInterestWeekly,
@@ -1773,6 +1774,31 @@ function logWeekly() {
 
 const winScreenEl = document.getElementById('win-screen')!;
 const winSubEl = document.getElementById('win-sub')!;
+const winStatsEl = document.getElementById('win-stats')!;
+
+const km = (n: number) => `${Math.round(n).toLocaleString()} km`;
+
+/** Build the victory scorecard tiles from the player's final stats. */
+function winStatsHtml(): string {
+  const s = finalStats(game, pl());
+  const tiles: Array<[string, string]> = [];
+  if (s.longestRoute)
+    tiles.push(['Longest route', `${s.longestRoute.label}<br><small>${km(s.longestRoute.distanceKm)}</small>`]);
+  tiles.push(['Passengers carried', Math.round(s.paxCarried).toLocaleString()]);
+  tiles.push(['Peak net worth', money(s.peakNetWorth)]);
+  tiles.push([
+    'Fleet',
+    s.flagship
+      ? `${s.fleetSize} planes<br><small>flagship ${s.flagship.name} ×${s.flagship.count}</small>`
+      : `${s.fleetSize} planes`,
+  ]);
+  tiles.push(['Network', `${s.routes} routes<br><small>${s.legs} legs</small>`]);
+  tiles.push(['Rivals absorbed', `${s.rivalsAbsorbed}`]);
+  tiles.push(['Awards earned', `${s.awards}`]);
+  return tiles
+    .map(([k, v]) => `<div class="win-stat"><div class="win-stat-k">${k}</div><div class="win-stat-v">${v}</div></div>`)
+    .join('');
+}
 
 /** You win once every competitor is gone — but only if you ever had any. */
 function checkWin() {
@@ -1792,6 +1818,7 @@ function showWin() {
   winSubEl.textContent =
     `${dateStr()} — every competitor has been bought out or driven under. ` +
     `Air Bucks stands alone with ${pl().rights.length} cities and a net worth of ${money(m.equity)}.`;
+  winStatsEl.innerHTML = winStatsHtml();
   winScreenEl.classList.remove('hidden');
 }
 

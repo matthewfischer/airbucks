@@ -304,6 +304,23 @@ input[type='number'] { width: 84px; }
   letter-spacing: 0.5px;
 }
 .overlay-sub { margin: 0; font-size: 13px; color: var(--muted); }
+.win-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+  overflow-y: auto;
+}
+.win-stat {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 9px 11px;
+}
+.win-stat-k {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--muted); margin-bottom: 3px;
+}
+.win-stat-v { font-size: 14px; font-weight: 700; color: var(--ink); }
+.win-stat-v small { font-weight: 500; color: var(--muted); font-size: 11px; }
 /* Competitor-count picker on the new-game screen — same segmented style as #speeds. */
 #ai-count-row { display: flex; align-items: center; gap: 12px; }
 .ai-count-label { font-size: 13px; color: var(--muted); }
