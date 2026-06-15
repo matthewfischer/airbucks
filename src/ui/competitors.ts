@@ -15,6 +15,14 @@ function health(g: GameState, al: Airline): { label: string; score: number; cls:
     : { label: 'Stable', score: 4, cls: 'good' };
 }
 
+/** Ordinal rank label: 1 -> "1st", 2 -> "2nd", 11 -> "11th", 23 -> "23rd". */
+export function ordinal(n: number): string {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  const suffix = ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th';
+  return `${n}${suffix}`;
+}
+
 /** Round to 2 significant figures, so a figure reads as an estimate not exact books. */
 function approxMoney(n: number): string {
   if (n === 0) return money(0);
@@ -61,14 +69,16 @@ function buyBlock(g: GameState, al: Airline): string {
   </div>`;
 }
 
-function card(g: GameState, al: Airline, you = false): string {
+function card(g: GameState, al: Airline, rank: number, you = false): string {
   const home = airportById(g, al.homeId);
   const cls = you ? ' you' : al.forSale ? ' for-sale' : '';
   const flag = you
     ? '<span class="comp-you-tag">You</span>'
     : al.forSale ? '<span class="comp-flag">⚠ FOR SALE</span>' : '';
+  const rankCls = rank === 1 ? ' first' : '';
   return `<div class="comp-card${cls}" data-act="show-airline" data-airline="${al.id}" title="Show ${home.city} on the map">
     <div class="comp-head">
+      <span class="comp-rank${rankCls}">${ordinal(rank)}</span>
       <span class="comp-dot" style="background:${al.color}"></span>
       <strong>${al.name}</strong>
       ${flag}
@@ -97,18 +107,16 @@ export function renderCompetitors(g: GameState, el: HTMLElement): void {
   </div>`;
 
   if (rivals.length === 0) {
-    el.innerHTML = `${head}<div class="comp-grid">${card(g, you, true)}</div>
+    el.innerHTML = `${head}<div class="comp-grid">${card(g, you, 1, true)}</div>
       <div class="fin-empty">A solo game — no competitors. Start a new game and add rivals on the setup screen.</div>`;
     return;
   }
 
-  // Your card pinned first, then rivals ranked by network reach (cities).
-  const cards =
-    card(g, you, true) +
-    [...rivals]
-      .sort((a, b) => b.rights.length - a.rights.length)
-      .map((al) => card(g, al))
-      .join('');
+  // Every airline, the player included, ranked by net worth (highest first).
+  const cards = [...g.airlines]
+    .sort((a, b) => equity(g, b) - equity(g, a))
+    .map((al, i) => card(g, al, i + 1, al === you))
+    .join('');
 
   el.innerHTML = `${head}<div class="comp-grid">${cards}</div>`;
 }
