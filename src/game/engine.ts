@@ -67,6 +67,11 @@ const LOAN_BASE_CREDIT = 15_000_000;
 const LOAN_REVENUE_MULTIPLE = 1.0;
 const LOAN_COLLATERAL_FRACTION = 0.5;
 const LOAN_MAX_CREDIT = 400_000_000;
+// Loan-to-value ceiling: total debt can't exceed this fraction of assets
+// (cash + fleet), so every plane and buyout needs real equity behind it — no
+// infinite serial leverage. This gates *how much* you can owe; the spread above
+// gates *how expensive* it is.
+const LOAN_MAX_LTV = 0.6;
 // Interest rate: the era's macro rate (fed funds) is the floor, plus a credit
 // spread that rises with leverage and losses. The ceiling floats with the
 // macro rate, so Volcker-era debt genuinely hurts and ZIRP-era debt is cheap.
@@ -1171,10 +1176,17 @@ function operatingNet(g: GameState, al: Airline): number {
 export function creditLimit(g: GameState, al: Airline): number {
   const annualRevenue = evaluateNetwork(g, al).revenue * 52;
   // The startup line is in era dollars; revenue and fleet value already are.
-  const limit =
-    LOAN_BASE_CREDIT * eraScale(g) +
+  const startupLine = LOAN_BASE_CREDIT * eraScale(g);
+  const formula =
+    startupLine +
     LOAN_REVENUE_MULTIPLE * annualRevenue +
     LOAN_COLLATERAL_FRACTION * fleetValue(g, al);
+  // Loan-to-value ceiling: the bank won't let debt outrun the asset base, so a
+  // fully-levered airline must repay or grow equity before it can borrow again —
+  // this is what stops an endless self-financing buyout snowball. The unsecured
+  // startup line stays available as a floor so a cash-light newcomer can begin.
+  const ltvCap = LOAN_MAX_LTV * airlineAssets(g, al);
+  const limit = Math.max(startupLine, Math.min(formula, ltvCap));
   return Math.min(LOAN_MAX_CREDIT, Math.round(limit));
 }
 

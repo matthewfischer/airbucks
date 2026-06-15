@@ -4,6 +4,7 @@ import { AIRCRAFT_TYPES, AIRPORTS, STARTING_CASH } from './data';
 import { distanceKm } from './geo';
 import {
   advanceDay,
+  airlineAssets,
   airportById,
   assignPlane,
   availableTypes,
@@ -611,6 +612,25 @@ describe('loans', () => {
     expect(borrow(g, al, limit + 50_000_000)).toBe(limit);
     expect(al.debt).toBe(limit);
     expect(borrow(g, al, 5_000_000)).toBe(0);
+  });
+
+  it('caps the credit line at 60% loan-to-value once the book outgrows the startup line', () => {
+    // Big asset base so the startup floor no longer applies: cash + fleet drive
+    // the line, and the LTV ceiling should hold it to 60% of assets.
+    al.cash = 1_000_000_000;
+    buyPlane(g, al, 'e195e2');
+    const assets = airlineAssets(g, al);
+    expect(creditLimit(g, al)).toBeLessThanOrEqual(Math.round(0.6 * assets));
+  });
+
+  it('blocks further borrowing once debt is past the LTV cap (no infinite leverage)', () => {
+    // Drain cash and pile debt to the ceiling, then confirm the line is exhausted.
+    al.cash = 1_000_000_000;
+    buyPlane(g, al, 'e195e2');
+    al.cash = 1_000_000; // little collateral left beyond the one plane
+    const limit = creditLimit(g, al);
+    al.debt = limit;
+    expect(borrow(g, al, 50_000_000)).toBe(0);
   });
 
   it('repaying cannot exceed debt or available cash', () => {

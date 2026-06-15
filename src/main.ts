@@ -2,6 +2,7 @@ import './ui/styles.css';
 import type { AircraftType, Airline, Airport, GameState, Route } from './game/types';
 import {
   advanceDay,
+  airlineAssets,
   airportById,
   assignPlane,
   availableTypes,
@@ -1251,12 +1252,17 @@ function bankCard(): string {
   const weeklyInterest = pl().debt * rate * (7 / 365);
   const earnRate = depositRate(game);
   const weeklyEarned = cashInterestWeekly(game, pl());
+  // Leverage vs. the 60% loan-to-value ceiling, so a maxed-out line is legible.
+  const assets = airlineAssets(game, pl());
+  const leverage = assets > 0 ? pl().debt / assets : 0;
+  const maxedByLtv = credit === 0 && leverage >= 0.59;
   // Right-size the buttons so the label matches what actually happens.
   const borrowAmt = Math.min(5_000_000, credit);
   const repayAmt = Math.min(pl().cash < 5_000_000 ? 1_000_000 : 5_000_000, pl().debt, Math.max(0, pl().cash));
   return `<div class="card"><h3>Bank</h3>
     <div class="row"><span class="muted">Debt</span><strong>${money(pl().debt)}</strong></div>
     <div class="row"><span class="muted">Credit line</span><span>${money(credit)} of ${money(limit)}</span></div>
+    <div class="row"><span class="muted">Leverage</span><span>${(leverage * 100).toFixed(0)}% of 60% max${maxedByLtv ? ' · <span class="bad">repay or grow assets to borrow</span>' : ''}</span></div>
     <div class="row"><span class="muted">Rate</span><span>${(rate * 100).toFixed(1)}%/yr · <span class="bad">-${money(weeklyInterest)}/wk</span></span></div>
     <div class="row"><span class="muted">Cash earns</span><span>${(earnRate * 100).toFixed(1)}%/yr · <span class="good">+${money(weeklyEarned)}/wk</span></span></div>
     <div class="row" style="margin-top:10px">
