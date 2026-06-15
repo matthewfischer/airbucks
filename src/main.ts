@@ -181,7 +181,8 @@ function projectPoint(lat: number, lon: number, w: number, h: number) {
 
 // Pan/zoom view applied on top of the fit-to-region projection.
 const view = { scale: 1, offsetX: 0, offsetY: 0 };
-const MIN_SCALE = 0.3;
+// Scale 1 already fits the whole globe, so don't let the user zoom out past it.
+const MIN_SCALE = 1;
 // The map now fits the whole globe at scale 1, so allow a deep zoom to reach
 // city level (the old cap of 8 was sized for the North-America-only map).
 const MAX_SCALE = 24;
