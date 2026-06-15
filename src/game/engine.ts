@@ -729,25 +729,36 @@ export const effectiveConcurrentCap = (g: GameState, al: Airline): number =>
 export const negotiationDays = (a: Airport): number =>
   NEGOTIATION_DAYS_BY_SIZE[a.size] ?? 60;
 
-/** An "easy" slot — a small airport close to home — grants a bonus concurrent
- *  negotiation so a young airline can get cash flowing. It's an opening-game
- *  bootstrap: it only applies while the airline still holds fewer than
- *  EASY_SLOT_MAX_HELD airports, and "close" is measured from the hub. */
-export const isEasySlot = (g: GameState, al: Airline, a: Airport): boolean => {
+/** A regional slot — a small airport within starter-plane range of home. This
+ *  is fixed by the airport's geometry, independent of how many slots the airline
+ *  holds, so an in-progress regional stays "regional" even after the airline
+ *  grows past the bootstrap window. */
+export const isRegionalSlot = (g: GameState, al: Airline, a: Airport): boolean => {
   if (a.size > EASY_SLOT_MAX_SIZE) return false;
-  if (reputation(al) >= EASY_SLOT_MAX_HELD) return false;
   const home = airportById(g, al.homeId);
   return distanceKm(a, home) <= EASY_SLOT_RANGE_KM;
 };
 
-/** True while the regional bonus slot can still apply — i.e. the airline is
- *  still bootstrapping and holds fewer than EASY_SLOT_MAX_HELD airports. */
+/** An "easy" slot — a regional slot the airline can still *start* during the
+ *  opening-game bootstrap. It grants a bonus concurrent negotiation so a young
+ *  airline can get cash flowing, but only while the airline still holds fewer
+ *  than EASY_SLOT_MAX_HELD airports. Crossing that threshold blocks starting a
+ *  new one; it does not retroactively un-easy a regional already in progress
+ *  (see hasEasyNegotiation). */
+export const isEasySlot = (g: GameState, al: Airline, a: Airport): boolean =>
+  reputation(al) < EASY_SLOT_MAX_HELD && isRegionalSlot(g, al, a);
+
+/** True while a new regional bonus slot can still be started — i.e. the airline
+ *  is still bootstrapping and holds fewer than EASY_SLOT_MAX_HELD airports. */
 export const regionalBonusAvailable = (al: Airline): boolean =>
   reputation(al) < EASY_SLOT_MAX_HELD;
 
-/** True if any in-progress negotiation is for an easy (regional) slot. */
+/** True if any in-progress negotiation is for a regional slot. Uses the geometry,
+ *  not the bootstrap gate, so the bonus it reserves outlives the bootstrap window:
+ *  landing a big slot (crossing EASY_SLOT_MAX_HELD) never retroactively locks out
+ *  a regional that was already filed. */
 export const hasEasyNegotiation = (g: GameState, al: Airline): boolean =>
-  al.negotiations.some((n) => isEasySlot(g, al, airportById(g, n.airportId)));
+  al.negotiations.some((n) => isRegionalSlot(g, al, airportById(g, n.airportId)));
 
 /** Concurrent applications allowed when filing for this airport: the effective
  *  cap (incl. any merger boost), plus the bonus regional slot. The bonus stays

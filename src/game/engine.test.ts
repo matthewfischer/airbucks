@@ -18,6 +18,7 @@ import {
   mergerBonusForCities,
   negotiationDays,
   isEasySlot,
+  isRegionalSlot,
   regionalBonusAvailable,
   gateFee,
   gateFeesWeekly,
@@ -1204,6 +1205,23 @@ describe('landing rights', () => {
     expect(al.negotiations).toHaveLength(2);
     // But that exhausts base(1) + bonus(1): a second real hub is blocked.
     expect(startNegotiation(g, al, 'cmh')).toMatch(/limit/i);
+  });
+
+  it('a regional already in progress keeps its bonus after a big slot pushes past 5', () => {
+    // 4 airports, a regional (gso) filed plus a big hub mid-negotiation.
+    al.rights = ['crw', 'cvg', 'pit', 'cmh']; // reputation 4
+    al.cash = 1_000_000_000;
+    expect(isEasySlot(g, al, airportById(g, 'gso'))).toBe(true);
+    expect(startNegotiation(g, al, 'gso')).toBeNull(); // takes the reserved bonus
+    // The big hub lands, bringing the network to 5 — past the bootstrap window.
+    al.rights.push('ind');
+    al.negotiations = al.negotiations.filter((n) => n.airportId !== 'ind');
+    // You can no longer *start* a new quick regional…
+    expect(isEasySlot(g, al, airportById(g, 'ric'))).toBe(false);
+    // …but the regional still in progress keeps its bonus, so a valuable slot
+    // isn't locked out — this was the bug.
+    expect(isRegionalSlot(g, al, airportById(g, 'gso'))).toBe(true);
+    expect(startNegotiation(g, al, 'clt')).toBeNull();
   });
 
   it('bootstraps: growing the network unlocks the bigger regional hubs', () => {
