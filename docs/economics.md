@@ -112,6 +112,40 @@ flying cost = circuits × 2 × pathLength × costPerKm × priceLevel
 Flying cost scales with load factor — the route only flies enough circuits to
 cover its busiest leg. Upkeep is always paid for assigned planes.
 
+## Known imbalance: nonstop is dominated by milk-runs
+
+**Observed:** STL→CVG (direct) earns less than STL→CVG→CLE→PIT, even though the
+direct route flies far more frequency.
+
+**Why, structurally:** a route is priced as a network of its legs (§1–2), so
+the markets a route can sell scale with the *number of stops*, not its
+endpoints:
+
+- **STL→CVG** sells **1** market (STL-CVG).
+- **STL→CVG→CLE→PIT** sells **6**: three locals + STL-CLE, CVG-PIT (1 stop) +
+  STL-PIT (2 stop).
+
+A single city-pair's demand is small (`size × size × 90` ≈ ~960/wk for
+STL-CVG after `distanceFactor`), far less than a plane's seats on a short leg.
+So the direct route flies half-empty — its extra "turns" haul air, and revenue
+is capped at that one market. The milk-run keeps the same seats full by pooling
+6 markets onto shared legs. The current `CONNECTION_PENALTY` (0.6/stop) and
+distance falloff don't come close to offsetting 6 markets vs. 1.
+
+This is emergent, not a bug — real hub-and-spoke works this way — but right now
+nonstop is *strictly dominated*, which removes it as a strategy.
+
+**Candidate fixes (not yet implemented):**
+
+1. **Frequency reward** — let a direct route's extra trips/day lift the demand
+   it captures, so frequency above the static city-pair ceiling means
+   something. Most realistic, highest leverage.
+2. **Superlinear connection penalty** — make the penalty grow per stop (1
+   connection bad, 3 miserable) instead of a flat 0.6^n. Better matches how
+   travelers actually weigh multi-stop itineraries.
+3. **Nonstop convenience premium** — let nonstop O&D earn a fare bonus
+   travelers will pay to avoid stops.
+
 ## 7. Eras and the price level
 
 - `priceLevel`: single nominal index for fares, fuel, and upkeep — 1.0 in
