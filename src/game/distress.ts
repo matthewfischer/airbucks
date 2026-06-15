@@ -28,6 +28,9 @@ const DISTRESS_DISCOUNT = 0.5;
 const MIN_PRICE = 100_000;
 /** Years of profit paid as goodwill when buying a healthy, going-concern airline. */
 const GOODWILL_YEARS = 2;
+/** Takeover premium over fair value for a healthy airline — control of a going
+ *  concern doesn't sell at list price (Coke can't buy Pepsi for book). */
+const CONTROL_PREMIUM = 1.3;
 
 /** Nominal cost to acquire the held slots today — a proxy for "slot fees paid". */
 function slotInvestment(g: GameState, al: Airline): number {
@@ -45,15 +48,18 @@ export function acquisitionPrice(g: GameState, t: Airline): number {
 }
 
 /**
- * Price to buy a healthy, going-concern airline: its net worth plus a goodwill
- * premium for its earnings (no fire-sale discount — its owners aren't desperate).
- * The buyer also inherits its cash and debt, so this is what you pay over the
- * net assets you receive. Floored.
+ * Price to buy a healthy, going-concern airline. Fair value is its net worth
+ * plus the replacement cost of its slot portfolio (the city rights you capture —
+ * the real prize) plus goodwill for its earnings; on top of that a control
+ * premium, because a profitable airline's owners don't sell at list price.
+ * No fire-sale discount — they aren't desperate. The buyer also inherits its
+ * cash and assumes its debt. Floored.
  */
 export function marketPrice(g: GameState, t: Airline): number {
   const annualNet = weeklyTotals(g, t).net * 52;
   const goodwill = Math.max(0, annualNet) * GOODWILL_YEARS;
-  return Math.max(Math.round(MIN_PRICE * eraScale(g)), Math.round(equity(g, t) + goodwill));
+  const fairValue = equity(g, t) + slotInvestment(g, t) + goodwill;
+  return Math.max(Math.round(MIN_PRICE * eraScale(g)), Math.round(fairValue * CONTROL_PREMIUM));
 }
 
 /** What it costs to buy `t` right now: the fire-sale ask if distressed, else market. */

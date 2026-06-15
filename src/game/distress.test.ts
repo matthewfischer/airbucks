@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Airline, GameState } from './types';
-import { mergerBoostActive, newAirline, newGame, player } from './engine';
+import { airportById, mergerBoostActive, newAirline, newGame, player, rightsFee } from './engine';
 import {
   acquire,
   acquisitionPrice,
@@ -128,11 +128,12 @@ describe('acquire', () => {
 });
 
 describe('buying a healthy airline (not distressed)', () => {
-  it('market price is net worth + goodwill, above the fire-sale price', () => {
+  it('market price = (net worth + slot value) × control premium, above the fire-sale price', () => {
     const t = aiAirline('ai-1', 'bna');
     t.cash = 5_000_000;
-    t.debt = 0; // equity 5M, no routes → no goodwill premium
-    expect(marketPrice(g, t)).toBe(5_000_000);
+    t.debt = 0; // equity 5M, only the home slot, no routes → no goodwill
+    const fair = 5_000_000 + rightsFee(g, airportById(g, t.homeId));
+    expect(marketPrice(g, t)).toBe(Math.round(fair * 1.3));
     expect(marketPrice(g, t)).toBeGreaterThan(acquisitionPrice(g, t));
   });
 

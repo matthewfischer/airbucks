@@ -85,7 +85,9 @@ These chain: failing → for sale → liquidated if unbought.
   liquidates and its slots return to the pool.
 - AI-to-AI acquisitions are in from v1 — decades-long consolidation
   (8 airlines becoming 3) fits the all-day pacing.
-- No hostile bids on healthy airlines for now.
+- A healthy airline can be bought outright at its market price: net worth +
+  slot-portfolio replacement cost + goodwill, marked up by a control premium
+  (its owners aren't selling at book). The buyer inherits cash, assumes debt.
 
 ## Visibility
 
