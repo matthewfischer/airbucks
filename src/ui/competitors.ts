@@ -75,6 +75,11 @@ function card(g: GameState, al: Airline, you = false): string {
     </div>
     <div class="comp-home">${home.code} · ${home.city}</div>
     <div class="comp-stats">${al.rights.length} cities · ${al.routes.length} routes · ${al.fleet.length} planes</div>
+    <div class="comp-sub">🏆 ${al.badges.length} award${al.badges.length === 1 ? '' : 's'}${
+      al.negotiations.length
+        ? ` · ✈ ${al.negotiations.length} in negotiation`
+        : ''
+    }</div>
     ${standingsBlock(g, al, you)}
     ${you ? '' : buyBlock(g, al)}
   </div>`;
