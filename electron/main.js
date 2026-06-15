@@ -6,6 +6,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
 if (isDev) app.commandLine.appendSwitch('remote-debugging-port', '9222');
 
+// macOS 27's sandbox profile is newer than Electron 33's bundled Chromium,
+// so sandbox init fails and crashes the renderer. Safe to disable for a
+// local-only game that never loads remote content. Remove after upgrading Electron.
+app.commandLine.appendSwitch('no-sandbox');
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1300,

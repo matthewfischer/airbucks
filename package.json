@@ -10,12 +10,28 @@
     "start": "electron .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sim": "vite-node scripts/sim.ts"
+    "sim": "vite-node scripts/sim.ts",
+    "pack:win": "vite build && electron-builder --win zip --x64"
+  },
+  "build": {
+    "appId": "com.mattfischer.airbucks",
+    "productName": "Air Bucks",
+    "files": [
+      "electron/**",
+      "dist/**"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "zip"
+    }
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
     "cross-env": "^7.0.3",
     "electron": "^33.2.0",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
     "vitest": "^3.2.6",
