@@ -1,8 +1,8 @@
 import type { Airline, Continent, GameState } from './types';
 import { CONTINENTS, continentOf } from './data';
-import { currentYear, reputation, typeById, weeklyTotals } from './engine';
+import { currentYear, equity, reputation, typeById, weeklyTotals } from './engine';
 
-export type BadgeGroup = 'Exploration' | 'Network' | 'Fleet' | 'Milestones';
+export type BadgeGroup = 'Exploration' | 'Network' | 'Fleet' | 'Rivalry' | 'Milestones';
 
 export interface BadgeDef {
   id: string;
@@ -41,6 +41,33 @@ function avgFleetAge(g: GameState, al: Airline): number {
   return total / al.fleet.length;
 }
 
+/** True if a single route links a continent in `west` to one in `east` — i.e.
+ *  one of the airline's routes crosses that ocean (e.g. America ↔ Europe). */
+function spansOcean(al: Airline, west: Continent[], east: Continent[]): boolean {
+  return al.routes.some((r) => {
+    const cs = new Set(r.stops.map((s) => continentOf(s)));
+    return west.some((c) => cs.has(c)) && east.some((c) => cs.has(c));
+  });
+}
+
+/** Distinct propulsion classes (prop/turboprop/jet) in the active fleet. */
+function fleetClasses(g: GameState, al: Airline): Set<string> {
+  return new Set(al.fleet.map((p) => typeById(g, p.typeId).propulsion));
+}
+
+/** Whether the airline operates a supersonic airliner (Concorde and friends). */
+function hasSupersonic(g: GameState, al: Airline): boolean {
+  return al.fleet.some((p) => typeById(g, p.typeId).speed >= 1000);
+}
+
+/** Highest net worth of all airlines — and there's at least one rival to beat. */
+function topByNetWorth(g: GameState, al: Airline): boolean {
+  const others = g.airlines.filter((a) => a !== al);
+  if (others.length === 0) return false;
+  const mine = equity(g, al);
+  return mine > 0 && others.every((o) => mine >= equity(g, o));
+}
+
 const reaches = (c: Continent) => (_g: GameState, al: Airline) => reachedContinents(al).has(c);
 const network =
   (need: number): Pick<BadgeDef, 'earned' | 'progress'> => ({
@@ -69,6 +96,12 @@ export const BADGES: BadgeDef[] = [
     hint: 'Hold rights on all six continents',
     earned: (_g, al) => reachedContinents(al).size >= CONTINENTS.length,
     progress: (_g, al) => ({ have: reachedContinents(al).size, need: CONTINENTS.length }) },
+  { id: 'transatlantic', name: 'Transatlantic', icon: '🌊', group: 'Exploration',
+    hint: 'Run a route linking North America and Europe',
+    earned: (_g, al) => spansOcean(al, ['North America'], ['Europe']) },
+  { id: 'transpacific', name: 'Transpacific', icon: '🌊', group: 'Exploration',
+    hint: 'Run a route linking North America and Asia or Oceania',
+    earned: (_g, al) => spansOcean(al, ['North America'], ['Asia', 'Oceania']) },
 
   // ---- Network ------------------------------------------------------------
   { id: 'net-5', name: 'Taking Off', icon: '🛫', group: 'Network',
@@ -79,10 +112,16 @@ export const BADGES: BadgeDef[] = [
     hint: '25 airports', ...network(25) },
   { id: 'net-50', name: 'Global Network', icon: '🌐', group: 'Network',
     hint: '50 airports', ...network(50) },
+  { id: 'net-100', name: 'Worldwide', icon: '🗺', group: 'Network',
+    hint: '100 airports', ...network(100) },
   { id: 'hub', name: 'Hub & Spoke', icon: '🕸', group: 'Network',
     hint: '6 routes through one airport',
     earned: (_g, al) => busiestHub(al) >= 6,
     progress: (_g, al) => ({ have: busiestHub(al), need: 6 }) },
+  { id: 'megahub', name: 'Megahub', icon: '🏙', group: 'Network',
+    hint: '12 routes through one airport',
+    earned: (_g, al) => busiestHub(al) >= 12,
+    progress: (_g, al) => ({ have: busiestHub(al), need: 12 }) },
 
   // ---- Fleet --------------------------------------------------------------
   { id: 'fleet-1', name: 'First Wings', icon: '🛬', group: 'Fleet',
@@ -98,10 +137,30 @@ export const BADGES: BadgeDef[] = [
   { id: 'young-fleet', name: 'Cutting Edge', icon: '⚡', group: 'Fleet',
     hint: 'Average fleet age under 3 years',
     earned: (g, al) => al.fleet.length >= 3 && avgFleetAge(g, al) < 3 },
+  { id: 'supersonic', name: 'Supersonic', icon: '💨', group: 'Fleet',
+    hint: 'Operate a supersonic airliner',
+    earned: (g, al) => hasSupersonic(g, al) },
+  { id: 'full-spectrum', name: 'Full Spectrum', icon: '🎚', group: 'Fleet',
+    hint: 'Fly prop, turboprop, and jet at the same time',
+    earned: (g, al) => fleetClasses(g, al).size >= 3 },
+
+  // ---- Rivalry ------------------------------------------------------------
+  { id: 'first-merger', name: 'Takeover', icon: '🤝', group: 'Rivalry',
+    hint: 'Acquire a rival airline',
+    earned: (_g, al) => (al.acquisitions ?? 0) >= 1 },
+  { id: 'top-dog', name: 'Top Dog', icon: '👑', group: 'Rivalry',
+    hint: 'Hold the highest net worth of any airline',
+    earned: (g, al) => topByNetWorth(g, al) },
 
   // ---- Milestones ---------------------------------------------------------
   { id: 'in-the-black', name: 'In the Black', icon: '💰', group: 'Milestones',
     hint: 'Turn a weekly profit', earned: (g, al) => weeklyTotals(g, al).net > 0 },
+  { id: 'worth-100m', name: 'Hundred-Millionaire', icon: '💵', group: 'Milestones',
+    hint: 'Reach a net worth of $100M',
+    earned: (g, al) => equity(g, al) >= 100_000_000 },
+  { id: 'worth-1b', name: 'Billionaire', icon: '💎', group: 'Milestones',
+    hint: 'Reach a net worth of $1 billion',
+    earned: (g, al) => equity(g, al) >= 1_000_000_000 },
   { id: 'debt-free', name: 'Debt Free', icon: '🏦', group: 'Milestones',
     hint: 'Clear all debt after borrowing',
     earned: (_g, al) => al.debt === 0 && al.history.some((h) => h.debt > 0) },

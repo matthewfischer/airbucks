@@ -144,6 +144,8 @@ export interface Airline {
   mergerBoostUntil?: number;
   /** Extra concurrent slot applications the active boost grants (size-scaled). */
   mergerBoostBonus?: number;
+  /** Rival airlines absorbed via acquisition (for the Takeover badge). */
+  acquisitions?: number;
 }
 
 export interface GameState {

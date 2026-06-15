@@ -40,6 +40,7 @@ export interface SavedAirline {
   /** Post-acquisition integration boost expiry day + size-scaled bonus. */
   mergerBoostUntil?: number;
   mergerBoostBonus?: number;
+  acquisitions?: number;
 }
 
 /** The persisted slice of a game — only the dynamic fields, not static data. */
@@ -71,6 +72,7 @@ const saveAirline = (al: Airline): SavedAirline => ({
   ...(al.forSale ? { forSale: al.forSale } : {}),
   ...(al.mergerBoostUntil !== undefined ? { mergerBoostUntil: al.mergerBoostUntil } : {}),
   ...(al.mergerBoostBonus !== undefined ? { mergerBoostBonus: al.mergerBoostBonus } : {}),
+  ...(al.acquisitions !== undefined ? { acquisitions: al.acquisitions } : {}),
 });
 
 const parseAi = (d: unknown): AiState | undefined => {
@@ -125,6 +127,7 @@ function parseAirline(d: unknown): SavedAirline | null {
   const equityNegSince = optNum(s.equityNegSince);
   const mergerBoostUntil = optNum(s.mergerBoostUntil);
   const mergerBoostBonus = optNum(s.mergerBoostBonus);
+  const acquisitions = optNum(s.acquisitions);
   return {
     id: typeof s.id === 'string' ? s.id : 'player',
     name: typeof s.name === 'string' ? s.name : 'Air Bucks',
@@ -145,6 +148,7 @@ function parseAirline(d: unknown): SavedAirline | null {
     ...(forSale ? { forSale } : {}),
     ...(mergerBoostUntil !== undefined ? { mergerBoostUntil } : {}),
     ...(mergerBoostBonus !== undefined ? { mergerBoostBonus } : {}),
+    ...(acquisitions !== undefined ? { acquisitions } : {}),
   };
 }
 
@@ -230,6 +234,7 @@ function applyAirline(
     ...(data.forSale ? { forSale: data.forSale } : {}),
     ...(data.mergerBoostUntil !== undefined ? { mergerBoostUntil: data.mergerBoostUntil } : {}),
     ...(data.mergerBoostBonus !== undefined ? { mergerBoostBonus: data.mergerBoostBonus } : {}),
+    ...(data.acquisitions !== undefined ? { acquisitions: data.acquisitions } : {}),
   };
 }
 

@@ -107,6 +107,58 @@ describe('checkBadges', () => {
     expect(has('debt-free')).toBe(true);
   });
 
+  it('awards transatlantic/transpacific for an ocean-spanning route', () => {
+    al.routes = [{ id: 'r1', stops: ['jfk', 'lhr'], fareFactor: 1 }];
+    checkBadges(g, al);
+    expect(has('transatlantic')).toBe(true);
+    expect(has('transpacific')).toBe(false);
+    al.routes.push({ id: 'r2', stops: ['lax', 'nrt'], fareFactor: 1 });
+    checkBadges(g, al);
+    expect(has('transpacific')).toBe(true);
+  });
+
+  it('Supersonic needs a supersonic airliner; Full Spectrum needs all three classes', () => {
+    const concorde = AIRCRAFT_TYPES.find((t) => t.speed >= 1000)!;
+    al.fleet = [makePlane(concorde.id)];
+    checkBadges(g, al);
+    expect(has('supersonic')).toBe(true);
+    expect(has('full-spectrum')).toBe(false);
+    const prop = AIRCRAFT_TYPES.find((t) => t.propulsion === 'prop')!;
+    const turbo = AIRCRAFT_TYPES.find((t) => t.propulsion === 'turboprop')!;
+    const jet = AIRCRAFT_TYPES.find((t) => t.propulsion === 'jet')!;
+    al.fleet = [makePlane(prop.id), makePlane(turbo.id), makePlane(jet.id)];
+    checkBadges(g, al);
+    expect(has('full-spectrum')).toBe(true);
+  });
+
+  it('Takeover lands after an acquisition is recorded', () => {
+    checkBadges(g, al);
+    expect(has('first-merger')).toBe(false);
+    al.acquisitions = 1;
+    checkBadges(g, al);
+    expect(has('first-merger')).toBe(true);
+  });
+
+  it('Top Dog needs the highest net worth among at least one rival', () => {
+    al.cash = 50_000_000; // solo game: no rival to beat, so not yet
+    checkBadges(g, al);
+    expect(has('top-dog')).toBe(false);
+    const rival = { ...al, id: 'r', ai: undefined, cash: 5_000_000, badges: [] } as Airline;
+    g.airlines.push(rival);
+    checkBadges(g, al);
+    expect(has('top-dog')).toBe(true);
+  });
+
+  it('net-worth milestones land at their thresholds', () => {
+    al.cash = 100_000_000;
+    checkBadges(g, al);
+    expect(has('worth-100m')).toBe(true);
+    expect(has('worth-1b')).toBe(false);
+    al.cash = 1_000_000_000;
+    checkBadges(g, al);
+    expect(has('worth-1b')).toBe(true);
+  });
+
   it('The Long Haul lands after 20 years of flying', () => {
     g.day = 20 * 365 - 1;
     checkBadges(g, al);

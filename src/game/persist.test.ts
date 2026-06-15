@@ -109,6 +109,14 @@ describe('serialize / deserialize', () => {
     expect(deserialize(JSON.stringify(raw))!.airlines[0].badges).toEqual([]);
   });
 
+  it('round-trips the acquisitions counter', () => {
+    const src = playedGame();
+    player(src).acquisitions = 3;
+    const restored = deserialize(serialize(src))!;
+    applySave(g, restored);
+    expect(player(g).acquisitions).toBe(3);
+  });
+
   it('round-trips finance history', () => {
     const src = playedGame();
     player(src).history.push({

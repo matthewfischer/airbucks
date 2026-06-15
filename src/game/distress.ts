@@ -91,6 +91,7 @@ export function acquire(g: GameState, buyer: Airline, target: Airline): void {
   for (const id of target.rights) if (!buyer.rights.includes(id)) buyer.rights.push(id);
   buyer.fleet.push(...target.fleet);
   buyer.routes.push(...target.routes);
+  buyer.acquisitions = (buyer.acquisitions ?? 0) + 1;
   // Integration team: file slots faster & wider for a while, scaled to the
   // size of the airline absorbed (a minnow nudges, a major is a land-grab).
   grantMergerBoost(g, buyer, mergerBonusForCities(cities));

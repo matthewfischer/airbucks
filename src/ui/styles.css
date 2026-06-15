@@ -406,17 +406,22 @@ input[type='number'] { width: 84px; }
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
   color: var(--muted); margin: 0 0 8px; font-weight: 700;
 }
-.badge-row {
-  display: flex; align-items: center; gap: 12px;
-  background: var(--panel-2); border: 1px solid var(--border);
-  border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;
+.badge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
 }
-.badge-row.locked { opacity: 0.5; }
-.badge-icon { font-size: 22px; width: 28px; text-align: center; }
-.badge-body { display: flex; flex-direction: column; flex: 1; }
-.badge-body strong { font-size: 14px; }
-.badge-hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
-.badge-date { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.badge-card {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: 4px; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 12px;
+}
+.badge-card.earned { border-color: var(--accent); }
+.badge-card.locked { opacity: 0.45; filter: grayscale(0.7); }
+.badge-icon { font-size: 30px; line-height: 1; }
+.badge-name { font-size: 13px; }
+.badge-hint { font-size: 11px; color: var(--muted); }
+.badge-tag { font-size: 11px; font-weight: 700; white-space: nowrap; margin-top: 2px; }
 
 /* ---- Competitors (rival standings) ---- */
 #competitors {
