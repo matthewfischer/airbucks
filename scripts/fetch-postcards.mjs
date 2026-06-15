@@ -106,6 +106,7 @@ const MANUAL_PICKS = {
   gcm: 'File:AA flight from Quito, Ecuador to Miami, Florida...Grand Cayman Islands.Georgetown near the airport... (26692786390).jpg',
   gso: 'File:Greetings from Greensboro, North Carolina - Large Letter Postcard (8555919882).jpg',
   mid: 'File:Mérida International Airport (Aeropuerto Internacional de Mérida Manuel Crescencio Rejón) Feb 2021 - 02.jpg',
+  msq: 'File:5 50 64 2f - Belarus National Library, Minsk 2009 (3901618837).jpg',
   ric: 'File:Greetings from Richmond, Virginia - Large Letter Postcard (14395075646).jpg',
   sdf: 'File:Postcard showing Bowman Field, Kentucky. Administration Building and Hangar c.1939.jpg',
 };
