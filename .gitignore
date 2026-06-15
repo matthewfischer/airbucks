@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-electron/
 release/
+coverage/
 *.run
 *.log
 .DS_Store

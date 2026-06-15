@@ -181,7 +181,7 @@ export function addAiAirlines(g: GameState, count: number): void {
 // ---- Decision pass ----------------------------------------------------------
 
 /** One candidate move, scored; the pass executes the noisy best. */
-interface Action {
+export interface Action {
   score: number;
   run: () => void;
 }
@@ -476,7 +476,7 @@ function bootstrapActions(g: GameState, al: Airline, p: Personality): Action[] {
  * the credit headroom to shoulder the target's debt will bid — so consolidation
  * flows from the strong to the weak, and overexpanders become the consolidators.
  */
-function acquisitionActions(g: GameState, al: Airline, p: Personality): Action[] {
+export function acquisitionActions(g: GameState, al: Airline, p: Personality): Action[] {
   const actions: Action[] = [];
   for (const target of g.airlines) {
     if (target === al || !target.forSale) continue;
@@ -491,7 +491,7 @@ function acquisitionActions(g: GameState, al: Airline, p: Personality): Action[]
 }
 
 /** Candidate: a debt-shy airline pays its loan down when cash allows. */
-function repayActions(g: GameState, al: Airline, p: Personality): Action[] {
+export function repayActions(g: GameState, al: Airline, p: Personality): Action[] {
   if (al.debt <= 0 || al.cash <= 0) return [];
   if (al.debt <= p.debtAppetite * creditLimit(g, al)) return [];
   // Modest, steady urge — strong enough to win a pass when nothing else shines.
@@ -502,7 +502,7 @@ function repayActions(g: GameState, al: Airline, p: Personality): Action[] {
  * Retrenchment candidates for an airline in the red. Scores are weekly
  * savings, so the biggest bleed gets stopped first.
  */
-function retrenchActions(g: GameState, al: Airline): Action[] {
+export function retrenchActions(g: GameState, al: Airline): Action[] {
   const actions: Action[] = [];
   const lvl = priceLevel(g);
 

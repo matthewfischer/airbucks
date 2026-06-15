@@ -227,3 +227,67 @@ describe('applySave', () => {
     expect(migrated.kmFlown).toBe(1234);
   });
 });
+
+describe('deserialize robustness', () => {
+  /** A minimal, valid raw airline slice for targeted field surgery. */
+  const baseAirline = (): Record<string, unknown> => ({
+    id: 'ai-1', name: 'Rival Air', color: '#ff0000',
+    homeId: 'clt', cash: 1000, debt: 0, fleet: [], routes: [],
+  });
+  const wrap = (airline: Record<string, unknown>): string =>
+    JSON.stringify({ version: SAVE_VERSION, day: 1, rngState: 0, nextId: 1, airlines: [airline] });
+
+  it('round-trips an AI airline\'s distress markers and for-sale listing', () => {
+    const src = newGame('crw', 9);
+    const ai = newAirline('ai-1', 'Rival Air', '#ff0000', 'clt');
+    ai.ai = { personality: 'cheapskate', nextDecisionDay: 42 };
+    ai.cashNegSince = 100;
+    ai.equityNegSince = 110;
+    ai.forSale = { listedDay: 120, deadlineDay: 150, price: 2_500_000 };
+    ai.mergerBoostUntil = 200;
+    ai.mergerBoostBonus = 3;
+    src.airlines.push(ai);
+
+    const restored = deserialize(serialize(src))!;
+    const ra = restored.airlines[1];
+    expect(ra.ai).toEqual({ personality: 'cheapskate', nextDecisionDay: 42 });
+    expect(ra.cashNegSince).toBe(100);
+    expect(ra.equityNegSince).toBe(110);
+    expect(ra.forSale).toEqual({ listedDay: 120, deadlineDay: 150, price: 2_500_000 });
+    expect(ra.mergerBoostUntil).toBe(200);
+    expect(ra.mergerBoostBonus).toBe(3);
+  });
+
+  it('drops a malformed ai brain rather than restoring junk', () => {
+    const a = baseAirline();
+    a.ai = { nextDecisionDay: 5 }; // no personality string
+    const restored = deserialize(wrap(a))!;
+    expect(restored.airlines[0].ai).toBeUndefined();
+  });
+
+  it('drops a malformed for-sale listing missing its numbers', () => {
+    const a = baseAirline();
+    a.forSale = { price: 100 }; // no listedDay/deadlineDay
+    const restored = deserialize(wrap(a))!;
+    expect(restored.airlines[0].forSale).toBeUndefined();
+  });
+
+  it('falls back to default identity when id/name/color are absent', () => {
+    const a = baseAirline();
+    delete a.id;
+    delete a.name;
+    delete a.color;
+    const restored = deserialize(wrap(a))!;
+    const ra = restored.airlines[0];
+    expect(ra.id).toBe('player');
+    expect(ra.name).toBe('Air Bucks');
+    expect(ra.color).toBe('#3fd0c9');
+  });
+
+  it('ignores a non-numeric optional counter instead of carrying it through', () => {
+    const a = baseAirline();
+    a.acquisitions = 'lots'; // wrong type
+    const restored = deserialize(wrap(a))!;
+    expect(restored.airlines[0].acquisitions).toBeUndefined();
+  });
+});

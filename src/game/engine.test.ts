@@ -63,6 +63,7 @@ import {
   routeLegs,
   routeMaxLeg,
   planeResaleValue,
+  sellPlane,
   upgradeRoute,
   upgradeRouteQuote,
   airportSlotsTotal,
@@ -376,6 +377,26 @@ describe('assignPlane', () => {
     expect(assignPlane(g, al, lastPlane(g).id, null)).toBeNull();
     expect(lastPlane(g).routeId).toBeNull();
   });
+
+  it('reports an unknown plane id', () => {
+    openRoute(g, al, ['crw', 'clt']);
+    expect(assignPlane(g, al, 'no-such-plane', lastRoute(g).id)).toMatch(/unknown plane/i);
+  });
+});
+
+describe('sellPlane', () => {
+  it('sells a plane for its resale value and removes it from the fleet', () => {
+    buyPlane(g, al, 'q400');
+    const plane = lastPlane(g);
+    const before = al.cash;
+    expect(sellPlane(g, al, plane.id)).toBeNull();
+    expect(al.fleet.some((p) => p.id === plane.id)).toBe(false);
+    expect(al.cash).toBe(before + planeResaleValue(g, plane));
+  });
+
+  it('reports an unknown plane id', () => {
+    expect(sellPlane(g, al, 'ghost')).toMatch(/unknown plane/i);
+  });
 });
 
 describe('closeRoute', () => {
@@ -443,6 +464,24 @@ describe('upgradeRoute', () => {
     const route = addRoute(['crw', 'clt'], 'q400', 1);
     al.cash = 0;
     expect(upgradeRoute(g, al, route.id, 'e195e2')).toMatch(/not enough cash/i);
+  });
+
+  it('reports an unknown route id', () => {
+    expect(upgradeRoute(g, al, 'no-such-route', 'e175')).toMatch(/unknown route/i);
+  });
+
+  it('refuses a type that has not entered service yet', () => {
+    g.day = 0; // 1950 — the E175 (2005) is decades away
+    al.rights = ['crw', 'clt'];
+    openRoute(g, al, ['crw', 'clt']);
+    buyPlane(g, al, 'dc3');
+    assignPlane(g, al, lastPlane(g).id, lastRoute(g).id);
+    expect(upgradeRoute(g, al, lastRoute(g).id, 'e175')).toMatch(/enter service/i);
+  });
+
+  it('refuses a type that has left production', () => {
+    const route = addRoute(['crw', 'clt'], 'e175', 1); // beforeEach is in 2025
+    expect(upgradeRoute(g, al, route.id, 'dc3')).toMatch(/left production/i);
   });
 });
 

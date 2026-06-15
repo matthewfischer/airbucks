@@ -10,6 +10,7 @@
     "start": "electron .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "sim": "vite-node scripts/sim.ts",
     "pack:win": "vite build && electron-builder --win zip --x64"
   },
@@ -28,6 +29,7 @@
     }
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^3.2.6",
     "concurrently": "^9.1.0",
     "cross-env": "^7.0.3",
     "electron": "^33.2.0",
