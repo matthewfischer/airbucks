@@ -23,6 +23,7 @@ import {
   negotiationDays,
   negotiationCapFor,
   isEasySlot,
+  regionalBonusAvailable,
   concurrentCap,
   effectiveConcurrentCap,
   mergerBoostActive,
@@ -1235,7 +1236,7 @@ function rightsCard(): string {
     .join('');
   const negBlock = `
     <div class="row" style="margin-top:6px"><span class="muted">Negotiations</span><strong>${negs} in progress</strong></div>
-    <div class="tiny muted">${cap} at a time (+1 for a quick regional slot)</div>${boostNote}${negRows}`;
+    <div class="tiny muted">${cap} at a time${regionalBonusAvailable(pl()) ? ' (+1 for a quick regional slot)' : ''}</div>${boostNote}${negRows}`;
   const body = `
     <div class="row"><span class="muted">Network</span><strong>${rep} airport${rep === 1 ? '' : 's'}${lockedNote}</strong></div>
     ${negBlock}

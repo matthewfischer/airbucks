@@ -17,6 +17,7 @@ import {
   mergerBonusForCities,
   negotiationDays,
   isEasySlot,
+  regionalBonusAvailable,
   gateFee,
   gateFeesWeekly,
   sellRefund,
@@ -1162,6 +1163,13 @@ describe('landing rights', () => {
     // Past the bootstrap window (5 airports held), the freebie is gone.
     al.rights = ['crw', 'clt', 'ric', 'tys', 'cvg'];
     expect(isEasySlot(g, al, airportById(g, 'gso'))).toBe(false);
+  });
+
+  it('regionalBonusAvailable tracks the bootstrap window, not any specific airport', () => {
+    al.rights = ['crw', 'clt'];
+    expect(regionalBonusAvailable(al)).toBe(true);
+    al.rights = ['crw', 'clt', 'ric', 'tys', 'cvg']; // 5 held — window closed
+    expect(regionalBonusAvailable(al)).toBe(false);
   });
 
   it('a regional negotiation in progress still leaves the base slot for a real airport', () => {

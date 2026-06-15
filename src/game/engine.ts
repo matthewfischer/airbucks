@@ -735,6 +735,11 @@ export const isEasySlot = (g: GameState, al: Airline, a: Airport): boolean => {
   return distanceKm(a, home) <= EASY_SLOT_RANGE_KM;
 };
 
+/** True while the regional bonus slot can still apply — i.e. the airline is
+ *  still bootstrapping and holds fewer than EASY_SLOT_MAX_HELD airports. */
+export const regionalBonusAvailable = (al: Airline): boolean =>
+  reputation(al) < EASY_SLOT_MAX_HELD;
+
 /** True if any in-progress negotiation is for an easy (regional) slot. */
 export const hasEasyNegotiation = (g: GameState, al: Airline): boolean =>
   al.negotiations.some((n) => isEasySlot(g, al, airportById(g, n.airportId)));
