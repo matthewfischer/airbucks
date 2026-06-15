@@ -24,8 +24,9 @@ function approxMoney(n: number): string {
   return money(sign * Math.round(abs / mag) * mag);
 }
 
-/** Net-worth estimate + a profit/loss trend — substance without exact books. */
-function standingsBlock(g: GameState, al: Airline): string {
+/** Net-worth estimate + a profit/loss trend — substance without exact books.
+ *  For your own card the books are exact, so skip the "~" estimate. */
+function standingsBlock(g: GameState, al: Airline, you = false): string {
   const h = health(g, al);
   const net = weeklyTotals(g, al).net;
   const trend =
@@ -34,7 +35,8 @@ function standingsBlock(g: GameState, al: Airline): string {
       : net < 0
         ? '<span class="bad">↘ losing money</span>'
         : '<span class="muted">→ breaking even</span>';
-  return `<div class="comp-money">Net worth ~${approxMoney(equity(g, al))} · ${trend}</div>
+  const worth = you ? money(equity(g, al)) : `~${approxMoney(equity(g, al))}`;
+  return `<div class="comp-money">Net worth ${worth} · ${trend}</div>
     <div class="comp-health">
       <div class="health-bar"><div class="health-fill ${h.cls}" style="width:${(h.score / 6) * 100}%"></div></div>
       <span class="${h.cls}">${h.label}</span>
@@ -59,18 +61,22 @@ function buyBlock(g: GameState, al: Airline): string {
   </div>`;
 }
 
-function card(g: GameState, al: Airline): string {
+function card(g: GameState, al: Airline, you = false): string {
   const home = airportById(g, al.homeId);
-  return `<div class="comp-card${al.forSale ? ' for-sale' : ''}">
+  const cls = you ? ' you' : al.forSale ? ' for-sale' : '';
+  const flag = you
+    ? '<span class="comp-you-tag">You</span>'
+    : al.forSale ? '<span class="comp-flag">⚠ FOR SALE</span>' : '';
+  return `<div class="comp-card${cls}" data-act="show-airline" data-airline="${al.id}" title="Show ${home.city} on the map">
     <div class="comp-head">
       <span class="comp-dot" style="background:${al.color}"></span>
       <strong>${al.name}</strong>
-      ${al.forSale ? '<span class="comp-flag">⚠ FOR SALE</span>' : ''}
+      ${flag}
     </div>
     <div class="comp-home">${home.code} · ${home.city}</div>
     <div class="comp-stats">${al.rights.length} cities · ${al.routes.length} routes · ${al.fleet.length} planes</div>
-    ${standingsBlock(g, al)}
-    ${buyBlock(g, al)}
+    ${standingsBlock(g, al, you)}
+    ${you ? '' : buyBlock(g, al)}
   </div>`;
 }
 
@@ -86,21 +92,18 @@ export function renderCompetitors(g: GameState, el: HTMLElement): void {
   </div>`;
 
   if (rivals.length === 0) {
-    el.innerHTML = `${head}<div class="fin-empty">A solo game — no competitors. Start a new game and add rivals on the setup screen.</div>`;
+    el.innerHTML = `${head}<div class="comp-grid">${card(g, you, true)}</div>
+      <div class="fin-empty">A solo game — no competitors. Start a new game and add rivals on the setup screen.</div>`;
     return;
   }
 
-  const youStrip = `<div class="comp-you">
-    <span class="comp-dot" style="background:${you.color}"></span>
-    <strong>You · ${you.name}</strong>
-    <span class="muted">${you.homeId.toUpperCase()} · ${you.rights.length} cities · ${you.routes.length} routes · ${you.fleet.length} planes · net worth ${money(equity(g, you))}</span>
-  </div>`;
+  // Your card pinned first, then rivals ranked by network reach (cities).
+  const cards =
+    card(g, you, true) +
+    [...rivals]
+      .sort((a, b) => b.rights.length - a.rights.length)
+      .map((al) => card(g, al))
+      .join('');
 
-  // Rank by network reach (cities), the most visible measure of standing.
-  const cards = [...rivals]
-    .sort((a, b) => b.rights.length - a.rights.length)
-    .map((al) => card(g, al))
-    .join('');
-
-  el.innerHTML = `${head}${youStrip}<div class="comp-grid">${cards}</div>`;
+  el.innerHTML = `${head}<div class="comp-grid">${cards}</div>`;
 }

@@ -1084,12 +1084,21 @@ function render() {
 // knownRights so the bulk of inherited cities doesn't fire a postcard per city.
 competitorsEl.addEventListener('click', (e) => {
   const btn = (e.target as HTMLElement).closest('[data-act="buy-airline"]') as HTMLElement | null;
-  if (!btn) return;
-  const target = game.airlines.find((a) => a.id === btn.dataset.airline);
-  if (!target || target === pl() || pl().cash < buyoutPrice(game, target)) return;
-  acquire(game, pl(), target);
-  knownRights = new Set(pl().rights);
-  render();
+  if (btn) {
+    const target = game.airlines.find((a) => a.id === btn.dataset.airline);
+    if (!target || target === pl() || pl().cash < buyoutPrice(game, target)) return;
+    acquire(game, pl(), target);
+    knownRights = new Set(pl().rights);
+    render();
+    return;
+  }
+  // Click anywhere else on a rival's card: jump to the map at their home.
+  const cardEl = (e.target as HTMLElement).closest('[data-act="show-airline"]') as HTMLElement | null;
+  if (!cardEl) return;
+  const al = game.airlines.find((a) => a.id === cardEl.dataset.airline);
+  if (!al) return;
+  setView('map');
+  zoomToAirport(al.homeId, 8); // pan and zoom in some, tighter than the default fit
 });
 
 function renderHud() {

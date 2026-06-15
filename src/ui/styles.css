@@ -428,10 +428,10 @@ input[type='number'] { width: 84px; }
 #competitors.hidden { display: none; }
 .comp-head-row { display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; }
 .comp-head-row h2 { font-size: 18px; font-weight: 800; color: var(--accent); letter-spacing: 0.5px; margin: 0; }
-.comp-you {
-  display: flex; align-items: center; gap: 10px;
-  background: #14253a; border: 1px solid var(--accent);
-  border-radius: 10px; padding: 10px 14px; margin-bottom: 16px;
+.comp-card.you { background: #14253a; border-color: var(--accent); }
+.comp-you-tag {
+  margin-left: auto; font-size: 10px; font-weight: 800;
+  color: var(--accent); letter-spacing: 0.5px;
 }
 .comp-grid {
   display: grid;
@@ -442,7 +442,9 @@ input[type='number'] { width: 84px; }
   background: var(--panel-2); border: 1px solid var(--border);
   border-radius: 10px; padding: 12px 14px;
   display: flex; flex-direction: column; gap: 6px;
+  cursor: pointer;
 }
+.comp-card:hover { border-color: var(--accent); }
 .comp-card.for-sale { border-color: var(--bad); background: #2a1822; }
 .comp-head { display: flex; align-items: center; gap: 8px; }
 .comp-head strong { font-size: 14px; }
