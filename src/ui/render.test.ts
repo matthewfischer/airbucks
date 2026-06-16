@@ -60,6 +60,13 @@ describe('renderFinance', () => {
     expect(el.innerHTML).toContain('fin-empty'); // < 2 snapshots → no charts yet
   });
 
+  it('shows the era loan and deposit interest rates', () => {
+    const el = stubEl();
+    renderFinance(g, el);
+    expect(el.innerHTML).toContain('Loan rate');
+    expect(el.innerHTML).toContain('Deposit rate');
+  });
+
   it('charts the history once a couple of weeks have accrued', () => {
     player(g).history = [
       snap({ day: 7, cash: 1_000_000, net: 50_000 }),
@@ -71,6 +78,7 @@ describe('renderFinance', () => {
     expect(el.innerHTML).not.toContain('fin-empty');
     expect(el.innerHTML).toContain('<svg'); // line charts drawn
     expect(el.innerHTML).toContain('Net worth');
+    expect(el.innerHTML).toContain('Interest rates'); // the rates chart
   });
 
   it('survives a flat history without producing NaN coordinates', () => {
