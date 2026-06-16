@@ -145,8 +145,8 @@ describe('determinism', () => {
 });
 
 describe('long-run invariants (headless sim)', () => {
-  it('ten years with 8 AIs: finances stay finite and the world stays sane', () => {
-    const g = gameWith(8, 3);
+  it('ten years at max AIs: finances stay finite and the world stays sane', () => {
+    const g = gameWith(MAX_AI_AIRLINES, 3);
     run(g, 365 * 10);
     for (const al of g.airlines) {
       expect(Number.isFinite(al.cash), `${al.name} cash`).toBe(true);

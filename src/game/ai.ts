@@ -9,10 +9,12 @@ import {
   borrow,
   buyPlane,
   closeRoute,
+  competitiveShare,
   creditLimit,
   distanceFactor,
   equity,
   evaluateNetwork,
+  rivalWeight,
   gateFee,
   isNegotiating,
   newAirline,
@@ -111,7 +113,7 @@ const AI_COLORS = [
   '#80ed99', '#f4845f', '#a3b18a', '#e07be0',
 ];
 
-export const MAX_AI_AIRLINES = 8;
+export const MAX_AI_AIRLINES = 4;
 
 /** Deterministically shuffle (Fisher–Yates over the game RNG). */
 function shuffle<T>(g: GameState, items: T[]): T[] {
@@ -226,6 +228,7 @@ const sizePreference = (p: Personality, a: Airport, b: Airport): number =>
  */
 function estimateRouteProfit(
   g: GameState,
+  al: Airline,
   a: Airport,
   b: Airport,
   dist: number,
@@ -236,7 +239,11 @@ function estimateRouteProfit(
   const trips = tripsPerWeek(type, dist, 1);
   const cap = trips * 2 * type.capacity;
   const demandMult = Math.max(0.1, Math.min(1.5, 2 - 1 / premium));
-  const demand = pairDemand(a, b) * distanceFactor(dist) * demandMult;
+  // Split the market with anyone already flying it: this plane's seats×appeal
+  // against the rivals' weight. A contested trunk route is worth proportionally
+  // less, so the AI won't pile into a market it can only win a sliver of.
+  const share = competitiveShare(cap * demandMult, rivalWeight(g, al, a.id, b.id));
+  const demand = pairDemand(a, b) * distanceFactor(dist) * demandMult * share;
   const carried = Math.min(demand, cap);
   const lf = cap > 0 ? carried / cap : 0;
   const revenue = carried * referenceFare(dist) * premium * lvl;
@@ -251,6 +258,7 @@ const minProfit = (g: GameState): number => MIN_ROUTE_PROFIT * priceLevel(g);
 /** The affordable in-production type that earns the most on this market, or null. */
 function bestTypeFor(
   g: GameState,
+  al: Airline,
   a: Airport,
   b: Airport,
   dist: number,
@@ -259,7 +267,7 @@ function bestTypeFor(
   let best: { type: AircraftType; profit: number } | null = null;
   for (const t of availableTypes(g)) {
     if (t.range < dist || t.price > budget) continue;
-    const profit = estimateRouteProfit(g, a, b, dist, t);
+    const profit = estimateRouteProfit(g, al, a, b, dist, t);
     if (!best || profit > best.profit) best = { type: t, profit };
   }
   return best;
@@ -275,8 +283,8 @@ function bestPlanFor(
   budget: number,
 ): number | null {
   const idle = idlePlaneFor(g, al, dist);
-  const owned = idle ? estimateRouteProfit(g, a, b, dist, typeById(g, idle.typeId)) : -Infinity;
-  const bought = bestTypeFor(g, a, b, dist, budget)?.profit ?? -Infinity;
+  const owned = idle ? estimateRouteProfit(g, al, a, b, dist, typeById(g, idle.typeId)) : -Infinity;
+  const bought = bestTypeFor(g, al, a, b, dist, budget)?.profit ?? -Infinity;
   const profit = Math.max(owned, bought);
   return profit === -Infinity ? null : profit;
 }
@@ -294,7 +302,7 @@ function staffRoute(g: GameState, al: Airline, p: Personality, routeId: string):
   }
   const a = airportById(g, route.stops[0]);
   const b = airportById(g, route.stops[route.stops.length - 1]);
-  const choice = bestTypeFor(g, a, b, maxLeg, spendable(g, al, p));
+  const choice = bestTypeFor(g, al, a, b, maxLeg, spendable(g, al, p));
   if (!choice || !coverCost(g, al, p, choice.type.price)) return;
   if (buyPlane(g, al, choice.type.id) === null) {
     assignPlane(g, al, al.fleet[al.fleet.length - 1].id, routeId);
@@ -371,14 +379,14 @@ function upgradeActions(g: GameState, al: Airline, p: Personality): Action[] {
     const b = airportById(g, route.stops[route.stops.length - 1]);
     const dist = distanceKm(a, b);
     const oldType = typeById(g, planes[0].typeId);
-    const oldProfit = estimateRouteProfit(g, a, b, dist, oldType);
+    const oldProfit = estimateRouteProfit(g, al, a, b, dist, oldType);
     const floor = Math.max(...planes.map((pl) => typeById(g, pl.typeId).price));
     // Best strictly-pricier in-range type (the engine enforces "pricier").
     let type: AircraftType | null = null;
     let gain = 0;
     for (const t of availableTypes(g)) {
       if (t.range < maxLeg || t.price <= floor) continue;
-      const tg = estimateRouteProfit(g, a, b, dist, t) - oldProfit;
+      const tg = estimateRouteProfit(g, al, a, b, dist, t) - oldProfit;
       if (tg > gain) {
         gain = tg;
         type = t;
@@ -417,7 +425,7 @@ function slotActions(g: GameState, al: Airline, p: Personality): Action[] {
     for (const id of al.rights) {
       const held = airportById(g, id);
       const d = distanceKm(ap, held);
-      const choice = bestTypeFor(g, ap, held, d, budget);
+      const choice = bestTypeFor(g, al, ap, held, d, budget);
       if (!choice || choice.profit < minProfit(g)) continue;
       bestPair = Math.max(bestPair, choice.profit * sizePreference(p, ap, held));
     }
@@ -451,7 +459,7 @@ function bootstrapActions(g: GameState, al: Airline, p: Personality): Action[] {
     if (!rightsAvailable(g, al, ap.id)) continue;
     if (rightsFee(g, ap) > budget) continue;
     const d = distanceKm(ap, home);
-    if (!bestTypeFor(g, ap, home, d, budget)) continue; // no affordable plane can reach it
+    if (!bestTypeFor(g, al, ap, home, d, budget)) continue; // no affordable plane can reach it
     const s = (ap.size * home.size) / Math.max(1, d); // closer & bigger = better
     if (s > bestScore) {
       bestScore = s;

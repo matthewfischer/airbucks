@@ -346,30 +346,20 @@ function bestPath(
   return best;
 }
 
-/**
- * Evaluate the whole airline as a network: pool all flying into legs, route
- * every O&D market over the best path the airline offers (nonstop or
- * connecting), and let each leg earn from every passenger flow crossing it —
- * so feeder spokes are paid for the connecting traffic they carry.
- */
-export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
-  const legs = new Map<string, LegInfo>();
-  const routeFly = new Map<string, number>(); // full-frequency flying cost
-  const routeUp = new Map<string, number>();
-  const summaries = new Map<string, RouteSummary>();
+interface LegBuild {
+  legs: Map<string, LegInfo>;
+  adj: Map<string, Set<string>>;
+  routeFly: Map<string, number>;
+  routeUp: Map<string, number>;
+}
 
-  // 1) Build leg capacities and per-route flying cost / upkeep.
+/** Pool an airline's flying into legs: capacity, fare/speed sums, and per-route
+ *  flying cost + upkeep. Shared by the full network eval and the offer scan. */
+function buildLegs(g: GameState, al: Airline): LegBuild {
+  const legs = new Map<string, LegInfo>();
+  const routeFly = new Map<string, number>();
+  const routeUp = new Map<string, number>();
   for (const route of al.routes) {
-    summaries.set(route.id, {
-      routeId: route.id,
-      passengers: 0,
-      connectingPassengers: 0,
-      revenue: 0,
-      cost: 0,
-      profit: 0,
-      loadFactor: 0,
-      speedPremium: 1,
-    });
     const rlegs = routeLegs(g, route);
     const pathLength = rlegs.reduce((s, l) => s + l.distance, 0);
     let fly = 0;
@@ -404,15 +394,152 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
     routeFly.set(route.id, fly);
     routeUp.set(route.id, up);
   }
-
-  // Adjacency over served legs.
   const adj = new Map<string, Set<string>>();
   for (const info of legs.values()) {
     (adj.get(info.a) ?? adj.set(info.a, new Set()).get(info.a)!).add(info.b);
     (adj.get(info.b) ?? adj.set(info.b, new Set()).get(info.b)!).add(info.a);
   }
+  return { legs, adj, routeFly, routeUp };
+}
 
-  // 2) Build every O&D market the airline can serve, with a routed path.
+interface MarketCalc {
+  path: NetPath;
+  /** Monopoly demand (before competition share). */
+  demand: number;
+  /** This airline's draw on the market: bottleneck seats × attractiveness. */
+  weight: number;
+  fare: number;
+}
+
+/** The airline's offer on the A↔B market: its best path, the demand that path
+ *  would draw alone, and a competition weight (seats × price/speed appeal). */
+function marketCalc(
+  g: GameState,
+  legBuild: LegBuild,
+  A: Airport,
+  B: Airport,
+  baseline: number,
+): MarketCalc | null {
+  const { legs, adj } = legBuild;
+  const directDist = distanceKm(A, B);
+  const path = bestPath(legs, adj, A.id, B.id, directDist);
+  if (!path) return null;
+  let wSpeed = 0;
+  let wFare = 0;
+  let wSum = 0;
+  let bottleneckSeats = Infinity;
+  for (const key of path.legKeys) {
+    const li = legs.get(key)!;
+    wSpeed += (li.speedCapSum / li.capacity) * li.distance;
+    wFare += (li.fareCapSum / li.capacity) * li.distance;
+    wSum += li.distance;
+    bottleneckSeats = Math.min(bottleneckSeats, li.capacity);
+  }
+  const speedPremium = speedFareMultiplier(wSpeed / wSum, baseline);
+  const fareFactor = wFare / wSum;
+  const demandMult = Math.max(0.1, Math.min(1.5, 2 - fareFactor / speedPremium));
+  const appeal = CONNECTION_PENALTY ** path.connections * demandMult;
+  return {
+    path,
+    demand: pairDemand(A, B) * distanceFactor(directDist) * appeal,
+    weight: bottleneckSeats * appeal,
+    fare: referenceFare(directDist) * fareFactor * priceLevel(g),
+  };
+}
+
+/** Every airport-pair an airline serves, keyed canonically, with the airline's
+ *  competition weight on that market. The raw material for the rivalry split. */
+function airlineOffers(g: GameState, al: Airline): Map<string, number> {
+  const legBuild = buildLegs(g, al);
+  const baseline = baselineSpeed(g);
+  const served = g.airports.filter((a) => legBuild.adj.has(a.id));
+  const offers = new Map<string, number>();
+  for (let i = 0; i < served.length; i++) {
+    for (let j = i + 1; j < served.length; j++) {
+      const mc = marketCalc(g, legBuild, served[i], served[j], baseline);
+      if (mc) offers.set(legKey(served[i].id, served[j].id), mc.weight);
+    }
+  }
+  return offers;
+}
+
+interface Competition {
+  sig: number;
+  /** Total competition weight on each market, summed over all airlines. */
+  total: Map<string, number>;
+  /** Each airline's own weight per market. */
+  offers: Map<string, Map<string, number>>;
+}
+
+// Per-game competition context, rebuilt only when the networks change. Transient
+// (never serialized), keyed by the live game object so it can't outlive it.
+const compCache = new WeakMap<GameState, Competition>();
+
+/** Cheap structural fingerprint: changes whenever any network the offers depend
+ *  on changes (day, routes, fleet assignments, fares). */
+function compSignature(g: GameState): number {
+  let s = g.day * 1_000_003;
+  for (const al of g.airlines) {
+    for (const r of al.routes)
+      s += r.stops.length * 131 + Math.round(r.fareFactor * 97);
+    for (const p of al.fleet) s += (p.routeId ? 17 : 3) + p.typeId.length;
+  }
+  return s;
+}
+
+function competition(g: GameState): Competition {
+  const sig = compSignature(g);
+  const cached = compCache.get(g);
+  if (cached && cached.sig === sig) return cached;
+  const offers = new Map<string, Map<string, number>>();
+  const total = new Map<string, number>();
+  for (const al of g.airlines) {
+    const off = airlineOffers(g, al);
+    offers.set(al.id, off);
+    for (const [od, w] of off) total.set(od, (total.get(od) ?? 0) + w);
+  }
+  const ctx: Competition = { sig, total, offers };
+  compCache.set(g, ctx);
+  return ctx;
+}
+
+/** Combined competition weight of everyone except `al` on the A↔B market. */
+export function rivalWeight(g: GameState, al: Airline, aId: string, bId: string): number {
+  const ctx = competition(g);
+  const od = legKey(aId, bId);
+  return (ctx.total.get(od) ?? 0) - (ctx.offers.get(al.id)?.get(od) ?? 0);
+}
+
+/** An airline's share of a contested market: its weight vs. the field. 1 alone. */
+export const competitiveShare = (own: number, rival: number): number =>
+  own + rival > 0 ? own / (own + rival) : 1;
+
+/**
+ * Evaluate the whole airline as a network: pool all flying into legs, route
+ * every O&D market over the best path the airline offers (nonstop or
+ * connecting), and let each leg earn from every passenger flow crossing it —
+ * so feeder spokes are paid for the connecting traffic they carry. Demand on
+ * each market is split with rival airlines flying the same city-pair.
+ */
+export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
+  const legBuild = buildLegs(g, al);
+  const { legs, routeFly, routeUp } = legBuild;
+  const summaries = new Map<string, RouteSummary>();
+  for (const route of al.routes) {
+    summaries.set(route.id, {
+      routeId: route.id,
+      passengers: 0,
+      connectingPassengers: 0,
+      revenue: 0,
+      cost: 0,
+      profit: 0,
+      loadFactor: 0,
+      speedPremium: 1,
+    });
+  }
+
+  // Build every O&D market this airline can serve, splitting each market's
+  // demand with the rivals flying the same city-pair.
   interface Mkt {
     path: NetPath;
     demand: number;
@@ -423,36 +550,15 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
   // Only airports this airline actually touches can anchor a market. Filtering
   // here (preserving g.airports order) turns an all-pairs O(airports²) scan into
   // O(served²) — a large win once a network spans only a few dozen of the cities.
-  const served = g.airports.filter((a) => adj.has(a.id));
+  const served = g.airports.filter((a) => legBuild.adj.has(a.id));
   for (let i = 0; i < served.length; i++) {
     for (let j = i + 1; j < served.length; j++) {
       const A = served[i];
       const B = served[j];
-      const directDist = distanceKm(A, B);
-      const path = bestPath(legs, adj, A.id, B.id, directDist);
-      if (!path) continue;
-      let wSpeed = 0;
-      let wFare = 0;
-      let wSum = 0;
-      for (const key of path.legKeys) {
-        const li = legs.get(key)!;
-        wSpeed += (li.speedCapSum / li.capacity) * li.distance;
-        wFare += (li.fareCapSum / li.capacity) * li.distance;
-        wSum += li.distance;
-      }
-      const speedPremium = speedFareMultiplier(wSpeed / wSum, baseline);
-      const fareFactor = wFare / wSum;
-      const demandMult = Math.max(0.1, Math.min(1.5, 2 - fareFactor / speedPremium));
-      const demand =
-        pairDemand(A, B) *
-        distanceFactor(directDist) *
-        CONNECTION_PENALTY ** path.connections *
-        demandMult;
-      markets.push({
-        path,
-        demand,
-        fare: referenceFare(directDist) * fareFactor * priceLevel(g),
-      });
+      const mc = marketCalc(g, legBuild, A, B, baseline);
+      if (!mc) continue;
+      const share = competitiveShare(mc.weight, rivalWeight(g, al, A.id, B.id));
+      markets.push({ path: mc.path, demand: mc.demand * share, fare: mc.fare });
     }
   }
 
