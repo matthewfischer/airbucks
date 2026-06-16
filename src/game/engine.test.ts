@@ -60,6 +60,7 @@ import {
   rightsFee,
   routeDistance,
   routeLabel,
+  shortPlaneName,
   routeLegs,
   routeMaxLeg,
   planeResaleValue,
@@ -1499,5 +1500,23 @@ describe('multiple airlines', () => {
     expect(al.log.some((l) => /Rival Air won a slot/i.test(l))).toBe(false);
     // The player's own log only grew (if at all) from non-rival lines.
     expect(al.log.length).toBeGreaterThanOrEqual(before);
+  });
+});
+
+describe('shortPlaneName', () => {
+  it('drops the maker from a simple name', () => {
+    expect(shortPlaneName('Douglas DC-4')).toBe('DC-4');
+    expect(shortPlaneName('Embraer E175')).toBe('E175');
+    expect(shortPlaneName('Vickers Viscount 800')).toBe('Viscount 800');
+  });
+
+  it('handles two-word makers without eating the model', () => {
+    expect(shortPlaneName('McDonnell Douglas MD-80')).toBe('MD-80');
+    expect(shortPlaneName('De Havilland Dash 8 Q400')).toBe('Dash 8 Q400');
+  });
+
+  it('strips a trailing parenthetical and leaves unknown makers alone', () => {
+    expect(shortPlaneName('Embraer E175 (76 seats)')).toBe('E175');
+    expect(shortPlaneName('Concorde')).toBe('Concorde');
   });
 });

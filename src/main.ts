@@ -53,6 +53,7 @@ import {
   rightsFee,
   routeDistance,
   routeLabel,
+  shortPlaneName,
   routeMaxLeg,
   planeResaleValue,
   sellPlane,
@@ -1293,7 +1294,7 @@ function routesCard(): string {
         <div class="row"><strong>${routeLabel(game, r)}</strong>
           <span class="row" style="gap:6px"><span class="pill ${cls}">${res.profit >= 0 ? '+' : ''}${money(res.profit)}/wk</span>
           <button class="close-x" data-act="close-route" data-route="${r.id}" title="Close route">✕</button></span></div>
-        <div class="tiny">${dist.toLocaleString()} km · ${r.stops.length - 1} legs · ${n} plane${n === 1 ? '' : 's'} · ${Math.round(res.passengers).toLocaleString()} pax/wk · <span class="${loadCls}">${load}% load</span>${premTag}${
+        <div class="tiny">${dist.toLocaleString()} km · ${r.stops.length - 1} legs · ${n} plane${n === 1 ? '' : 's'}${n > 0 ? ` (${routePlanesLabel(r)})` : ''} · ${Math.round(res.passengers).toLocaleString()} pax/wk · <span class="${loadCls}">${load}% load</span>${premTag}${
           res.connectingPassengers >= 1
             ? ` · <span class="good">${Math.round(res.connectingPassengers).toLocaleString()} connecting</span>`
             : ''
@@ -1306,6 +1307,16 @@ function routesCard(): string {
     })
     .join('');
   return collapsibleCard('routes', `Routes (${pl().routes.length})`, rows);
+}
+
+/** What's flying a route: "DC-4" · "DC-4 ×2" · "DC-4, Viscount 800". */
+function routePlanesLabel(r: Route): string {
+  const counts = new Map<string, number>();
+  for (const p of planesOnRoute(pl(), r.id)) {
+    const name = shortPlaneName(typeById(game, p.typeId).name);
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts].map(([name, c]) => (c > 1 ? `${name} ×${c}` : name)).join(', ');
 }
 
 /** In-range types worth upgrading a route's fleet to — strictly pricier than what it flies. */
@@ -1333,9 +1344,17 @@ function fleetCard(): string {
         )
         .join('');
       const resale = planeResaleValue(game, plane);
+      // Upgrade is a route-wide swap; surface it here on an assigned plane whose
+      // route has a better type available, opening the same route-upgrade dialog.
+      const route = plane.routeId ? pl().routes.find((r) => r.id === plane.routeId) : undefined;
+      const canUpgrade = route && upgradeCandidates(route).length > 0;
       return `<div class="plane-line">
         <div class="row"><strong>${t.name.split(' (')[0]}</strong>
-          <button class="close-x" data-act="sell-plane" data-plane="${plane.id}" title="Sell for ${money(resale)}">Sell ${money(resale)}</button></div>
+          <span class="row" style="gap:6px">${
+            canUpgrade
+              ? `<button class="upgrade-btn" data-act="open-upgrade" data-route="${route!.id}" title="Upgrade this route's fleet">↑ Upgrade</button>`
+              : ''
+          }<button class="close-x" data-act="sell-plane" data-plane="${plane.id}" title="Sell for ${money(resale)}">Sell ${money(resale)}</button></span></div>
         <select style="width:100%;margin-top:4px" data-act="assign" data-plane="${plane.id}">${options}</select>
       </div>`;
     })

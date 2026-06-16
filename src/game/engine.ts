@@ -773,6 +773,19 @@ export function buyPlane(g: GameState, al: Airline, typeId: string): string | nu
 export const routeLabel = (g: GameState, route: Route): string =>
   route.stops.map((id) => airportById(g, id).code).join(' → ');
 
+// Aircraft makers, longest-first so "McDonnell Douglas" wins over "Douglas".
+const PLANE_MAKERS = [
+  'McDonnell Douglas', 'De Havilland', 'Douglas', 'Vickers', 'Lockheed',
+  'Bombardier', 'Embraer', 'Boeing', 'Airbus', 'Saab',
+];
+
+/** Model name without its maker or parenthetical: "Douglas DC-4" → "DC-4". */
+export function shortPlaneName(name: string): string {
+  const base = name.split(' (')[0];
+  for (const m of PLANE_MAKERS) if (base.startsWith(m + ' ')) return base.slice(m.length + 1);
+  return base;
+}
+
 // ---- Landing rights -------------------------------------------------------
 
 /** Network size — how many airports the airline holds rights at. */
