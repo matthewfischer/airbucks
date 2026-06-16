@@ -630,6 +630,28 @@ describe('weeklyTotals & advanceDay', () => {
     expect(al.cash).toBeCloseTo(before + net / 7, 5);
   });
 
+  it('reports required principal as a slice of the balance', () => {
+    al.debt = 10_000_000;
+    expect(weeklyTotals(g, al).principal).toBeCloseTo(10_000_000 * 0.1 * (7 / 365), 5);
+  });
+
+  it('keeps principal out of net (it is a balance-sheet move, not a cost)', () => {
+    al.debt = 10_000_000;
+    const w = weeklyTotals(g, al);
+    expect(w.net).toBeCloseTo(w.revenue - w.cost - w.interest + w.interestEarned, 5);
+  });
+
+  it('advanceDay retires principal from both cash and debt', () => {
+    al.rights = []; // isolate from gate fees
+    al.cash = 0; // isolate from deposit interest
+    al.debt = 10_000_000;
+    const w = weeklyTotals(g, al);
+    advanceDay(g);
+    expect(al.debt).toBeCloseTo(10_000_000 - w.principal / 7, 4);
+    // cash: net/7 (which already carries the interest) minus the principal paid.
+    expect(al.cash).toBeCloseTo(w.net / 7 - w.principal / 7, 2);
+  });
+
   it('weekNumber rolls over every 7 days', () => {
     g.day = 0;
     expect(weekNumber(g)).toBe(1);
@@ -705,23 +727,43 @@ describe('dynamic credit line & interest rate', () => {
     expect(interestRate(g, al)).toBeCloseTo(0.043, 5);
   });
 
-  it('the rate rises with leverage', () => {
-    al.debt = 5_000_000; // low leverage vs $40M starting cash
+  it('the rate rises with debt relative to revenue', () => {
+    al.cash = 1_000_000_000_000;
+    buyPlane(g, al, 'e195e2');
+    openRoute(g, al, ['clt', 'dca']);
+    assignPlane(g, al, al.fleet[0].id, lastRoute(g).id);
+    const annualRev = weeklyTotals(g, al).revenue * 52;
+    expect(annualRev).toBeGreaterThan(0);
+    al.debt = annualRev * 0.1; // owes a tenth of a year's revenue
     const low = interestRate(g, al);
-    al.debt = 35_000_000; // high leverage
+    al.debt = annualRev * 0.5; // owes half a year's revenue
     const high = interestRate(g, al);
     expect(high).toBeGreaterThan(low);
   });
 
-  it('an over-leveraged, loss-making airline pays more than a solvent one', () => {
-    // Solvent: lots of assets, little debt.
-    al.cash = 500_000_000;
-    al.debt = 5_000_000;
-    const solvent = interestRate(g, al);
-    // Stressed: buy a plane (now idle => operating loss), then drain cash & pile on debt.
+  it('a winner with a huge equity cushion still pays up on large debt', () => {
+    // The spread tracks debt vs. revenue, not debt vs. assets — so piling up
+    // equity doesn't make borrowing cheap once you owe a year+ of revenue.
+    al.cash = 1_000_000_000_000;
     buyPlane(g, al, 'e195e2');
-    al.cash = 1_000_000;
-    al.debt = 30_000_000;
+    openRoute(g, al, ['clt', 'dca']);
+    assignPlane(g, al, al.fleet[0].id, lastRoute(g).id);
+    const annualRev = weeklyTotals(g, al).revenue * 52;
+    al.debt = annualRev * 1.5; // owes more than a full year of revenue
+    expect(interestRate(g, al)).toBeCloseTo(fedFundsRate(g) + 0.12, 5); // max spread despite the cushion
+  });
+
+  it('an over-leveraged, loss-making airline pays more than a solvent one', () => {
+    al.cash = 1_000_000_000_000;
+    buyPlane(g, al, 'e195e2');
+    openRoute(g, al, ['clt', 'dca']);
+    assignPlane(g, al, al.fleet[0].id, lastRoute(g).id);
+    const annualRev = weeklyTotals(g, al).revenue * 52;
+    // Solvent: modest debt vs. revenue, profitable.
+    al.debt = annualRev * 0.3;
+    const solvent = interestRate(g, al);
+    // Stressed: same debt, but pile on idle planes to flip to an operating loss.
+    for (let i = 0; i < 60; i++) buyPlane(g, al, 'e195e2');
     const stressed = interestRate(g, al);
     expect(stressed).toBeGreaterThan(solvent);
     expect(stressed).toBeLessThanOrEqual(fedFundsRate(g) + 0.12); // clamped to the floating ceiling
@@ -902,17 +944,19 @@ describe('cost right-sizing & multi-plane capacity', () => {
 
 // Task #5
 describe('interest accrues through advanceDay', () => {
-  it('a week of days with debt drains cash by ~the weekly interest', () => {
+  it('a week of days with debt drains cash by interest plus required principal', () => {
     al.rights = []; // isolate debt interest from slot gate fees
     borrow(g, al, 10_000_000); // within the base credit line
-    al.cash = 0; // isolate debt interest from deposit interest on a cash balance
-    const weeklyInterest = weeklyTotals(g, al).interest;
+    al.cash = 0; // isolate debt service from deposit interest on a cash balance
+    const w = weeklyTotals(g, al);
     const dayBefore = g.day;
     for (let i = 0; i < 7; i++) advanceDay(g);
     expect(g.day).toBe(dayBefore + 7);
-    // Rate drifts slightly as cash falls, so allow a small tolerance.
-    expect(Math.abs(0 - al.cash - weeklyInterest)).toBeLessThan(100);
-    expect(al.debt).toBe(10_000_000); // principal unchanged
+    // Cash drains by both the interest and the mandatory principal payment.
+    // Both drift slightly as the balance falls, so allow a small tolerance.
+    expect(Math.abs(0 - al.cash - (w.interest + w.principal))).toBeLessThan(200);
+    // Debt is no longer interest-only — principal is actually retired.
+    expect(Math.abs(al.debt - (10_000_000 - w.principal))).toBeLessThan(100);
   });
 });
 

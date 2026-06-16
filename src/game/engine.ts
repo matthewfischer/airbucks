@@ -77,6 +77,16 @@ const LOAN_MAX_LTV = 0.6;
 // macro rate, so Volcker-era debt genuinely hurts and ZIRP-era debt is cheap.
 const LOAN_MAX_SPREAD = 0.12; // premium over fed funds at full leverage
 const LOAN_LOSS_PREMIUM = 0.02; // extra paid by a loss-making airline
+// The spread is keyed to debt vs. annual revenue (what you owe vs. what you
+// earn), not debt vs. assets. A winner with a huge equity cushion still pays up
+// when it owes a lot relative to its income — borrowing can't get cheaper just
+// because past profits piled up. Debt worth a full year of revenue pays the max.
+const LOAN_FULL_SPREAD_DTR = 1.0;
+// Required amortization: debt is not interest-only. Each year a slice of the
+// outstanding balance comes due as principal, paid from cash on top of interest,
+// so parking at the credit ceiling forever isn't free — a levered airline must
+// keep generating cash to retire it.
+const LOAN_AMORT_RATE = 0.1; // 10%/yr of the balance, due as principal
 // Deposit rate: what the bank pays on positive cash balances. A fixed spread
 // below the macro rate, so parking cash earns a little but never beats paying
 // down debt (and tracks the era — ~14% in 1981, ~0% in the 2010s).
@@ -1122,6 +1132,8 @@ export interface WeeklyTotals {
   pax: number;
   /** Debt interest paid this week (a cost). */
   interest: number;
+  /** Required principal repayment this week (a cash outflow, not a P&L cost). */
+  principal: number;
   /** Deposit interest earned on positive cash this week (income). */
   interestEarned: number;
   net: number;
@@ -1146,13 +1158,17 @@ export function weeklyTotals(g: GameState, al: Airline): WeeklyTotals {
   }
   cost += gateFeesWeekly(g, al);
   const interest = al.debt * interestRate(g, al) * (7 / 365);
+  const principal = al.debt * LOAN_AMORT_RATE * (7 / 365);
   const interestEarned = cashInterestWeekly(g, al);
   return {
     revenue: net.revenue,
     cost,
     pax: net.passengers,
     interest,
+    principal,
     interestEarned,
+    // Principal is a balance-sheet move (cash down, debt down), not a P&L cost,
+    // so it stays out of net — but it's a real cash draw, applied in advanceDay.
     net: net.revenue - cost - interest + interestEarned,
   };
 }
@@ -1167,6 +1183,12 @@ export function advanceDay(g: GameState): void {
   for (let i = 0; i < g.airlines.length; i++) {
     const al = g.airlines[i];
     al.cash += totals[i].net / 7;
+    // Required principal repayment: retire a slice of debt from cash each day,
+    // on top of the interest already in net. Can draw cash negative — that's the
+    // pressure that pushes an over-borrowed airline toward distress.
+    const principalDue = Math.min(totals[i].principal / 7, al.debt);
+    al.debt -= principalDue;
+    al.cash -= principalDue;
     // Clear any slot applications that have come through.
     if (al.negotiations.length) {
       const cleared = al.negotiations.filter((n) => g.day >= n.opensDay);
@@ -1384,9 +1406,12 @@ export function creditLimit(g: GameState, al: Airline): number {
  *  rises with leverage and losses. */
 export function interestRate(g: GameState, al: Airline): number {
   const base = fedFundsRate(g);
-  const assets = airlineAssets(g, al);
-  const leverage = assets > 0 ? al.debt / assets : al.debt > 0 ? 1 : 0;
-  let rate = base + LOAN_MAX_SPREAD * Math.min(1, leverage);
+  // Debt-to-revenue: what you owe vs. a year of what you earn. No revenue but
+  // carrying debt is the riskiest case, so it pays the full spread.
+  const annualRevenue = evaluateNetwork(g, al).revenue * 52;
+  const dtr =
+    annualRevenue > 0 ? al.debt / annualRevenue : al.debt > 0 ? LOAN_FULL_SPREAD_DTR : 0;
+  let rate = base + LOAN_MAX_SPREAD * Math.min(1, dtr / LOAN_FULL_SPREAD_DTR);
   if (operatingNet(g, al) < 0) rate += LOAN_LOSS_PREMIUM; // a loss-making airline pays more
   return Math.min(base + LOAN_MAX_SPREAD, rate); // ceiling floats with the era
 }
