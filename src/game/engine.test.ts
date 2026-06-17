@@ -632,7 +632,7 @@ describe('weeklyTotals & advanceDay', () => {
 
   it('reports required principal as a slice of the balance', () => {
     al.debt = 10_000_000;
-    expect(weeklyTotals(g, al).principal).toBeCloseTo(10_000_000 * 0.1 * (7 / 365), 5);
+    expect(weeklyTotals(g, al).principal).toBeCloseTo(10_000_000 * 0.2 * (7 / 365), 5);
   });
 
   it('keeps principal out of net (it is a balance-sheet move, not a cost)', () => {

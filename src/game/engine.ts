@@ -64,14 +64,14 @@ const PLANE_LIFETIME_KM = 5_000_000;
 // Dynamic credit line: a base startup line, plus a multiple of annualized
 // revenue (cash-flow capacity) and a fraction of fleet value (collateral).
 const LOAN_BASE_CREDIT = 15_000_000;
-const LOAN_REVENUE_MULTIPLE = 1.0;
+const LOAN_REVENUE_MULTIPLE = 0.7;
 const LOAN_COLLATERAL_FRACTION = 0.5;
 const LOAN_MAX_CREDIT = 400_000_000;
 // Loan-to-value ceiling: total debt can't exceed this fraction of assets
 // (cash + fleet), so every plane and buyout needs real equity behind it — no
 // infinite serial leverage. This gates *how much* you can owe; the spread above
 // gates *how expensive* it is.
-const LOAN_MAX_LTV = 0.6;
+const LOAN_MAX_LTV = 0.5;
 // Interest rate: the era's macro rate (fed funds) is the floor, plus a credit
 // spread that rises with leverage and losses. The ceiling floats with the
 // macro rate, so Volcker-era debt genuinely hurts and ZIRP-era debt is cheap.
@@ -86,7 +86,7 @@ const LOAN_FULL_SPREAD_DTR = 1.0;
 // outstanding balance comes due as principal, paid from cash on top of interest,
 // so parking at the credit ceiling forever isn't free — a levered airline must
 // keep generating cash to retire it.
-const LOAN_AMORT_RATE = 0.1; // 10%/yr of the balance, due as principal
+const LOAN_AMORT_RATE = 0.2; // 20%/yr of the balance, due as principal (5-year loans)
 // Deposit rate: what the bank pays on positive cash balances. A fixed spread
 // below the macro rate, so parking cash earns a little but never beats paying
 // down debt (and tracks the era — ~14% in 1981, ~0% in the 2010s).
