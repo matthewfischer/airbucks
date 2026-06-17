@@ -582,7 +582,7 @@ input[type='number'] { width: 84px; }
 .overlay-cancel {
   align-self: flex-end;
   font-size: 13px;
-  padding: 6px 16px;
+  padding: 7px 16px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--panel-2);
@@ -590,3 +590,6 @@ input[type='number'] { width: 84px; }
   cursor: pointer;
 }
 .overlay-cancel:hover { border-color: var(--accent); }
+
+/* Match the primary button to the cancel button inside overlays (body font is 18px). */
+.overlay-box button.primary { font-size: 13px; padding: 7px 16px; }
