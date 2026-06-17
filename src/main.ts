@@ -1123,6 +1123,11 @@ function renderHud() {
 // doesn't pop a card back open.
 const collapsedCards = new Set<string>();
 
+// How the Routes card is sorted. null key = creation order (the default until
+// the player clicks a header). Persists across re-renders.
+type RouteSortKey = 'name' | 'profit' | 'load';
+let routeSort: { key: RouteSortKey | null; dir: 'asc' | 'desc' } = { key: null, dir: 'desc' };
+
 /** A titled card whose body collapses when its header is clicked. */
 function collapsibleCard(id: string, title: string, body: string): string {
   const open = !collapsedCards.has(id);
@@ -1277,7 +1282,7 @@ function routesCard(): string {
   if (pl().routes.length === 0)
     return collapsibleCard('routes', 'Routes', '<div class="muted">No routes yet.</div>');
   const net = evaluateNetwork(game, pl());
-  const rows = pl().routes
+  const rows = sortedRoutes(net)
     .map((r) => {
       const dist = routeDistance(game, r);
       const res = net.routes.get(r.id)!;
@@ -1306,7 +1311,40 @@ function routesCard(): string {
       </div>`;
     })
     .join('');
-  return collapsibleCard('routes', `Routes (${pl().routes.length})`, rows);
+  return collapsibleCard('routes', `Routes (${pl().routes.length})`, routeSortBar() + rows);
+}
+
+/** Player routes ordered by the current sort (creation order until a header is clicked). */
+function sortedRoutes(net: ReturnType<typeof evaluateNetwork>): Route[] {
+  const routes = [...pl().routes];
+  if (routeSort.key === null) return routes;
+  const sign = routeSort.dir === 'asc' ? 1 : -1;
+  const key = (r: Route): number | string => {
+    const res = net.routes.get(r.id)!;
+    if (routeSort.key === 'name') return routeLabel(game, r).toLowerCase();
+    if (routeSort.key === 'load') return res.loadFactor;
+    return res.profit; // 'profit'
+  };
+  return routes.sort((a, b) => {
+    const ka = key(a);
+    const kb = key(b);
+    if (ka < kb) return -sign;
+    if (ka > kb) return sign;
+    return 0;
+  });
+}
+
+/** Clickable sort headers for the Routes card. */
+function routeSortBar(): string {
+  const labels: Record<RouteSortKey, string> = { name: 'Name', profit: 'Profit', load: 'Load' };
+  const btns = (['name', 'profit', 'load'] as RouteSortKey[])
+    .map((k) => {
+      const active = routeSort.key === k;
+      const arrow = active ? (routeSort.dir === 'asc' ? ' ▴' : ' ▾') : '';
+      return `<button class="sort-btn${active ? ' active' : ''}" data-act="sort-routes" data-key="${k}">${labels[k]}${arrow}</button>`;
+    })
+    .join('');
+  return `<div class="route-sort tiny muted">Sort: ${btns}</div>`;
 }
 
 /** What's flying a route: "DC-4" · "DC-4 ×2" · "DC-4, Viscount 800". */
@@ -1427,6 +1465,17 @@ sidebar.addEventListener('click', (e) => {
       const id = btn.dataset.card!;
       if (collapsedCards.has(id)) collapsedCards.delete(id);
       else collapsedCards.add(id);
+      renderSidebar();
+      break;
+    }
+    case 'sort-routes': {
+      const key = btn.dataset.key as RouteSortKey;
+      if (routeSort.key === key) {
+        routeSort.dir = routeSort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        // Sensible default direction per key: A→Z for names, biggest-first for numbers.
+        routeSort = { key, dir: key === 'name' ? 'asc' : 'desc' };
+      }
       renderSidebar();
       break;
     }

@@ -362,6 +362,24 @@ input[type='number'] { width: 84px; }
 }
 .upgrade-btn:hover { border-color: var(--accent); background: #1e3d5e; }
 
+.route-sort {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.sort-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--muted);
+  cursor: pointer;
+}
+.sort-btn:hover { color: var(--ink); border-color: var(--accent); }
+.sort-btn.active { color: var(--accent); border-color: var(--accent); }
+
 #upgrade-list {
   overflow-y: auto;
   display: flex;
