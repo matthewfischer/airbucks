@@ -441,26 +441,42 @@ function slotActions(g: GameState, al: Airline, p: Personality): Action[] {
   return actions;
 }
 
+/** Floor-ignoring reach only fires while the network is this small — enough to
+ *  escape an isolated home, not so much that an airline sprawls a thin network
+ *  that never clears the profit floor. Real growth comes from profitable moves. */
+const REACH_MAX_CITIES = 8;
+
 /**
- * Bootstrap: an airline with only its home and nothing pending must land a
- * second city before it can fly anything. From an isolated home (e.g. ABQ)
- * every reachable market can sit below the profit floor, freezing a cautious
- * AI forever — so here we ignore that floor and grab the best reachable,
- * unlocked, affordable slot (closest, then biggest). Its first slot is granted
- * instantly, so this unsticks the airline in a single pass.
+ * Reach: grab the best reachable, unlocked, affordable slot (closest to a held
+ * city, then biggest), *ignoring the profit floor*. From an isolated home (e.g.
+ * ABQ, or PTY worldwide) every reachable market can sit below the floor — a
+ * cold-start airline never gets a second city, and a small one boxed in past
+ * its first few freezes for the rest of the game. Distance is measured from the
+ * nearest city already held, so an airline grows outward from its network, not
+ * just its hub. Only fires while still small (and called only when no profitable
+ * move exists), so it unsticks without turning a cautious AI into a sprawler.
  */
-function bootstrapActions(g: GameState, al: Airline, p: Personality): Action[] {
-  if (al.rights.length !== 1 || al.negotiations.length > 0) return [];
+function reachActions(g: GameState, al: Airline, p: Personality): Action[] {
+  if (al.negotiations.length > 0 || al.rights.length > REACH_MAX_CITIES) return [];
   const budget = spendable(g, al, p);
-  const home = airportById(g, al.homeId);
   let target: Airport | null = null;
   let bestScore = -Infinity;
   for (const ap of g.airports) {
     if (!rightsAvailable(g, al, ap.id)) continue;
     if (rightsFee(g, ap) > budget) continue;
-    const d = distanceKm(ap, home);
-    if (!bestTypeFor(g, al, ap, home, d, budget)) continue; // no affordable plane can reach it
-    const s = (ap.size * home.size) / Math.max(1, d); // closer & bigger = better
+    // Nearest held city this slot would connect to, and a plane that reaches it.
+    let nearest = Infinity;
+    let from: Airport | null = null;
+    for (const id of al.rights) {
+      const held = airportById(g, id);
+      const d = distanceKm(ap, held);
+      if (d < nearest) {
+        nearest = d;
+        from = held;
+      }
+    }
+    if (!from || !bestTypeFor(g, al, ap, from, nearest, budget)) continue;
+    const s = (ap.size * from.size) / Math.max(1, nearest); // closer & bigger = better
     if (s > bestScore) {
       bestScore = s;
       target = ap;
@@ -565,17 +581,26 @@ function decide(g: GameState, al: Airline, p: Personality): void {
   // otherwise switch to stopping the bleed.
   const expanding =
     w.net >= 0 || spendable(g, al, p) > -w.net * p.runwayWeeks;
-  const actions = expanding
-    ? [
-        ...acquisitionActions(g, al, p),
-        ...bootstrapActions(g, al, p),
-        ...routeActions(g, al, p),
-        ...capacityActions(g, al, p),
-        ...upgradeActions(g, al, p),
-        ...slotActions(g, al, p),
-        ...repayActions(g, al, p),
-      ]
-    : [...retrenchActions(g, al), ...repayActions(g, al, p)];
+  let actions: Action[];
+  if (expanding) {
+    const growth = [
+      ...routeActions(g, al, p),
+      ...capacityActions(g, al, p),
+      ...upgradeActions(g, al, p),
+      ...slotActions(g, al, p),
+    ];
+    actions = [...acquisitionActions(g, al, p), ...growth, ...repayActions(g, al, p)];
+    // No profitable way to grow. A cold-start or small, boxed-in airline reaches
+    // for the best city anyway (ignoring the floor) to escape an isolated home;
+    // one that's already bleeding stops the bleed instead of idling in the red.
+    if (growth.length === 0) {
+      actions.push(
+        ...(w.net < 0 && al.rights.length > 1 ? retrenchActions(g, al) : reachActions(g, al, p)),
+      );
+    }
+  } else {
+    actions = [...retrenchActions(g, al), ...repayActions(g, al, p)];
+  }
   if (actions.length === 0) return;
   let best: Action | null = null;
   let bestScore = -Infinity;

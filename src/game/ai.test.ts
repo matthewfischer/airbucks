@@ -110,6 +110,19 @@ describe('AI decisions', () => {
     expect(ai.routes.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('a small airline boxed in by an isolated home keeps growing, not freezing', () => {
+    // Regression: a hub-builder at PTY (worldwide map) reached ~3 cities, then
+    // every further market sat below the profit floor — so it froze there for
+    // 20 years while rivals grew into the billions. Floor-ignoring reach must
+    // keep a small, boxed-in airline expanding past that wall.
+    const g = newGame('crw', 5);
+    const ai = newAirline('ai-x', 'Boxed Air', '#ffffff', 'pty');
+    ai.ai = { personality: 'hub-builder', nextDecisionDay: 0 };
+    g.airlines.push(ai);
+    run(g, 365 * 10);
+    expect(ai.rights.length).toBeGreaterThan(4);
+  });
+
   it('AIs keep weekly finance history', () => {
     const g = gameWith(1);
     run(g, 70);
