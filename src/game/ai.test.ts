@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { GameState } from './types';
 import {
   addAiAirlines,
-  AI_HOME_POOL,
   MAX_AI_AIRLINES,
   PERSONALITIES,
   runAI,
 } from './ai';
+import { continentOf } from './data';
 import {
   advanceDay,
   airportById,
@@ -18,7 +18,6 @@ import {
   player,
 } from './engine';
 import { serialize } from './persist';
-import { distanceKm } from './geo';
 
 /** A seeded game with `n` AI airlines, fresh from setup. */
 function gameWith(n: number, seed = 7): GameState {
@@ -51,26 +50,37 @@ describe('addAiAirlines', () => {
     expect(gameWith(99).airlines).toHaveLength(1 + MAX_AI_AIRLINES);
   });
 
-  it('draws homes from the NA pool, never near the player, no duplicates', () => {
+  it('homes are distinct size-3/4 secondary hubs, never the player home', () => {
     const g = gameWith(8);
     const homes = g.airlines.slice(1).map((al) => al.homeId);
     expect(new Set(homes).size).toBe(homes.length);
-    const playerHome = airportById(g, 'crw');
     for (const id of homes) {
-      expect(AI_HOME_POOL).toContain(id);
-      expect(distanceKm(airportById(g, id), playerHome)).toBeGreaterThanOrEqual(500);
+      expect(id).not.toBe('crw');
+      const ap = airportById(g, id);
+      expect(ap.size, `${id} size`).toBeGreaterThanOrEqual(3);
+      expect(ap.size, `${id} size`).toBeLessThanOrEqual(4);
     }
   });
 
-  it('every home in the pool exists and is a size-3/4 secondary hub (not a major)', () => {
-    const g = newGame('crw');
-    expect(AI_HOME_POOL.length).toBeGreaterThanOrEqual(MAX_AI_AIRLINES);
-    for (const id of AI_HOME_POOL) {
-      const ap = g.airports.find((a) => a.id === id);
-      expect(ap, id).toBeDefined();
-      expect(ap!.size, `${id} size`).toBeLessThanOrEqual(4);
-      expect(ap!.size, `${id} size`).toBeGreaterThanOrEqual(3);
-    }
+  it('biases AI homes toward the player’s region', () => {
+    // Across many seeds, most rivals share the player's continent — a CRW start
+    // draws mostly North American rivals, a Cape Town start mostly African ones.
+    const regionShare = (home: string) => {
+      const want = continentOf(home);
+      let hit = 0, total = 0;
+      for (let seed = 0; seed < 60; seed++) {
+        const g = newGame(home, seed);
+        addAiAirlines(g, MAX_AI_AIRLINES);
+        for (const al of g.airlines.slice(1)) {
+          total++;
+          if (continentOf(al.homeId) === want) hit++;
+        }
+      }
+      return hit / total;
+    };
+    expect(regionShare('crw')).toBeGreaterThan(0.9); // dense region: all-local
+    expect(regionShare('cpt')).toBeGreaterThan(0.9); // Africa now has enough hubs
+    expect(regionShare('zrh')).toBeGreaterThan(0.8); // Europe
   });
 
   it('gives each AI a distinct name and color', () => {

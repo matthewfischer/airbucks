@@ -11,7 +11,28 @@ save format v6). AI behavior itself is not built yet.
 heuristics, not ML. Each AI gets a generated name, a map color, and a home
 airport drawn from cities the player didn't pick.
 
-## Home airports: North America only
+## Home airports: regional, by economic merit
+
+Revised 2026-06-18: AI homes are no longer a fixed North-American pool. The
+candidate set is now the size-3/4 secondary hubs **nearest the player's start**
+(`pickHomes` in `ai.ts`), so rivals are regional wherever you begin — a Cape
+Town start faces African rivals, a Frankfurt start European ones — and a thin
+region naturally borrows from the next continent (a Perth start reaches into SE
+Asia/the Indian-Ocean rim). Within that pool each hub is drawn weighted by its
+**appeal as a base** (`hubAppeal`: own market × distance-discounted size of
+every city within early reach, the same `pairDemand × distanceFactor` math the
+engine rewards) and a mild proximity tilt. There is no spacing rule: rivals
+settle where the money is, free to cluster near the player or each other. This
+fixed two faults of the old maximin pool — it always converged on the same five
+geographic corners (only ~21 distinct home-sets in 200 games; now ~210), and it
+stranded any non-NA player among transatlantic-only rivals.
+
+Note: South America and Oceania have very few size-3/4 hubs (their big cities
+are size-5/6 majors, excluded from the AI tier), so starts there draw rivals
+from the nearest hubs across an ocean. Adding secondary hubs in those regions
+(as was done for southern Africa) would tighten their regionality.
+
+### History
 
 Decided 2026-06-11. The map is deliberately player-centric — a dense taper
 of small cheap cities around the Appalachian core, but abroad only the

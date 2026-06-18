@@ -77,30 +77,22 @@ const personalityById = new Map(PERSONALITIES.map((p) => [p.id, p]));
 
 // ---- Airline generation -----------------------------------------------------
 
-// North American size-3/4 secondary hubs AIs may call home — close to the
-// player's own starting tier, so an AI must climb the same reputation ladder
-// to reach the size-5/6 majors (ATL, ORD, JFK, LAX…) rather than spawning on
-// one. Spread across regions (West, Texas, Midwest, South, Canada, Mexico,
-// Caribbean) so up to eight AIs don't pile into one corner. The Appalachian
-// core (PIT/CVG/CMH/CLE/SDF) is left out — that's the player's home ladder.
+// AIs call a size-3/4 secondary hub home — the player's own starting tier, so a
+// rival must climb the same reputation ladder to the size-5/6 majors (ATL, LHR,
+// NRT…) rather than spawning on one. The specific hubs aren't fixed: they're
+// drawn by economic merit, biased toward the player's region (see pickHomes), so
+// a Cape Town or Frankfurt start faces local rivals, not a wall of US airlines.
 // See docs/ai-players.md.
-export const AI_HOME_POOL = [
-  // West & Mountain
-  'pdx', 'slc', 'den', 'san', 'smf', 'abq',
-  // Texas & South-central
-  'aus', 'sat',
-  // Midwest
-  'stl', 'mci', 'mke', 'ind', 'dtw',
-  // South & Southeast
-  'bna', 'mem', 'msy', 'jax', 'tpa',
-  // Canada
-  'yyc', 'yeg', 'yow',
-  // Mexico & Caribbean
-  'gdl', 'mty', 'sju', 'pty',
-];
+const AI_HOME_MIN_SIZE = 3;
+const AI_HOME_MAX_SIZE = 4;
 
-/** Don't seed an AI this close to the player's home base, in km. */
-const MIN_HOME_DISTANCE_KM = 500;
+/** Cap on how far a market counts toward a hub's appeal — early long-prop reach. */
+const HOME_REACH_KM = 4000;
+
+/** Distance from the player at which a hub's draw weight halves, in km. Tilts
+ *  the pick toward closer hubs so a thin-region pool (Perth, Santiago) still
+ *  favors its nearest neighbors over far, denser ones. */
+const REGION_SCALE_KM = 3000;
 
 const AI_NAMES = [
   'Transcontinental Airways', 'Pacific Crown', 'Lone Star Air', 'Lakeshore Airways',
@@ -126,33 +118,51 @@ function shuffle<T>(g: GameState, items: T[]): T[] {
 }
 
 /**
- * Pick `count` AI home airports: drawn from the pool, never the player's home
- * or anywhere near it, spread apart greedily so eight AIs don't pile into one
- * corner of the map.
+ * Economic merit of a hub as a base: its own market weight times the
+ * distance-discounted size of every city within early-aircraft reach — the
+ * same demand math the engine rewards (pairDemand × distanceFactor). A big hub
+ * ringed by sizable cities at flyable distance scores high; one stranded among
+ * distant or tiny neighbors scores low.
+ */
+function hubAppeal(g: GameState, home: Airport): number {
+  let sum = 0;
+  for (const b of g.airports) {
+    if (b.id === home.id) continue;
+    const d = distanceKm(home, b);
+    if (d > HOME_REACH_KM) continue;
+    sum += b.size * distanceFactor(d);
+  }
+  return home.size * sum;
+}
+
+/**
+ * Pick `count` AI home airports by economic merit, within the player's region.
+ * The candidate pool is the secondary hubs (size 3/4) nearest the player —
+ * which keeps rivals regional wherever you start, and naturally borrows from
+ * the next continent when your own is thin (a Perth start reaches into SE Asia).
+ * Within that pool each hub is drawn weighted by its appeal as a base
+ * (hubAppeal), with no spacing rule: rivals settle where the money is, free to
+ * cluster near the player or each other when that pays. Drawn without
+ * replacement (deterministically, over the game RNG) so no two share a home.
  */
 function pickHomes(g: GameState, count: number): Airport[] {
   if (count <= 0) return [];
   const playerHome = airportById(g, g.airlines[0].homeId);
-  const pool = AI_HOME_POOL
-    .map((id) => airportById(g, id))
-    .filter((a) => a.id !== playerHome.id && distanceKm(a, playerHome) >= MIN_HOME_DISTANCE_KM);
+  const remaining = g.airports
+    .filter((a) => a.id !== playerHome.id && a.size >= AI_HOME_MIN_SIZE && a.size <= AI_HOME_MAX_SIZE)
+    .sort((a, b) => distanceKm(a, playerHome) - distanceKm(b, playerHome))
+    .slice(0, Math.max(10, count * 3));
+  const weight = new Map(remaining.map((a) => {
+    const proximity = 1 / (1 + (distanceKm(a, playerHome) / REGION_SCALE_KM) ** 2);
+    return [a.id, hubAppeal(g, a) * proximity];
+  }));
   const picked: Airport[] = [];
-  // Random first pick, then maximize the minimum distance to everything chosen.
-  const first = pool[Math.floor(rand(g) * pool.length)];
-  if (first) picked.push(first);
-  while (picked.length < count && picked.length < pool.length) {
-    let best: Airport | null = null;
-    let bestD = -1;
-    for (const a of pool) {
-      if (picked.includes(a)) continue;
-      const d = Math.min(...picked.map((p) => distanceKm(a, p)));
-      if (d > bestD) {
-        bestD = d;
-        best = a;
-      }
-    }
-    if (!best) break;
-    picked.push(best);
+  while (picked.length < count && remaining.length > 0) {
+    const total = remaining.reduce((s, a) => s + weight.get(a.id)!, 0);
+    let r = rand(g) * total;
+    let i = 0;
+    while (i < remaining.length - 1 && (r -= weight.get(remaining[i].id)!) > 0) i++;
+    picked.push(remaining.splice(i, 1)[0]);
   }
   return picked;
 }
