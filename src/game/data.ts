@@ -218,6 +218,13 @@ export const AIRPORTS: Airport[] = [
   // ---- Asia -------------------------------------------------------------
   { id: 'del', code: 'DEL', city: 'Delhi', lat: 28.57, lon: 77.1, size: 6, population: 32_000_000 },
   { id: 'bom', code: 'BOM', city: 'Mumbai', lat: 19.09, lon: 72.87, size: 6, population: 21_000_000 },
+  // India beyond the two megacities — a southern/eastern secondary tier.
+  { id: 'blr', code: 'BLR', city: 'Bengaluru', lat: 13.2, lon: 77.71, size: 5, population: 13_600_000 },
+  { id: 'ccu', code: 'CCU', city: 'Kolkata', lat: 22.65, lon: 88.45, size: 5, population: 15_000_000 },
+  { id: 'maa', code: 'MAA', city: 'Chennai', lat: 12.99, lon: 80.17, size: 4, population: 11_500_000 },
+  { id: 'hyd', code: 'HYD', city: 'Hyderabad', lat: 17.24, lon: 78.43, size: 4, population: 10_000_000 },
+  { id: 'amd', code: 'AMD', city: 'Ahmedabad', lat: 23.07, lon: 72.63, size: 3, population: 8_500_000 },
+  { id: 'cok', code: 'COK', city: 'Kochi', lat: 10.15, lon: 76.4, size: 3, population: 2_300_000 },
   { id: 'bkk', code: 'BKK', city: 'Bangkok', lat: 13.69, lon: 100.75, size: 5, population: 10_700_000 },
   { id: 'sin', code: 'SIN', city: 'Singapore', lat: 1.36, lon: 103.99, size: 5, population: 5_900_000 },
   { id: 'kul', code: 'KUL', city: 'Kuala Lumpur', lat: 2.74, lon: 101.71, size: 4, population: 8_200_000 },
@@ -225,6 +232,12 @@ export const AIRPORTS: Airport[] = [
   { id: 'hkg', code: 'HKG', city: 'Hong Kong', lat: 22.31, lon: 113.91, size: 5, population: 7_500_000 },
   { id: 'pek', code: 'PEK', city: 'Beijing', lat: 40.08, lon: 116.58, size: 6, population: 22_000_000 },
   { id: 'pvg', code: 'PVG', city: 'Shanghai', lat: 31.14, lon: 121.81, size: 6, population: 29_000_000 },
+  // China beyond Beijing/Shanghai — the southern major plus interior hubs.
+  { id: 'can', code: 'CAN', city: 'Guangzhou', lat: 23.39, lon: 113.3, size: 5, population: 19_000_000 },
+  { id: 'ctu', code: 'CTU', city: 'Chengdu', lat: 30.58, lon: 103.95, size: 4, population: 16_000_000 },
+  { id: 'xiy', code: 'XIY', city: "Xi'an", lat: 34.45, lon: 108.75, size: 4, population: 12_000_000 },
+  { id: 'kmg', code: 'KMG', city: 'Kunming', lat: 25.1, lon: 102.93, size: 3, population: 8_000_000 },
+  { id: 'csx', code: 'CSX', city: 'Changsha', lat: 28.19, lon: 113.22, size: 3, population: 8_000_000 },
   { id: 'icn', code: 'ICN', city: 'Seoul', lat: 37.46, lon: 126.44, size: 5, population: 25_500_000 },
   { id: 'nrt', code: 'NRT', city: 'Tokyo', lat: 35.77, lon: 140.39, size: 6, population: 37_000_000 },
   { id: 'mnl', code: 'MNL', city: 'Manila', lat: 14.51, lon: 121.02, size: 5, population: 14_400_000 },
@@ -236,6 +249,12 @@ export const AIRPORTS: Airport[] = [
   { id: 'bne', code: 'BNE', city: 'Brisbane', lat: -27.38, lon: 153.12, size: 4, population: 2_600_000 },
   { id: 'per', code: 'PER', city: 'Perth', lat: -31.94, lon: 115.97, size: 3, population: 2_100_000 },
   { id: 'akl', code: 'AKL', city: 'Auckland', lat: -37.01, lon: 174.79, size: 4, population: 1_700_000 },
+  // Australia/NZ secondaries — Adelaide anchors an AI tier; the rest are short
+  // domestic hops (Sydney–Canberra, Brisbane–Gold Coast, Auckland–Christchurch).
+  { id: 'adl', code: 'ADL', city: 'Adelaide', lat: -34.95, lon: 138.53, size: 3, population: 1_400_000 },
+  { id: 'chc', code: 'CHC', city: 'Christchurch', lat: -43.49, lon: 172.53, size: 2, population: 650_000 },
+  { id: 'cbr', code: 'CBR', city: 'Canberra', lat: -35.31, lon: 149.2, size: 2, population: 470_000 },
+  { id: 'cns', code: 'CNS', city: 'Cairns', lat: -16.89, lon: 145.75, size: 1, population: 250_000 },
 
   // ---- Pacific bridges --------------------------------------------------
   // Mid-ocean refuel stops between Hawaii and Asia/Oceania for short-range craft.
@@ -254,6 +273,14 @@ export const AIRPORTS: Airport[] = [
   { id: 'gig', code: 'GIG', city: 'Rio de Janeiro', lat: -22.81, lon: -43.25, size: 5, population: 13_500_000 },
   { id: 'scl', code: 'SCL', city: 'Santiago', lat: -33.39, lon: -70.79, size: 4, population: 7_100_000 },
   { id: 'eze', code: 'EZE', city: 'Buenos Aires', lat: -34.82, lon: -58.54, size: 5, population: 15_400_000 },
+  // South American secondaries — the continent's big cities are mostly majors,
+  // so these size-3/4 hubs give a regional AI tier and inland/coastal hops.
+  { id: 'bsb', code: 'BSB', city: 'Brasília', lat: -15.87, lon: -47.92, size: 4, population: 4_600_000 },
+  { id: 'poa', code: 'POA', city: 'Porto Alegre', lat: -29.99, lon: -51.17, size: 3, population: 4_300_000 },
+  { id: 'ssa', code: 'SSA', city: 'Salvador', lat: -12.91, lon: -38.33, size: 3, population: 3_900_000 },
+  { id: 'clo', code: 'CLO', city: 'Cali', lat: 3.54, lon: -76.38, size: 3, population: 2_800_000 },
+  { id: 'gye', code: 'GYE', city: 'Guayaquil', lat: -2.16, lon: -79.88, size: 3, population: 2_700_000 },
+  { id: 'mvd', code: 'MVD', city: 'Montevideo', lat: -34.84, lon: -56.03, size: 3, population: 1_900_000 },
 ];
 
 // Overseas markets by continent (the Middle East is folded into Asia). Anything
@@ -266,12 +293,14 @@ export const CONTINENT_AIRPORTS: Record<Exclude<Continent, 'North America'>, str
     'bio', 'tls', 'nte', 'haj', 'nue', 'gdn', 'krk', 'blq', 'skg', 'bgo', 'got',
     'tll', 'rix'],
   Asia: ['dxb', 'doh', 'tlv', 'ruh', 'thr', 'del', 'bom', 'bkk', 'sin', 'kul',
-    'cgk', 'hkg', 'pek', 'pvg', 'icn', 'nrt', 'mnl', 'tpe'],
+    'cgk', 'hkg', 'pek', 'pvg', 'icn', 'nrt', 'mnl', 'tpe', 'blr', 'ccu', 'maa',
+    'hyd', 'amd', 'cok', 'can', 'ctu', 'xiy', 'kmg', 'csx'],
   Africa: ['cai', 'cmn', 'los', 'nbo', 'jnb', 'cpt', 'alg', 'tun', 'dss', 'acc',
     'abj', 'abv', 'krt', 'add', 'ebb', 'dar', 'fih', 'lad', 'hre', 'mpm',
     'lun', 'dur', 'plz', 'gbe', 'vfa', 'grj'],
-  Oceania: ['syd', 'mel', 'bne', 'per', 'akl'],
-  'South America': ['bog', 'ccs', 'uio', 'lim', 'gru', 'gig', 'scl', 'eze'],
+  Oceania: ['syd', 'mel', 'bne', 'per', 'akl', 'adl', 'chc', 'cbr', 'cns'],
+  'South America': ['bog', 'ccs', 'uio', 'lim', 'gru', 'gig', 'scl', 'eze',
+    'bsb', 'poa', 'ssa', 'clo', 'gye', 'mvd'],
 };
 
 const CONTINENT_BY_ID = new Map<string, Continent>();
