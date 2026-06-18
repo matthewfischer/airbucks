@@ -206,6 +206,14 @@ export const AIRPORTS: Airport[] = [
   { id: 'lad', code: 'LAD', city: 'Luanda', lat: -8.86, lon: 13.23, size: 4, population: 8_500_000 },
   { id: 'hre', code: 'HRE', city: 'Harare', lat: -17.93, lon: 31.1, size: 3, population: 2_400_000 },
   { id: 'mpm', code: 'MPM', city: 'Maputo', lat: -25.92, lon: 32.57, size: 3, population: 2_700_000 },
+  // Southern African regionals — short hops so JNB/CPT/HRE aren't stranded
+  // between far-apart metros. George gives Cape Town a sub-350km leg.
+  { id: 'lun', code: 'LUN', city: 'Lusaka', lat: -15.33, lon: 28.45, size: 3, population: 3_000_000 },
+  { id: 'dur', code: 'DUR', city: 'Durban', lat: -29.61, lon: 31.12, size: 3, population: 3_400_000 },
+  { id: 'plz', code: 'PLZ', city: 'Gqeberha (Port Elizabeth)', lat: -33.98, lon: 25.61, size: 2, population: 1_300_000 },
+  { id: 'gbe', code: 'GBE', city: 'Gaborone', lat: -24.55, lon: 25.92, size: 2, population: 420_000 },
+  { id: 'vfa', code: 'VFA', city: 'Victoria Falls', lat: -18.1, lon: 25.84, size: 1, population: 35_000 },
+  { id: 'grj', code: 'GRJ', city: 'George', lat: -34.0, lon: 22.38, size: 1, population: 200_000 },
 
   // ---- Asia -------------------------------------------------------------
   { id: 'del', code: 'DEL', city: 'Delhi', lat: 28.57, lon: 77.1, size: 6, population: 32_000_000 },
@@ -260,7 +268,8 @@ export const CONTINENT_AIRPORTS: Record<Exclude<Continent, 'North America'>, str
   Asia: ['dxb', 'doh', 'tlv', 'ruh', 'thr', 'del', 'bom', 'bkk', 'sin', 'kul',
     'cgk', 'hkg', 'pek', 'pvg', 'icn', 'nrt', 'mnl', 'tpe'],
   Africa: ['cai', 'cmn', 'los', 'nbo', 'jnb', 'cpt', 'alg', 'tun', 'dss', 'acc',
-    'abj', 'abv', 'krt', 'add', 'ebb', 'dar', 'fih', 'lad', 'hre', 'mpm'],
+    'abj', 'abv', 'krt', 'add', 'ebb', 'dar', 'fih', 'lad', 'hre', 'mpm',
+    'lun', 'dur', 'plz', 'gbe', 'vfa', 'grj'],
   Oceania: ['syd', 'mel', 'bne', 'per', 'akl'],
   'South America': ['bog', 'ccs', 'uio', 'lim', 'gru', 'gig', 'scl', 'eze'],
 };

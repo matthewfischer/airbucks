@@ -52,6 +52,7 @@ const ARTICLE = {
   gum: 'Hagåtña, Guam',
   led: 'Saint Petersburg',
   fao: 'Faro, Portugal', // plain "Faro" is a disambiguation page
+  grj: 'George, Western Cape', // plain "George" resolves to the writer George Sand
 };
 
 // Reject candidates whose title smells like a non-scenic asset.
