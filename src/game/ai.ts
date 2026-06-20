@@ -1,6 +1,6 @@
 import type { AircraftType, Airline, Airport, GameState } from './types';
 import { distanceKm } from './geo';
-import { acquire, updateDistress } from './distress';
+import { acquire, buyoutPrice, updateDistress } from './distress';
 import {
   airportById,
   assignPlane,
@@ -505,21 +505,42 @@ function reachActions(g: GameState, al: Airline, p: Personality): Action[] {
   ];
 }
 
+/** How much more an AI wants a distressed bargain than a full-price going
+ *  concern — it's cheap and clears a failing rival's slots before someone else
+ *  grabs them. */
+const DISTRESS_PREFERENCE = 1.5;
+
 /**
- * Candidate: buy a distressed rival off the block. Only a healthy airline with
- * the credit headroom to shoulder the target's debt will bid — so consolidation
- * flows from the strong to the weak, and overexpanders become the consolidators.
+ * Candidate: buy out a rival — a distressed one off the block at the fire-sale
+ * ask, or a healthy going concern at market price. Only a solvent airline with
+ * the credit headroom to carry the combined debt (its own, the target's, and
+ * whatever it borrows for the sticker) will bid, so consolidation flows from the
+ * strong to the weak and a runaway leader becomes a target. The sticker is
+ * financed with cash and debt alike, just as the player's is. The human
+ * (airlines[0]) is never acquirable.
  */
 export function acquisitionActions(g: GameState, al: Airline, p: Personality): Action[] {
   const actions: Action[] = [];
+  if (equity(g, al) <= 0) return actions; // only solvent airlines acquire
+  const appetite = p.debtAppetite * creditLimit(g, al);
   for (const target of g.airlines) {
-    if (target === al || !target.forSale) continue;
-    if (al.cash < target.forSale.price) continue; // sticker paid from cash
-    if (equity(g, al) <= 0) continue; // only solvent airlines acquire
-    if (target.debt > p.debtAppetite * creditLimit(g, al)) continue; // can carry the debt
-    // Strategic value: the franchise's revenue base (its network reach).
-    const score = evaluateNetwork(g, target).revenue;
-    actions.push({ score, run: () => acquire(g, al, target) });
+    if (target === al || !target.ai) continue; // never the human; not self
+    const price = buyoutPrice(g, target);
+    // Borrowing the sticker would need beyond cash on hand (the target's cash
+    // comes in too). Refuse if the resulting debt load exceeds the appetite.
+    const borrowNeed = Math.max(0, price - al.cash - target.cash);
+    if (al.debt + target.debt + borrowNeed > appetite) continue;
+    if (spendable(g, al, p) + target.cash < price) continue; // can finance it at all
+    // Strategic value: the franchise's revenue reach, prizing a fire-sale.
+    const score =
+      evaluateNetwork(g, target).revenue * (target.forSale ? DISTRESS_PREFERENCE : 1);
+    actions.push({
+      score,
+      run: () => {
+        if (coverCost(g, al, p, Math.max(0, buyoutPrice(g, target) - target.cash)))
+          acquire(g, al, target);
+      },
+    });
   }
   return actions;
 }

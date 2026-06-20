@@ -1158,8 +1158,15 @@ export function advanceDay(g: GameState): void {
       const cleared = al.negotiations.filter((n) => g.day >= n.opensDay);
       const isPlayer = al === g.airlines[0];
       for (const n of cleared) {
-        grantRights(al, n.airportId);
         const a = airportById(g, n.airportId);
+        // Re-check the pool: a rival may have filled the last gate while this
+        // application was pending. The loser of the race gets its fee back.
+        if (!holdsRights(al, n.airportId) && airportSlotsUsed(g, n.airportId) >= airportSlotsTotal(a)) {
+          al.cash += n.fee;
+          al.log.unshift(`Slot at ${a.code} (${a.city}) fell through — the gate filled first. Fee refunded.`);
+          continue;
+        }
+        grantRights(al, n.airportId);
         al.log.unshift(`Slot at ${a.code} (${a.city}) is open — you're now flying there.`);
         // A rival landing a slot at a city you also hold is worth a heads-up.
         if (!isPlayer && g.airlines[0].rights.includes(n.airportId))

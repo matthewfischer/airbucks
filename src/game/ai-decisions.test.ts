@@ -41,8 +41,39 @@ describe('acquisitionActions', () => {
     expect(al.acquisitions).toBeGreaterThanOrEqual(1);
   });
 
-  it('does not bid when it cannot cover the sticker price from cash', () => {
-    listRival(al.cash + 1);
+  it('bids on a healthy rival at market price, not only the distressed', () => {
+    // g.airlines[2] exists but is not for sale — a going concern.
+    const target = g.airlines[2];
+    const actions = acquisitionActions(g, al, HUB);
+    expect(actions).toHaveLength(1);
+
+    actions[0].run();
+    expect(g.airlines).not.toContain(target);
+    expect(al.acquisitions).toBeGreaterThanOrEqual(1);
+  });
+
+  it('finances a buyout with debt when cash alone is short', () => {
+    al.cash = 1_000_000; // solvent, but under the sticker
+    // A sticker a hair above cash, with the gap safely inside the debt appetite
+    // so borrowing covers it. (A no-revenue airline has only the startup line.)
+    const gap = Math.floor(HUB.debtAppetite * creditLimit(g, al) * 0.5);
+    const target = listRival(al.cash + gap);
+    target.cash = 0; // no inherited cash to soften the gap — force a loan
+    const actions = acquisitionActions(g, al, HUB);
+    expect(actions).toHaveLength(1);
+
+    actions[0].run();
+    expect(g.airlines).not.toContain(target);
+    expect(al.debt).toBeGreaterThan(0); // it borrowed to cover the gap
+  });
+
+  it('does not bid when it cannot finance the sticker even with debt', () => {
+    listRival(10_000_000_000); // beyond cash + the whole credit line
+    expect(acquisitionActions(g, al, HUB)).toHaveLength(0);
+  });
+
+  it('never targets the human player', () => {
+    g.airlines.splice(2, 1); // remove the rival, leaving only player + buyer
     expect(acquisitionActions(g, al, HUB)).toHaveLength(0);
   });
 
@@ -53,13 +84,9 @@ describe('acquisitionActions', () => {
     expect(acquisitionActions(g, al, HUB)).toHaveLength(0);
   });
 
-  it('does not bid when the target carries more debt than appetite allows', () => {
+  it('does not bid when carrying the target would breach its debt appetite', () => {
     const overLeveraged = HUB.debtAppetite * creditLimit(g, al) + 1;
     listRival(1_000_000, overLeveraged);
-    expect(acquisitionActions(g, al, HUB)).toHaveLength(0);
-  });
-
-  it('ignores rivals that are not for sale', () => {
     expect(acquisitionActions(g, al, HUB)).toHaveLength(0);
   });
 });

@@ -189,8 +189,11 @@ describe('long-run invariants (headless sim)', () => {
     const aiPlanes = g.airlines.slice(1).reduce((s, al) => s + al.fleet.length, 0);
     expect(aiRoutes).toBeGreaterThan(8);
     expect(aiPlanes).toBeGreaterThan(8);
-    // Not everyone should be dead in a decade (tuning canary, not a hard rule).
-    const solvent = g.airlines.slice(1).filter((al) => equity(g, al) > 0).length;
-    expect(solvent).toBeGreaterThanOrEqual(4);
+    // Consolidation is expected now — strong AIs absorb rivals, so the field may
+    // shrink. The canary: survivors still exist and at least one is a healthy,
+    // solvent network (not a field of zombies or a smoking crater).
+    const survivors = g.airlines.slice(1);
+    expect(survivors.length).toBeGreaterThanOrEqual(1);
+    expect(survivors.some((al) => equity(g, al) > 0)).toBe(true);
   }, 60_000);
 });
