@@ -63,7 +63,7 @@ function standings(year: number): void {
 
 // Stream consolidation events (distress / acquisition / bankruptcy) as they
 // happen, year-stamped, so a long run is legible live and killable early.
-const isEvent = (l: string) => /distress|acquired|bankrupt/i.test(l);
+const isEvent = (l: string) => /distress|acquired|took over|bankrupt/i.test(l);
 let printedEvents = 0;
 function flushEvents(year: number): void {
   const events = g.airlines[0].log.filter(isEvent).reverse(); // oldest-first
