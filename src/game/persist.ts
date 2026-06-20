@@ -12,9 +12,10 @@ import type {
 import { LEGACY_TYPE_IDS } from './data';
 import { BADGE_IDS } from './badges';
 import { reseedIds } from './engine';
+import { PUBLIC, TOTAL_SHARES } from './shares';
 
 /** Bump when the save shape changes incompatibly. */
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 /** One airline's persisted slice. */
 export interface SavedAirline {
@@ -38,6 +39,8 @@ export interface SavedAirline {
   equityNegSince?: number;
   forSale?: ForSale;
   acquisitions?: number;
+  /** Cap table (ownerId → shares of 100). Absent ⇒ 100% self-held. */
+  shares?: Record<string, number>;
 }
 
 /** The persisted slice of a game — only the dynamic fields, not static data. */
@@ -68,6 +71,7 @@ const saveAirline = (al: Airline): SavedAirline => ({
   ...(al.equityNegSince !== undefined ? { equityNegSince: al.equityNegSince } : {}),
   ...(al.forSale ? { forSale: al.forSale } : {}),
   ...(al.acquisitions !== undefined ? { acquisitions: al.acquisitions } : {}),
+  ...(al.shares ? { shares: al.shares } : {}),
 });
 
 const parseAi = (d: unknown): AiState | undefined => {
@@ -91,6 +95,16 @@ const parseForSale = (d: unknown): ForSale | undefined => {
 };
 
 const optNum = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
+
+/** Parse a cap table: an object of ownerId → non-negative share count. */
+const parseShares = (d: unknown): Record<string, number> | undefined => {
+  if (typeof d !== 'object' || d === null) return undefined;
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(d as Record<string, unknown>)) {
+    if (typeof v === 'number' && v > 0) out[k] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+};
 
 /** Serialize a game to a JSON string (airports/aircraft come from data.ts, not saved). */
 export function serialize(g: GameState): string {
@@ -121,6 +135,7 @@ function parseAirline(d: unknown): SavedAirline | null {
   const cashNegSince = optNum(s.cashNegSince);
   const equityNegSince = optNum(s.equityNegSince);
   const acquisitions = optNum(s.acquisitions);
+  const shares = parseShares(s.shares);
   return {
     id: typeof s.id === 'string' ? s.id : 'player',
     name: typeof s.name === 'string' ? s.name : 'Air Bucks',
@@ -140,6 +155,7 @@ function parseAirline(d: unknown): SavedAirline | null {
     ...(equityNegSince !== undefined ? { equityNegSince } : {}),
     ...(forSale ? { forSale } : {}),
     ...(acquisitions !== undefined ? { acquisitions } : {}),
+    ...(shares ? { shares } : {}),
   };
 }
 
@@ -224,7 +240,30 @@ function applyAirline(
     ...(data.equityNegSince !== undefined ? { equityNegSince: data.equityNegSince } : {}),
     ...(data.forSale ? { forSale: data.forSale } : {}),
     ...(data.acquisitions !== undefined ? { acquisitions: data.acquisitions } : {}),
+    ...(data.shares ? { shares: data.shares } : {}),
   };
+}
+
+/** Sanitize a cap table against the surviving airline ids: drop stakes held by
+ *  airlines that no longer exist, then restore the total to 100 via the founder's
+ *  retained stake. Leaves a never-floated airline (no `shares`) untouched. */
+function sanitizeShares(g: GameState): void {
+  const valid = new Set<string>(g.airlines.map((a) => a.id));
+  valid.add(PUBLIC);
+  for (const al of g.airlines) {
+    if (!al.shares) continue;
+    const clean: Record<string, number> = {};
+    let sum = 0;
+    for (const [owner, n] of Object.entries(al.shares)) {
+      if (valid.has(owner) && n > 0) {
+        clean[owner] = n;
+        sum += n;
+      }
+    }
+    if (sum !== TOTAL_SHARES) clean[al.id] = (clean[al.id] ?? 0) + (TOTAL_SHARES - sum);
+    if (clean[al.id] <= 0) delete clean[al.id];
+    al.shares = clean;
+  }
 }
 
 /** Apply a save onto a live game, keeping the game's current airports/aircraft. */
@@ -235,5 +274,6 @@ export function applySave(g: GameState, data: SaveData): void {
   g.rngState = data.rngState;
   g.nextId = data.nextId;
   g.airlines = data.airlines.map((a) => applyAirline(a, airportIds, typeIds));
+  sanitizeShares(g);
   reseedIds(g);
 }

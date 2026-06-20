@@ -31,7 +31,7 @@ const GOODWILL_YEARS = 2;
 const CONTROL_PREMIUM = 1.3;
 
 /** Nominal cost to acquire the held slots today — a proxy for "slot fees paid". */
-function slotInvestment(g: GameState, al: Airline): number {
+export function slotInvestment(g: GameState, al: Airline): number {
   return al.rights.reduce((s, id) => s + rightsFee(g, airportById(g, id)), 0);
 }
 

@@ -141,6 +141,10 @@ export interface Airline {
   forSale?: ForSale;
   /** Rival airlines absorbed via acquisition (for the Takeover badge). */
   acquisitions?: number;
+  /** Cap table: ownerId → share count out of 100. Owners are this airline's own
+   *  id (retained), `'public'` (the open float), or another airline's id (a
+   *  strategic stake). Absent ⇒ 100% self-held. See shares.ts. */
+  shares?: Record<string, number>;
 }
 
 export interface GameState {
