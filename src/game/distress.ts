@@ -87,18 +87,24 @@ function removeAirline(g: GameState, al: Airline): void {
  * earlier-opening application wins; any whose slot the buyer already holds are
  * dropped.
  */
-export function acquire(g: GameState, buyer: Airline, target: Airline): void {
-  const price = buyoutPrice(g, target);
-  const cities = target.rights.length;
-  buyer.cash += target.cash; // inherit the bank account…
-  buyer.cash -= price; // …then pay the sticker
+/**
+ * Merge `target`'s whole business into `buyer` and dissolve it — inherit its
+ * cash, assume its debt, take rights (duplicates collapse), fleet (mileage
+ * intact), and routes (planes stay assigned). The target's in-progress slot
+ * negotiations carry over as-is; where the buyer was chasing the same airport
+ * the earlier-opening application wins, and any whose slot the buyer already
+ * holds are dropped.
+ *
+ * Charges NO acquisition price — the caller has already paid (the distress
+ * sticker in `acquire`, or share purchases + squeeze-out for a takeover).
+ */
+export function mergeInto(g: GameState, buyer: Airline, target: Airline): void {
+  buyer.cash += target.cash; // inherit the bank account
   buyer.debt += target.debt;
   for (const id of target.rights) if (!buyer.rights.includes(id)) buyer.rights.push(id);
   buyer.fleet.push(...target.fleet);
   buyer.routes.push(...target.routes);
   buyer.acquisitions = (buyer.acquisitions ?? 0) + 1;
-  // Inherit the target's pending slot applications. Drop any whose slot the
-  // buyer now holds; on an overlapping airport keep whichever opens soonest.
   const pending = new Map<string, Negotiation>();
   for (const n of [...buyer.negotiations, ...target.negotiations]) {
     if (buyer.rights.includes(n.airportId)) continue;
@@ -106,8 +112,20 @@ export function acquire(g: GameState, buyer: Airline, target: Airline): void {
     if (!cur || n.opensDay < cur.opensDay) pending.set(n.airportId, n);
   }
   buyer.negotiations = [...pending.values()];
-  const debtNote = target.debt > 0 ? `, assuming ${money(target.debt)} debt` : '';
   removeAirline(g, target);
+}
+
+/**
+ * Buy an airline outright at its sticker price and absorb it — the distressed
+ * fire-sale / instant-buyout path. Pays `buyoutPrice`, then merges via
+ * `mergeInto`. (The share market reaches the same merge via a squeeze-out.)
+ */
+export function acquire(g: GameState, buyer: Airline, target: Airline): void {
+  const price = buyoutPrice(g, target);
+  const cities = target.rights.length;
+  const debtNote = target.debt > 0 ? `, assuming ${money(target.debt)} debt` : '';
+  buyer.cash -= price; // pay the sticker; cash/debt inheritance handled in mergeInto
+  mergeInto(g, buyer, target);
   playerNews(
     g,
     `🤝 ${buyer.name} acquired ${target.name} for ${money(price)} — ${cities} cities${debtNote}.`,

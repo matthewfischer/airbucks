@@ -2,15 +2,21 @@ import { describe, expect, it } from 'vitest';
 import type { FinanceSnapshot } from './types';
 import { newAirline, newGame } from './engine';
 import {
+  buyBack,
+  buyShares,
   controllerOf,
   costToAccumulate,
   growthMultiple,
+  hasControl,
+  issueShares,
   largestRivalStake,
   ownership,
   publicFloat,
   retainedShares,
+  sellShares,
   shareValuation,
   sharesOwned,
+  takeover,
 } from './shares';
 import { applySave, deserialize, serialize } from './persist';
 
@@ -105,6 +111,96 @@ describe('costToAccumulate (price impact)', () => {
     const below = costToAccumulate(g, al, 0, 10); // shares 1..10
     const crossing = costToAccumulate(g, al, 45, 10); // shares 46..55, crosses 50
     expect(crossing).toBeGreaterThan(below);
+  });
+});
+
+describe('share transactions', () => {
+  it('issues shares to the float, raising cash for the airline', () => {
+    const g = newGame('crw', 1);
+    const al = newAirline('a', 'A', '#fff', 'atl');
+    al.cash = 1_000_000;
+    g.airlines.push(al);
+    const before = al.cash;
+    expect(issueShares(g, al, 30)).toBe(30);
+    expect(retainedShares(al)).toBe(70);
+    expect(publicFloat(al)).toBe(30);
+    expect(al.cash).toBeGreaterThan(before);
+  });
+
+  it('open-market buys take only the float — control needs more than that', () => {
+    const g = newGame('crw', 1);
+    const t = newAirline('t', 'T', '#f00', 'clt');
+    t.cash = 10_000_000;
+    g.airlines.push(t);
+    issueShares(g, t, 30); // float 30, founder 70
+    const b = newAirline('b', 'B', '#fff', 'atl');
+    b.cash = 1_000_000_000;
+    g.airlines.push(b);
+    expect(buyShares(g, b, t, 100)).toBe(30); // clamped to the float
+    expect(sharesOwned(t, 'b')).toBe(30);
+    expect(publicFloat(t)).toBe(0);
+    expect(hasControl(t, 'b')).toBe(false); // can't corner a majority founder via float alone
+  });
+
+  it('buys back float to re-secure the founder stake', () => {
+    const g = newGame('crw', 1);
+    const al = newAirline('a', 'A', '#fff', 'atl');
+    al.cash = 1_000_000_000;
+    g.airlines.push(al);
+    issueShares(g, al, 40); // retained 60, float 40
+    buyBack(g, al, 10);
+    expect(retainedShares(al)).toBe(70);
+    expect(publicFloat(al)).toBe(30);
+  });
+
+  it('lets a holder sell its stake back for cash', () => {
+    const g = newGame('crw', 1);
+    const t = newAirline('t', 'T', '#f00', 'clt');
+    t.cash = 10_000_000;
+    g.airlines.push(t);
+    issueShares(g, t, 40);
+    const b = newAirline('b', 'B', '#fff', 'atl');
+    b.cash = 1_000_000_000;
+    g.airlines.push(b);
+    buyShares(g, b, t, 20);
+    const cash0 = b.cash;
+    expect(sellShares(g, b, t, 20)).toBe(20);
+    expect(sharesOwned(t, 'b')).toBe(0);
+    expect(b.cash).toBeGreaterThan(cash0);
+  });
+
+  it('hostile takeover of a 100%-held airline always works, at a real cost', () => {
+    const g = newGame('crw', 1);
+    const b = newAirline('b', 'B', '#fff', 'atl');
+    b.cash = 1_000_000_000;
+    const t = newAirline('t', 'T', '#f00', 'clt');
+    t.cash = 5_000_000;
+    g.airlines.push(b, t); // t is 100% founder-held — no float
+    const before = b.cash;
+    expect(takeover(g, b, t)).toBe(true);
+    expect(g.airlines.find((a) => a.id === 't')).toBeUndefined(); // merged & dissolved
+    expect(b.rights).toContain('clt'); // network inherited
+    // Cost is real, not a wash with the inherited treasury (founder proceeds leave the game).
+    expect(b.cash).toBeLessThan(before);
+  });
+
+  it('pays an other-airline minority holder when squeezing it out', () => {
+    const g = newGame('crw', 1);
+    const t = newAirline('t', 'T', '#f00', 'clt');
+    t.cash = 5_000_000;
+    g.airlines.push(t);
+    issueShares(g, t, 40); // founder 60, float 40
+    const x = newAirline('x', 'X', '#0f0', 'den');
+    x.cash = 1_000_000_000;
+    g.airlines.push(x);
+    buyShares(g, x, t, 40); // x holds 40
+    const b = newAirline('b', 'B', '#fff', 'sea');
+    b.cash = 1_000_000_000;
+    g.airlines.push(b);
+    const xCash0 = x.cash;
+    takeover(g, b, t); // forces founder for control, squeezes out x's 40
+    expect(g.airlines.find((a) => a.id === 't')).toBeUndefined();
+    expect(x.cash).toBeGreaterThan(xCash0); // x got paid for its forced stake
   });
 });
 
