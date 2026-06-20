@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "sim": "vite-node scripts/sim.ts",
+    "analyze": "vite-node scripts/analyze.ts",
     "pack:win": "vite build && electron-builder --win zip --x64"
   },
   "build": {
