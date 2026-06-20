@@ -1,82 +1,100 @@
-# Airline Shares — acquisition via stock (design)
+# Airline Shares — acquisition via a stock market (design)
 
 Status: design agreed 2026-06-20, not built. Branch: `airline-shares` (off the
-AI route-optimization work). RRT-inspired.
+AI route-optimization work). RRT-inspired. Full model (all decisions resolved).
 
 ## Why
 
 The player rolls up the whole AI field as cheap minnows by ~year 4. Validated
-from a real save (seed, 1954.5): bought all four rivals for ~$49M total —
-Pacific Crown for $5.4M (3 cities) — before any could grow. All-or-nothing
-instant buyout at a low going-concern price is the exploit. The AI
-route/acquisition improvements only matter if rivals survive past year 4, and
-they don't.
+from a real save (1954.5): bought all four rivals for ~$49M total — Pacific
+Crown for $5.4M (3 cities) — before any could grow. All-or-nothing instant
+buyout at a low going-concern price is the exploit; the AI route/acquisition
+improvements only matter if rivals survive past year 4, and they don't.
 
-A share market with **price impact** fixes this economically: cornering a
-company gets progressively expensive, and a founder-controlled young airline
-can't be taken cheaply. No artificial buyer-size penalty (which we rejected —
-see [[acquisition-design]]).
+A share market fixes it economically: takeover difficulty becomes
+**self-inflicted** (you're vulnerable in proportion to the stock you floated),
+early privately-held rivals cost a full **hostile bid** on a **growth-aware**
+valuation, and a dominant player becomes a target. No artificial buyer-size
+penalty (rejected — see [[acquisition-design]]).
 
-## Scope — Tier 2 only
+## Core model (RRT-direction)
 
-- **No Tier 3, ever** (decided 2026-06-20): no personal-vs-company money, no
-  separate tycoon portfolio. Stakes are bought with **airline cash** (corporate
-  strategic holdings).
-- Replaces the instant `acquire()` *entry point*: absorbing a rival becomes
-  "reach >50%, then squeeze out the rest" — but the existing `acquire()` merge
-  logic (networks, rights, fleet, debt, inherited slot apps) is reused for the
-  final absorption.
-- The growth-aware valuation we discussed is **not** built separately — it
-  becomes the **share-price basis** here (young fast-growers priced high).
+- **Cap table** per airline (player included): 100 shares, `ownerId → count`.
+  Everyone starts owning **100% of themselves; float = 0**.
+- **Valuation V** = growth-aware: `equity + slotInvestment + growthGoodwill`,
+  where `growthGoodwill = growthMultiple(target) × annualNet` and the multiple
+  scales with the target's recent **revenue** growth from its `history`
+  (young fast-growers priced high; flat/mature ones cheap on the multiple but
+  dear on equity — the cheap window closes from both ends). Share base price = V/100.
+- **Issue shares** (financing lever, player + AI): sell your own stock to the
+  public for cash at current price. Raises capital alongside debt, increases
+  float, dilutes you, and *raises your takeover exposure*. Every share floated is
+  a share someone can later turn against you.
+- **Open market:** only **float** is freely buyable, at a **rising marginal
+  price** (price impact: each block bought lifts the price; selling lowers it).
+  Retained shares can't be nibbled passively.
+- **Buy back:** repurchase float with cash to re-secure your majority (defense).
+- **Hostile takeover:** a deliberate, *expensive* bid that **can** reach retained
+  shares at a steep **control premium**. On the open market your retained shares
+  are untouchable, but a determined raider can always force a tender **at a
+  price** — so takeover is *always possible but expensive* (honors the earlier
+  never-stuck rule; you can never be permanently blocked by a refusenik).
+- **Control at >50% → squeeze-out:** force-buy the remaining minority at market +
+  a premium and absorb the airline, reusing today's `acquire()` merge (networks,
+  rights, fleet, debt, inherited slot apps).
 
-## Core model
+## AI behavior (from day one)
 
-- **Cap table** per airline: ownerId → fraction (sums to 1). Founder starts at
-  100% (or with a small public float — open decision).
-- **Share price** = growth-aware valuation ÷ shares. A young, fast-growing
-  airline (high revenue growth from its `history`) commands a high multiple; a
-  flat/mature one is cheap on the multiple but expensive on equity. The cheap
-  window closes from both ends.
-- **Trade in blocks** (e.g. 10%). **Price impact:** buying a block raises the
-  price, selling lowers it. Accumulating control costs more at the margin than
-  the first block — the core brake. Curve steepness is the main tuning knob.
+AIs use the same market: issue stock to fund growth, take stakes in rivals
+(appreciation + a path to control), buy back to defend their majority, and
+launch hostile bids on rivals. They raid the **player** only once the player is
+**dominant** (below).
 
-## Hard requirement: never get stuck (force-buy)
+## Player as a target — "uneasy lies the crown"
 
-The player must never be stuck facing a cheap airline that refuses to sell and
-exists forever. Two guarantees:
+- **Trigger (option c):** rivals start hostile accumulation of the player only
+  once the player's equity exceeds **~45% of all airlines' combined equity**
+  (you're most of the market). Threshold tunable.
+- **Loss condition (NEW — reverses today's player-exempt-from-failure design):**
+  if a rival crosses ~50% of the player, fire **warnings + a defense grace
+  period** (buy back float / outbid). Fail to defend within the window → you are
+  acquired = **game over**. Directly punishes winning early and coasting; the
+  endgame becomes a takeover war, not a one-sided shopping spree.
+- Self-balancing: the raid threat only exists *while rivals survive*, so the
+  late-game roll-up is contested — the strongest rival can bid for you back.
 
-1. **No hard refusal.** Holders always sell at a high enough price. The price
-   rises with accumulation but stays **finite**, so with enough capital you can
-   *always* reach majority. The brake is cost, never a wall.
-2. **Squeeze-out at >50%.** Once you hold majority, force-buy the remaining
-   minority at market + a premium and absorb the airline (reuse `acquire()`). No
-   lingering rump shareholder.
+## Decisions locked
 
-## AI behavior
+- **No dividends in v1** (appreciation only — stakes are worth their current
+  value and tradeable; buy a growing rival low, sell high). If ever added, the
+  correct model is a declared payout ≈ **3% of revenue**, split pro-rata by
+  ownership — *not* "own X% → get X% of profit."
+- **No Tier 3 ever:** no personal-vs-company money / tycoon portfolio. All
+  trading uses **airline cash**.
+- Growth-aware valuation is **not** a separate change — it's the share-price basis.
 
-AIs trade stakes too: invest spare cash in rivals, defend their own majority,
-and take stakes in each other **and in the player** (a predator above the
-leader). Symmetric pricing, so early AI-vs-AI roll-ups also slow.
+## Tuning knobs (settle during build + sim)
 
-## Open decisions (resolve when planning the build)
+Price-impact curve steepness; control premium size; squeeze-out premium; growth
+multiple curve + cap (e.g. flat→~2×, ≥100%/yr growth→~15×); dominance threshold
+(~45%); defense-window length; block size (10%?).
 
-- **Dividends in v1?** Minority stakes need a point (share of profit) — include
-  or defer (without them, minority stakes are only a path to control).
-- **AI share-trading from day 1, or player-only first** then add AI traders once
-  the core works?
-- **Block size** (10%?) and **price-impact curve** steepness — tune via sim.
-- **Initial float:** founder at 100% (you buy from them, price climbs) or a
-  starting public float?
+## State / persistence
+
+Cap tables are persisted (new field on each saved airline) → bump `SAVE_VERSION`.
+Price-impact state is derived from the cap table (float size), not stored.
 
 ## Validation
 
-Sim across seeds: a year-3/4 player *cannot* corner the board (cost
-prohibitive), but a rich player/AI still can later; AI-vs-AI stake-building
-occurs; nobody is permanently un-buyable (force-buy guarantee holds).
+Sim across seeds: a year-3/4 player *cannot* corner the board (early rivals are
+100%-held → full hostile bid on a high growth-aware V is unaffordable); a rich
+player/AI can still take over later; AI-vs-AI stake-building and consolidation
+occur; a dominant player gets raided and must defend; nobody is permanently
+un-buyable (hostile bid always possible at a price).
 
 ## Out of scope
 
 - Tier 3 (personal wealth / full RRT meta-layer) — never.
+- Dividends — deferred (model noted above for if/when).
 - Interline / code-sharing — separate future item (the "KC→Bucharest problem",
-  see `docs/TODO.md`).
+  `docs/TODO.md`).
