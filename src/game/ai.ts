@@ -1,5 +1,6 @@
-import type { AircraftType, Airline, Airport, GameState } from './types';
+import type { AircraftType, Airline, Airport, GameState, Route } from './types';
 import { distanceKm } from './geo';
+import type { NetworkResult } from './engine';
 import { acquire, buyoutPrice, updateDistress } from './distress';
 import {
   airportById,
@@ -265,6 +266,18 @@ function estimateRouteProfit(
 const MIN_ROUTE_PROFIT = 1_500;
 const minProfit = (g: GameState): number => MIN_ROUTE_PROFIT * priceLevel(g);
 
+/** How many candidate routes/types survive the cheap pre-filter into the
+ *  (more expensive) what-if marginal-network-profit scoring. Keeps the eval
+ *  count per decision pass bounded. */
+const ROUTE_FINALISTS = 6;
+const TYPE_FINALISTS = 4;
+/** Only the N most profitable routes are worth an upgrade what-if each pass. */
+const UPGRADE_CANDIDATES = 6;
+
+/** A reallocation only fires when the alternative deployment beats the route
+ *  it would replace by this factor — hysteresis against open→close→open churn. */
+const REALLOC_MARGIN = 1.5;
+
 /** The affordable in-production type that earns the most on this market, or null. */
 function bestTypeFor(
   g: GameState,
@@ -310,19 +323,93 @@ function staffRoute(g: GameState, al: Airline, p: Personality, routeId: string):
     assignPlane(g, al, idle.id, routeId);
     return;
   }
-  const a = airportById(g, route.stops[0]);
-  const b = airportById(g, route.stops[route.stops.length - 1]);
-  const choice = bestTypeFor(g, al, a, b, maxLeg, spendable(g, al, p));
-  if (!choice || !coverCost(g, al, p, choice.type.price)) return;
-  if (buyPlane(g, al, choice.type.id) === null) {
+  // Buy the type that adds the most *network* profit here (connection traffic
+  // included), not just the best point-to-point earner.
+  const pick = bestPlaneTypeForRoute(g, al, route, spendable(g, al, p), networkProfit(g, al));
+  if (!pick || !coverCost(g, al, p, pick.type.price)) return;
+  if (buyPlane(g, al, pick.type.id) === null) {
     assignPlane(g, al, al.fleet[al.fleet.length - 1].id, routeId);
   }
 }
 
-/** Candidate: open a direct route between two held airports and staff it. */
-function routeActions(g: GameState, al: Airline, p: Personality): Action[] {
-  const actions: Action[] = [];
-  const budget = spendable(g, al, p);
+// ---- Connection-aware valuation (what-if marginal network profit) ----------
+// The engine's evaluateNetwork already pays a route for the connecting traffic
+// it carries. So instead of scoring a move by its standalone point-to-point
+// estimate, we clone the airline, apply the hypothetical change, and re-evaluate
+// — the delta is the move's true weekly network value. The clone uses throwaway
+// ids and never touches the game, rand, or makeId, so this stays deterministic.
+
+/** Whole-network weekly operating profit, connecting traffic included. */
+const networkProfit = (g: GameState, al: Airline): number => evaluateNetwork(g, al).profit;
+
+/** Weekly network-profit delta of a hypothetical change vs `base`. `apply`
+ *  mutates a throwaway clone (use '_hyp' ids). Pure and deterministic. */
+function marginalProfit(
+  g: GameState,
+  al: Airline,
+  base: number,
+  apply: (clone: Airline) => void,
+): number {
+  const clone: Airline = {
+    ...al,
+    routes: al.routes.map((r) => ({ ...r })),
+    fleet: al.fleet.map((pl) => ({ ...pl })),
+  };
+  apply(clone);
+  return networkProfit(g, clone) - base;
+}
+
+/** Affordable, in-range types for a route's longest leg, cheaply pre-ranked by
+ *  standalone profit and capped — so the what-if loop stays bounded. */
+function candidateTypes(
+  g: GameState,
+  al: Airline,
+  a: Airport,
+  b: Airport,
+  dist: number,
+  maxLeg: number,
+  budget: number,
+): AircraftType[] {
+  return availableTypes(g)
+    .filter((t) => t.range >= maxLeg && t.price <= budget)
+    .map((t) => ({ t, pre: estimateRouteProfit(g, al, a, b, dist, t) }))
+    .sort((x, y) => y.pre - x.pre || (x.t.id < y.t.id ? -1 : 1))
+    .slice(0, TYPE_FINALISTS)
+    .map((x) => x.t);
+}
+
+/** Best type + its marginal network profit for adding one plane to an EXISTING
+ *  route, connection-aware. null if nothing affordable is in range. */
+function bestPlaneTypeForRoute(
+  g: GameState,
+  al: Airline,
+  route: Route,
+  budget: number,
+  base: number,
+): { type: AircraftType; marginal: number } | null {
+  const maxLeg = routeMaxLeg(g, route);
+  const a = airportById(g, route.stops[0]);
+  const b = airportById(g, route.stops[route.stops.length - 1]);
+  const dist = distanceKm(a, b);
+  let best: { type: AircraftType; marginal: number } | null = null;
+  for (const t of candidateTypes(g, al, a, b, dist, maxLeg, budget)) {
+    const m = marginalProfit(g, al, base, (clone) => {
+      clone.fleet.push({ id: '_hyp', typeId: t.id, routeId: route.id, kmFlown: 0 });
+    });
+    if (!best || m > best.marginal) best = { type: t, marginal: m };
+  }
+  return best;
+}
+
+/** Held-airport pairs without a route yet, ranked by the cheap standalone
+ *  estimate (best first) and capped — the shortlist worth a what-if. */
+function candidatePairs(
+  g: GameState,
+  al: Airline,
+  p: Personality,
+  budget: number,
+): { a: Airport; b: Airport }[] {
+  const pairs: { a: Airport; b: Airport; pre: number }[] = [];
   for (let i = 0; i < al.rights.length; i++) {
     for (let j = i + 1; j < al.rights.length; j++) {
       const a = airportById(g, al.rights[i]);
@@ -330,89 +417,197 @@ function routeActions(g: GameState, al: Airline, p: Personality): Action[] {
       if (hasRouteBetween(al, a.id, b.id)) continue;
       const dist = distanceKm(a, b);
       const profit = bestPlanFor(g, al, a, b, dist, budget);
-      if (profit === null || profit < minProfit(g)) continue;
-      let score = profit * sizePreference(p, a, b);
-      if (a.id === al.homeId || b.id === al.homeId) score *= p.hubBonus;
-      actions.push({
-        score,
-        run: () => {
-          if (openRoute(g, al, [a.id, b.id]) === null) {
-            staffRoute(g, al, p, al.routes[al.routes.length - 1].id);
-            // Flag the move only if it touches a city you serve — keeps the
-            // news feed about your world, not every distant AI route.
-            const youHold = g.airlines[0].rights;
-            if (youHold.includes(a.id) || youHold.includes(b.id))
-              playerNews(g, `✈ ${al.name} opened ${a.code} → ${b.code} — moving into your network.`);
-          }
-        },
-      });
+      if (profit === null) continue;
+      let pre = profit * sizePreference(p, a, b);
+      if (a.id === al.homeId || b.id === al.homeId) pre *= p.hubBonus;
+      pairs.push({ a, b, pre });
     }
+  }
+  pairs.sort((x, y) => y.pre - x.pre || (x.a.id + x.b.id < y.a.id + y.b.id ? -1 : 1));
+  return pairs.slice(0, ROUTE_FINALISTS).map(({ a, b }) => ({ a, b }));
+}
+
+export interface NewRoute {
+  a: Airport;
+  b: Airport;
+  type: AircraftType;
+  marginal: number;
+}
+
+/** The shortlist of new two-stop routes, each scored by connection-aware
+ *  marginal network profit. One what-if per finalist (the plane type is the
+ *  cheap standalone pick; run() sizes the real plane connection-aware via
+ *  staffRoute), so the eval count per pass is bounded regardless of network
+ *  size. Computed once per decision pass and shared by route + realloc actions. */
+function newRouteCandidates(
+  g: GameState,
+  al: Airline,
+  p: Personality,
+  base: number,
+  budget: number,
+): NewRoute[] {
+  const out: NewRoute[] = [];
+  for (const { a, b } of candidatePairs(g, al, p, budget)) {
+    const choice = bestTypeFor(g, al, a, b, distanceKm(a, b), budget);
+    if (!choice) continue;
+    const marginal = marginalProfit(g, al, base, (clone) => {
+      clone.routes.push({ id: '_hyp', stops: [a.id, b.id], fareFactor: 1 });
+      clone.fleet.push({ id: '_hypp', typeId: choice.type.id, routeId: '_hyp', kmFlown: 0 });
+    });
+    out.push({ a, b, type: choice.type, marginal });
+  }
+  return out;
+}
+
+/** Candidate: open a direct route between two held airports and staff it.
+ *  Scored by connection-aware marginal network profit, so a route that's weak
+ *  point-to-point but feeds the hub still earns its place. */
+function routeActions(g: GameState, al: Airline, p: Personality, candidates: NewRoute[]): Action[] {
+  const actions: Action[] = [];
+  for (const { a, b, marginal } of candidates) {
+    if (marginal < minProfit(g)) continue;
+    let score = marginal * sizePreference(p, a, b);
+    if (a.id === al.homeId || b.id === al.homeId) score *= p.hubBonus;
+    actions.push({
+      score,
+      run: () => {
+        if (openRoute(g, al, [a.id, b.id]) === null) {
+          staffRoute(g, al, p, al.routes[al.routes.length - 1].id);
+          // Flag the move only if it touches a city you serve — keeps the
+          // news feed about your world, not every distant AI route.
+          const youHold = g.airlines[0].rights;
+          if (youHold.includes(a.id) || youHold.includes(b.id))
+            playerNews(g, `✈ ${al.name} opened ${a.code} → ${b.code} — moving into your network.`);
+        }
+      },
+    });
   }
   return actions;
 }
 
-/** Candidate: add capacity to a full, profitable route, or staff a plane-less one. */
-function capacityActions(g: GameState, al: Airline, p: Personality): Action[] {
+/** Candidate: add capacity to a full, profitable route, or staff a plane-less
+ *  one. A full route's connection-inclusive profit (from `net`) is the proxy for
+ *  the demand another plane would capture — no extra eval; run() sizes the plane
+ *  connection-aware via staffRoute. */
+function capacityActions(g: GameState, al: Airline, p: Personality, net: NetworkResult): Action[] {
   if (al.routes.length === 0) return [];
   const actions: Action[] = [];
-  const net = evaluateNetwork(g, al);
   const budget = spendable(g, al, p);
   for (const route of al.routes) {
     const summary = net.routes.get(route.id);
     if (!summary) continue;
     const staffed = planesOnRoute(al, route.id).length > 0;
     if (staffed && (summary.loadFactor < 0.95 || summary.profit <= 0)) continue;
-    const maxLeg = routeMaxLeg(g, route);
+    // Affordability gate (cheap, standalone): skip unless an idle plane or the
+    // budget for one is actually available — otherwise the run() would no-op.
     const a = airportById(g, route.stops[0]);
     const b = airportById(g, route.stops[route.stops.length - 1]);
-    const plan = bestPlanFor(g, al, a, b, maxLeg, budget);
-    if (plan === null) continue;
+    if (bestPlanFor(g, al, a, b, routeMaxLeg(g, route), budget) === null) continue;
     // An empty route is dead weight — staffing it outranks growing a full one.
-    const score = staffed ? summary.profit : Math.max(plan, 0) + 1000;
+    const score = staffed ? summary.profit : 1000 * priceLevel(g);
     actions.push({ score, run: () => staffRoute(g, al, p, route.id) });
   }
   return actions;
 }
 
-/** Candidate: replace a profitable route's fleet with a newer, better type. */
-function upgradeActions(g: GameState, al: Airline, p: Personality): Action[] {
+/** Candidate: replace a profitable route's fleet with a newer, better type.
+ *  Only the most profitable routes (by connection-inclusive `net`) are worth the
+ *  what-if, and each gets a single eval against its best standalone-pricier type
+ *  — so the eval count stays bounded. Scored by the swap's marginal network profit. */
+function upgradeActions(
+  g: GameState,
+  al: Airline,
+  p: Personality,
+  net: NetworkResult,
+  base: number,
+): Action[] {
   if (!p.upgrades || al.routes.length === 0) return [];
-  const actions: Action[] = [];
-  const net = evaluateNetwork(g, al);
   const budget = spendable(g, al, p);
-  for (const route of al.routes) {
-    const summary = net.routes.get(route.id);
+  const routes = al.routes
+    .filter((r) => {
+      const s = net.routes.get(r.id);
+      return s && s.profit > 0 && planesOnRoute(al, r.id).length > 0;
+    })
+    .sort((x, y) => net.routes.get(y.id)!.profit - net.routes.get(x.id)!.profit)
+    .slice(0, UPGRADE_CANDIDATES);
+  const actions: Action[] = [];
+  for (const route of routes) {
     const planes = planesOnRoute(al, route.id);
-    if (!summary || summary.profit <= 0 || planes.length === 0) continue;
     const maxLeg = routeMaxLeg(g, route);
     const a = airportById(g, route.stops[0]);
     const b = airportById(g, route.stops[route.stops.length - 1]);
     const dist = distanceKm(a, b);
-    const oldType = typeById(g, planes[0].typeId);
-    const oldProfit = estimateRouteProfit(g, al, a, b, dist, oldType);
     const floor = Math.max(...planes.map((pl) => typeById(g, pl.typeId).price));
-    // Best strictly-pricier in-range type (the engine enforces "pricier").
-    let type: AircraftType | null = null;
-    let gain = 0;
-    for (const t of availableTypes(g)) {
-      if (t.range < maxLeg || t.price <= floor) continue;
-      const tg = estimateRouteProfit(g, al, a, b, dist, t) - oldProfit;
-      if (tg > gain) {
-        gain = tg;
-        type = t;
-      }
-    }
-    if (!type) continue;
-    const quote = upgradeRouteQuote(g, al, route.id, type.id);
+    // Best strictly-pricier in-range type by the cheap standalone estimate, then
+    // a single what-if to score the connection-inclusive gain.
+    const cand = availableTypes(g)
+      .filter((t) => t.range >= maxLeg && t.price > floor)
+      .map((t) => ({ t, pre: estimateRouteProfit(g, al, a, b, dist, t) }))
+      .sort((x, y) => y.pre - x.pre || (x.t.id < y.t.id ? -1 : 1))[0]?.t;
+    if (!cand) continue;
+    const quote = upgradeRouteQuote(g, al, route.id, cand.id);
     if (quote.net > budget) continue;
+    const gain = marginalProfit(g, al, base, (clone) => {
+      for (const pl of clone.fleet) if (pl.routeId === route.id) pl.typeId = cand.id;
+    });
+    if (gain <= 0) continue;
     actions.push({
-      score: gain * planes.length,
+      score: gain,
       run: () => {
-        if (coverCost(g, al, p, quote.net)) upgradeRoute(g, al, route.id, type!.id);
+        if (coverCost(g, al, p, quote.net)) upgradeRoute(g, al, route.id, cand.id);
       },
     });
   }
   return actions;
+}
+
+/** Candidate: tear down a positive-but-mediocre route and redeploy its plane
+ *  into a clearly better one — the capital churn the player does by hand and the
+ *  AI otherwise never does (retrench only closes money-losers). Feeder spokes
+ *  are safe automatically: their connection-inclusive profit is high, so they're
+ *  never the weak link, and a confirming what-if checks the full removal cost. */
+export function reallocateActions(
+  g: GameState,
+  al: Airline,
+  p: Personality,
+  net: NetworkResult,
+  base: number,
+  candidates: NewRoute[],
+): Action[] {
+  if (al.routes.length === 0 || candidates.length === 0) return [];
+  // 1) Weakest staffed route by connection-inclusive profit (cheap, from net).
+  let weak: Route | null = null;
+  let weakProfit = Infinity;
+  for (const route of al.routes) {
+    if (planesOnRoute(al, route.id).length === 0) continue; // empty: capacity's job
+    const s = net.routes.get(route.id);
+    if (!s || s.profit <= 0) continue; // losers are retrench's job, not realloc's
+    if (s.profit < weakProfit) {
+      weakProfit = s.profit;
+      weak = route;
+    }
+  }
+  if (!weak) return [];
+  // 2) Best alternative deployment of the freed plane (from the shared shortlist).
+  const alt = candidates.reduce((best, c) => (c.marginal > best.marginal ? c : best));
+  // 3) Confirm the weak route's *true* contribution (removal can also break the
+  //    connecting itineraries its spoke carried) before committing to the swap.
+  const contribution = -marginalProfit(g, al, base, (clone) => {
+    clone.routes = clone.routes.filter((r) => r.id !== weak!.id);
+  });
+  if (alt.marginal <= contribution * REALLOC_MARGIN) return [];
+  const source = weak;
+  const { a, b } = alt;
+  return [
+    {
+      score: alt.marginal - contribution,
+      run: () => {
+        closeRoute(g, al, source.id); // planes go idle…
+        if (openRoute(g, al, [a.id, b.id]) === null)
+          staffRoute(g, al, p, al.routes[al.routes.length - 1].id); // …and get reused
+      },
+    },
+  ];
 }
 
 /** Rights the airline holds but doesn't fly to (or from) yet. */
@@ -612,15 +807,28 @@ function decide(g: GameState, al: Airline, p: Personality): void {
   // otherwise switch to stopping the bleed.
   const expanding =
     w.net >= 0 || spendable(g, al, p) > -w.net * p.runwayWeeks;
+  // One network eval per pass: its whole-network profit is the baseline every
+  // what-if is measured against, and its per-route summaries (connection
+  // traffic included) drive the capacity/upgrade/realloc decisions.
+  const net = evaluateNetwork(g, al);
+  const base = net.profit;
   let actions: Action[];
   if (expanding) {
+    // New-route what-ifs are the only network-size-dependent cost; compute the
+    // bounded shortlist once and share it between opening and reallocating.
+    const candidates = newRouteCandidates(g, al, p, base, spendable(g, al, p));
     const growth = [
-      ...routeActions(g, al, p),
-      ...capacityActions(g, al, p),
-      ...upgradeActions(g, al, p),
+      ...routeActions(g, al, p, candidates),
+      ...capacityActions(g, al, p, net),
+      ...upgradeActions(g, al, p, net, base),
       ...slotActions(g, al, p),
     ];
-    actions = [...acquisitionActions(g, al, p), ...growth, ...repayActions(g, al, p)];
+    actions = [
+      ...acquisitionActions(g, al, p),
+      ...growth,
+      ...reallocateActions(g, al, p, net, base, candidates),
+      ...repayActions(g, al, p),
+    ];
     // No profitable way to grow. A cold-start or small, boxed-in airline reaches
     // for the best city anyway (ignoring the floor) to escape an isolated home;
     // one that's already bleeding stops the bleed instead of idling in the red.

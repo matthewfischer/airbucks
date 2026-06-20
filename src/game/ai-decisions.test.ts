@@ -4,10 +4,23 @@ import {
   acquisitionActions,
   addAiAirlines,
   PERSONALITIES,
+  reallocateActions,
   repayActions,
   retrenchActions,
 } from './ai';
-import { assignPlane, buyPlane, creditLimit, equity, newGame, openRoute } from './engine';
+import type { NewRoute } from './ai';
+import {
+  airportById,
+  assignPlane,
+  buyPlane,
+  creditLimit,
+  equity,
+  evaluateNetwork,
+  newAirline,
+  newGame,
+  openRoute,
+  typeById,
+} from './engine';
 
 const HUB = PERSONALITIES[0]; // debtAppetite 0.5, the workhorse personality
 
@@ -88,6 +101,62 @@ describe('acquisitionActions', () => {
     const overLeveraged = HUB.debtAppetite * creditLimit(g, al) + 1;
     listRival(1_000_000, overLeveraged);
     expect(acquisitionActions(g, al, HUB)).toHaveLength(0);
+  });
+});
+
+describe('reallocateActions', () => {
+  /** A solvent buyer at ATL flying a thin ATL↔BNA route, plus a held JFK slot
+   *  the freed plane could redeploy to. Returns the live route id. */
+  function withThinRoute(): { buyer: Airline; routeId: string } {
+    const buyer = newAirline('ai-z', 'Reallocator', '#fff', 'atl');
+    buyer.ai = { personality: 'hub-builder', nextDecisionDay: 0 };
+    buyer.cash = 100_000_000;
+    buyer.rights = ['atl', 'bna', 'jfk'];
+    g.airlines.push(buyer);
+    buyPlane(g, buyer, 'dc3');
+    const planeId = buyer.fleet[buyer.fleet.length - 1].id;
+    openRoute(g, buyer, ['atl', 'bna']);
+    const routeId = buyer.routes[buyer.routes.length - 1].id;
+    assignPlane(g, buyer, planeId, routeId);
+    return { buyer, routeId };
+  }
+
+  /** A fabricated new-route candidate to JFK with a chosen marginal value. */
+  const jfkCandidate = (marginal: number): NewRoute => ({
+    a: airportById(g, 'atl'),
+    b: airportById(g, 'jfk'),
+    type: typeById(g, 'dc3'),
+    marginal,
+  });
+
+  it('swaps a mediocre route for a clearly better alternative', () => {
+    const { buyer, routeId } = withThinRoute();
+    const net = evaluateNetwork(g, buyer);
+    expect(net.routes.get(routeId)!.profit).toBeGreaterThan(0); // weak but positive
+    const actions = reallocateActions(g, buyer, HUB, net, net.profit, [jfkCandidate(1e9)]);
+    expect(actions).toHaveLength(1);
+
+    actions[0].run();
+    expect(buyer.routes.some((r) => r.stops.includes('bna'))).toBe(false); // weak closed
+    expect(buyer.routes.some((r) => r.stops.includes('jfk'))).toBe(true); // alt opened
+  });
+
+  it('does not swap when the alternative fails the hysteresis margin', () => {
+    const { buyer } = withThinRoute();
+    const net = evaluateNetwork(g, buyer);
+    // A barely-better alternative shouldn't trigger churn.
+    expect(reallocateActions(g, buyer, HUB, net, net.profit, [jfkCandidate(1)])).toHaveLength(0);
+  });
+
+  it('does nothing with no alternative or no profitable route to free up', () => {
+    const { buyer } = withThinRoute();
+    const net = evaluateNetwork(g, buyer);
+    expect(reallocateActions(g, buyer, HUB, net, net.profit, [])).toHaveLength(0);
+
+    const idle = newAirline('ai-i', 'Idle Air', '#000', 'atl');
+    g.airlines.push(idle);
+    const inet = evaluateNetwork(g, idle);
+    expect(reallocateActions(g, idle, HUB, inet, inet.profit, [jfkCandidate(1e9)])).toHaveLength(0);
   });
 });
 
