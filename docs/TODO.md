@@ -27,6 +27,17 @@ failures, which are rare by design in v1.
   each other. This is what makes consolidation real.
 - [ ] **Balance**: study sim runs (`npm run sim -- 8 30 <seed>`, now fast
   after the evaluateNetwork perf fix); tune personalities, default count (4).
+- [ ] **Interline / code-sharing — the "KC→Bucharest problem"** (tabled
+  2026-06-20, fun-later, not now): today an O&D market is only realized if a
+  *single* airline's network spans both ends (`evaluateNetwork` enumerates
+  markets over one carrier's served airports only). A passenger from Kansas
+  City to Bucharest who'd ride carrier A to a hub, then carrier B onward, is
+  never carried — that through-demand is computed by `pairDemand` but goes
+  unrealized for everyone. Add interline so two networks can jointly capture a
+  trip neither serves end-to-end, each earning a partial fare. Note: the
+  per-airline isolation in `competition()` is load-bearing; this is a real
+  change to demand allocation, and it helps whoever has the better network
+  (possibly the player), so it's not a fix for early-win balance.
 - [x] **Merged `ai-players` → main** (2026-06-13). v1 AI is feature-complete:
       engine, sim, setup, distress chain, full visibility, competitor net-worth.
 
