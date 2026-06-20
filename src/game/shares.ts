@@ -245,6 +245,15 @@ export function controlCost(g: GameState, buyer: Airline, target: Airline): numb
   return costToAccumulate(g, target, owned, Math.max(0, CONTROL_SHARES - owned));
 }
 
+/** Estimated total cost to fully take over `target` from the buyer's current
+ *  holding: reach control, then squeeze out the rest. The affordability gate
+ *  for an AI (or player) considering a hostile takeover. */
+export function takeoverCost(g: GameState, buyer: Airline, target: Airline): number {
+  const remaining = TOTAL_SHARES - CONTROL_SHARES;
+  const squeeze = Math.round(sharePriceBase(g, target) * remaining * SQUEEZE_PREMIUM);
+  return controlCost(g, buyer, target) + squeeze;
+}
+
 /**
  * With a controlling stake, force-buy the remaining minority at a premium and
  * merge the airline into the buyer. Other-airline minority holders are paid;

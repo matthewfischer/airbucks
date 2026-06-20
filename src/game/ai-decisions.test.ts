@@ -54,15 +54,22 @@ describe('acquisitionActions', () => {
     expect(al.acquisitions).toBeGreaterThanOrEqual(1);
   });
 
-  it('bids on a healthy rival at market price, not only the distressed', () => {
-    // g.airlines[2] exists but is not for sale — a going concern.
+  it('takes over a healthy rival through the share market, not only the distressed', () => {
+    // g.airlines[2] exists but is not for sale — a going concern captured via a
+    // hostile share takeover (it has no float, so the bid forces retained shares).
     const target = g.airlines[2];
     const actions = acquisitionActions(g, al, HUB);
     expect(actions).toHaveLength(1);
 
     actions[0].run();
-    expect(g.airlines).not.toContain(target);
+    expect(g.airlines).not.toContain(target); // reached control + squeezed out + merged
     expect(al.acquisitions).toBeGreaterThanOrEqual(1);
+  });
+
+  it('skips a healthy takeover it cannot finance (the share-price brake)', () => {
+    al.cash = 100_000; // tiny — a hostile takeover priced on a growth-aware
+    al.debt = 0; //       valuation is far out of reach, even with credit
+    expect(acquisitionActions(g, al, HUB)).toHaveLength(0);
   });
 
   it('finances a buyout with debt when cash alone is short', () => {

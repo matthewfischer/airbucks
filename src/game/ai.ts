@@ -2,6 +2,7 @@ import type { AircraftType, Airline, Airport, GameState, Route } from './types';
 import { distanceKm } from './geo';
 import type { NetworkResult } from './engine';
 import { acquire, buyoutPrice, updateDistress } from './distress';
+import { takeover, takeoverCost } from './shares';
 import {
   airportById,
   assignPlane,
@@ -706,13 +707,13 @@ function reachActions(g: GameState, al: Airline, p: Personality): Action[] {
 const DISTRESS_PREFERENCE = 1.5;
 
 /**
- * Candidate: buy out a rival — a distressed one off the block at the fire-sale
- * ask, or a healthy going concern at market price. Only a solvent airline with
- * the credit headroom to carry the combined debt (its own, the target's, and
- * whatever it borrows for the sticker) will bid, so consolidation flows from the
- * strong to the weak and a runaway leader becomes a target. The sticker is
- * financed with cash and debt alike, just as the player's is. The human
- * (airlines[0]) is never acquirable.
+ * Candidate: take over a rival. A distressed one is bought off the block at the
+ * cheap fire-sale sticker (the instant-buyout path); a healthy going concern is
+ * captured through the share market — an expensive hostile takeover priced on a
+ * growth-aware valuation, so a young fast-grower can't be rolled up cheaply.
+ * Only a solvent airline with the credit headroom to carry the combined debt
+ * plus the financing will bid. The human (airlines[0]) is never acquired here
+ * (rivals only raid the player once dominant — handled separately).
  */
 export function acquisitionActions(g: GameState, al: Airline, p: Personality): Action[] {
   const actions: Action[] = [];
@@ -720,22 +721,33 @@ export function acquisitionActions(g: GameState, al: Airline, p: Personality): A
   const appetite = p.debtAppetite * creditLimit(g, al);
   for (const target of g.airlines) {
     if (target === al || !target.ai) continue; // never the human; not self
-    const price = buyoutPrice(g, target);
-    // Borrowing the sticker would need beyond cash on hand (the target's cash
-    // comes in too). Refuse if the resulting debt load exceeds the appetite.
-    const borrowNeed = Math.max(0, price - al.cash - target.cash);
-    if (al.debt + target.debt + borrowNeed > appetite) continue;
-    if (spendable(g, al, p) + target.cash < price) continue; // can finance it at all
-    // Strategic value: the franchise's revenue reach, prizing a fire-sale.
-    const score =
-      evaluateNetwork(g, target).revenue * (target.forSale ? DISTRESS_PREFERENCE : 1);
-    actions.push({
-      score,
-      run: () => {
-        if (coverCost(g, al, p, Math.max(0, buyoutPrice(g, target) - target.cash)))
-          acquire(g, al, target);
-      },
-    });
+    const reach = evaluateNetwork(g, target).revenue; // strategic value
+    if (target.forSale) {
+      // Fire-sale: buy off the block at the cheap sticker (cash + debt alike).
+      const price = buyoutPrice(g, target);
+      const borrowNeed = Math.max(0, price - al.cash - target.cash);
+      if (al.debt + target.debt + borrowNeed > appetite) continue;
+      if (spendable(g, al, p) + target.cash < price) continue;
+      actions.push({
+        score: reach * DISTRESS_PREFERENCE,
+        run: () => {
+          if (coverCost(g, al, p, Math.max(0, buyoutPrice(g, target) - target.cash)))
+            acquire(g, al, target);
+        },
+      });
+    } else {
+      // Healthy: hostile takeover via the share market — expensive by design.
+      const cost = takeoverCost(g, al, target);
+      const borrowNeed = Math.max(0, cost - al.cash);
+      if (al.debt + target.debt + borrowNeed > appetite) continue;
+      if (spendable(g, al, p) < cost) continue;
+      actions.push({
+        score: reach,
+        run: () => {
+          if (coverCost(g, al, p, takeoverCost(g, al, target))) takeover(g, al, target);
+        },
+      });
+    }
   }
   return actions;
 }
