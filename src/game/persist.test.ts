@@ -244,8 +244,6 @@ describe('deserialize robustness', () => {
     ai.cashNegSince = 100;
     ai.equityNegSince = 110;
     ai.forSale = { listedDay: 120, deadlineDay: 150, price: 2_500_000 };
-    ai.mergerBoostUntil = 200;
-    ai.mergerBoostBonus = 3;
     src.airlines.push(ai);
 
     const restored = deserialize(serialize(src))!;
@@ -254,8 +252,6 @@ describe('deserialize robustness', () => {
     expect(ra.cashNegSince).toBe(100);
     expect(ra.equityNegSince).toBe(110);
     expect(ra.forSale).toEqual({ listedDay: 120, deadlineDay: 150, price: 2_500_000 });
-    expect(ra.mergerBoostUntil).toBe(200);
-    expect(ra.mergerBoostBonus).toBe(3);
   });
 
   it('drops a malformed ai brain rather than restoring junk', () => {

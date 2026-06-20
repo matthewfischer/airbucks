@@ -37,9 +37,6 @@ export interface SavedAirline {
   cashNegSince?: number;
   equityNegSince?: number;
   forSale?: ForSale;
-  /** Post-acquisition integration boost expiry day + size-scaled bonus. */
-  mergerBoostUntil?: number;
-  mergerBoostBonus?: number;
   acquisitions?: number;
 }
 
@@ -70,8 +67,6 @@ const saveAirline = (al: Airline): SavedAirline => ({
   ...(al.cashNegSince !== undefined ? { cashNegSince: al.cashNegSince } : {}),
   ...(al.equityNegSince !== undefined ? { equityNegSince: al.equityNegSince } : {}),
   ...(al.forSale ? { forSale: al.forSale } : {}),
-  ...(al.mergerBoostUntil !== undefined ? { mergerBoostUntil: al.mergerBoostUntil } : {}),
-  ...(al.mergerBoostBonus !== undefined ? { mergerBoostBonus: al.mergerBoostBonus } : {}),
   ...(al.acquisitions !== undefined ? { acquisitions: al.acquisitions } : {}),
 });
 
@@ -125,8 +120,6 @@ function parseAirline(d: unknown): SavedAirline | null {
   const forSale = parseForSale(s.forSale);
   const cashNegSince = optNum(s.cashNegSince);
   const equityNegSince = optNum(s.equityNegSince);
-  const mergerBoostUntil = optNum(s.mergerBoostUntil);
-  const mergerBoostBonus = optNum(s.mergerBoostBonus);
   const acquisitions = optNum(s.acquisitions);
   return {
     id: typeof s.id === 'string' ? s.id : 'player',
@@ -146,8 +139,6 @@ function parseAirline(d: unknown): SavedAirline | null {
     ...(cashNegSince !== undefined ? { cashNegSince } : {}),
     ...(equityNegSince !== undefined ? { equityNegSince } : {}),
     ...(forSale ? { forSale } : {}),
-    ...(mergerBoostUntil !== undefined ? { mergerBoostUntil } : {}),
-    ...(mergerBoostBonus !== undefined ? { mergerBoostBonus } : {}),
     ...(acquisitions !== undefined ? { acquisitions } : {}),
   };
 }
@@ -232,8 +223,6 @@ function applyAirline(
     ...(data.cashNegSince !== undefined ? { cashNegSince: data.cashNegSince } : {}),
     ...(data.equityNegSince !== undefined ? { equityNegSince: data.equityNegSince } : {}),
     ...(data.forSale ? { forSale: data.forSale } : {}),
-    ...(data.mergerBoostUntil !== undefined ? { mergerBoostUntil: data.mergerBoostUntil } : {}),
-    ...(data.mergerBoostBonus !== undefined ? { mergerBoostBonus: data.mergerBoostBonus } : {}),
     ...(data.acquisitions !== undefined ? { acquisitions: data.acquisitions } : {}),
   };
 }

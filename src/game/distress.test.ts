@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Airline, GameState } from './types';
-import { airportById, mergerBoostActive, newAirline, newGame, player, rightsFee } from './engine';
+import { airportById, newAirline, newGame, player, rightsFee } from './engine';
 import {
   acquire,
   acquisitionPrice,
@@ -162,13 +162,36 @@ describe('buying a healthy airline (not distressed)', () => {
     expect(buyer.rights).toEqual(expect.arrayContaining(['bna', 'sea', 'pdx']));
   });
 
-  it('acquiring grants the buyer a post-merger integration boost', () => {
+  it('inherits the target\'s in-progress slot applications as-is', () => {
     const buyer = aiAirline('ai-1', 'bna');
     buyer.cash = 50_000_000;
     const target = aiAirline('ai-2', 'sea');
-    target.rights = ['sea', 'pdx'];
+    target.rights = ['sea'];
+    target.negotiations = [{ airportId: 'pdx', opensDay: 300, fee: 100_000 }];
     acquire(g, buyer, target);
-    expect(mergerBoostActive(g, buyer)).toBe(true);
+    expect(buyer.negotiations).toEqual([{ airportId: 'pdx', opensDay: 300, fee: 100_000 }]);
+  });
+
+  it('drops an inherited application whose slot the buyer already holds', () => {
+    const buyer = aiAirline('ai-1', 'bna');
+    buyer.cash = 50_000_000;
+    buyer.rights = ['bna', 'pdx'];
+    const target = aiAirline('ai-2', 'sea');
+    target.rights = ['sea'];
+    target.negotiations = [{ airportId: 'pdx', opensDay: 300, fee: 100_000 }];
+    acquire(g, buyer, target);
+    expect(buyer.negotiations).toEqual([]);
+  });
+
+  it('on an overlapping application keeps the one that opens soonest', () => {
+    const buyer = aiAirline('ai-1', 'bna');
+    buyer.cash = 50_000_000;
+    buyer.negotiations = [{ airportId: 'pdx', opensDay: 500, fee: 100_000 }];
+    const target = aiAirline('ai-2', 'sea');
+    target.rights = ['sea'];
+    target.negotiations = [{ airportId: 'pdx', opensDay: 300, fee: 100_000 }];
+    acquire(g, buyer, target);
+    expect(buyer.negotiations).toEqual([{ airportId: 'pdx', opensDay: 300, fee: 100_000 }]);
   });
 });
 

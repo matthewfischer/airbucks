@@ -13,9 +13,6 @@ import {
   startNegotiation,
   sellSlot,
   concurrentCap,
-  effectiveConcurrentCap,
-  grantMergerBoost,
-  mergerBonusForCities,
   negotiationDays,
   isEasySlot,
   isRegionalSlot,
@@ -1162,42 +1159,6 @@ describe('landing rights', () => {
     expect(negotiationDays(AIRPORTS.find((a) => a.size === 1)!)).toBe(60);
     expect(negotiationDays(AIRPORTS.find((a) => a.size === 2)!)).toBe(90);
     expect(negotiationDays(AIRPORTS.find((a) => a.size === 6)!)).toBe(365);
-  });
-
-  it('the merger bonus scales with cities absorbed, floored at 1 and capped at 5', () => {
-    expect(mergerBonusForCities(3)).toBe(1); // a minnow still gives a nudge
-    expect(mergerBonusForCities(12)).toBe(2);
-    expect(mergerBonusForCities(25)).toBe(5); // a major is a land-grab
-    expect(mergerBonusForCities(40)).toBe(5); // capped
-  });
-
-  it('a merger boost raises the concurrent cap by its bonus, then expires after 2 years', () => {
-    al.rights = ['crw']; // base concurrent cap = 1
-    expect(effectiveConcurrentCap(g, al)).toBe(1);
-    grantMergerBoost(g, al, 3);
-    expect(effectiveConcurrentCap(g, al)).toBe(4);
-    g.day += 2 * 365 + 1; // past the window
-    expect(effectiveConcurrentCap(g, al)).toBe(1);
-  });
-
-  it('a merger boost clears slot negotiations ~30% faster', () => {
-    al.rights = ['crw', 'pit']; // past the free first slot
-    al.cash = 1_000_000_000;
-    const gso = airportById(g, 'gso');
-    grantMergerBoost(g, al, 2);
-    expect(startNegotiation(g, al, 'gso')).toBeNull();
-    expect(negotiationFor(al, 'gso')!.opensDay - g.day).toBe(Math.round(negotiationDays(gso) * 0.7));
-  });
-
-  it('a merger boost lets you file more applications at once', () => {
-    al.rights = ['crw', 'clt']; // base cap 1
-    al.cash = 1_000_000_000;
-    grantMergerBoost(g, al, 3);
-    // cvg/cmh/ind are mid-size hubs (not easy slots); base 1 + 3 boost = 4 cap.
-    expect(startNegotiation(g, al, 'cvg')).toBeNull();
-    expect(startNegotiation(g, al, 'cmh')).toBeNull();
-    expect(startNegotiation(g, al, 'ind')).toBeNull();
-    expect(al.negotiations).toHaveLength(3);
   });
 
   it('a slot opens after its negotiation window and then grants rights', () => {

@@ -139,11 +139,6 @@ export interface Airline {
   equityNegSince?: number;
   /** Distress listing, when the airline is up for sale. */
   forSale?: ForSale;
-  /** Day a post-acquisition integration boost expires (faster, wider slot
-   *  expansion). Absent when no boost is active. */
-  mergerBoostUntil?: number;
-  /** Extra concurrent slot applications the active boost grants (size-scaled). */
-  mergerBoostBonus?: number;
   /** Rival airlines absorbed via acquisition (for the Takeover badge). */
   acquisitions?: number;
 }

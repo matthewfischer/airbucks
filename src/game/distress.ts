@@ -1,11 +1,9 @@
-import type { Airline, GameState } from './types';
+import type { Airline, GameState, Negotiation } from './types';
 import {
   airportById,
   equity,
   eraScale,
   fleetValue,
-  grantMergerBoost,
-  mergerBonusForCities,
   money,
   playerNews,
   rightsFee,
@@ -84,9 +82,10 @@ function removeAirline(g: GameState, al: Airline): void {
  * (duplicates collapse), fleet (mileage intact), and routes (planes stay
  * assigned). Works for a distressed listing or a healthy going concern.
  *
- * The target's in-progress slot negotiations are NOT inherited — they're
- * dropped when it dissolves. Instead the buyer gets a merger boost (file slots
- * faster and wider for a while), so pending deals are refiled, not carried over.
+ * The target's in-progress slot negotiations carry over as-is (fees already
+ * paid, opening days intact). Where the buyer was chasing the same airport, the
+ * earlier-opening application wins; any whose slot the buyer already holds are
+ * dropped.
  */
 export function acquire(g: GameState, buyer: Airline, target: Airline): void {
   const price = buyoutPrice(g, target);
@@ -98,9 +97,15 @@ export function acquire(g: GameState, buyer: Airline, target: Airline): void {
   buyer.fleet.push(...target.fleet);
   buyer.routes.push(...target.routes);
   buyer.acquisitions = (buyer.acquisitions ?? 0) + 1;
-  // Integration team: file slots faster & wider for a while, scaled to the
-  // size of the airline absorbed (a minnow nudges, a major is a land-grab).
-  grantMergerBoost(g, buyer, mergerBonusForCities(cities));
+  // Inherit the target's pending slot applications. Drop any whose slot the
+  // buyer now holds; on an overlapping airport keep whichever opens soonest.
+  const pending = new Map<string, Negotiation>();
+  for (const n of [...buyer.negotiations, ...target.negotiations]) {
+    if (buyer.rights.includes(n.airportId)) continue;
+    const cur = pending.get(n.airportId);
+    if (!cur || n.opensDay < cur.opensDay) pending.set(n.airportId, n);
+  }
+  buyer.negotiations = [...pending.values()];
   const debtNote = target.debt > 0 ? `, assuming ${money(target.debt)} debt` : '';
   removeAirline(g, target);
   playerNews(

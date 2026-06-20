@@ -119,16 +119,6 @@ const EASY_SLOT_MAX_HELD = 5; // bonus only while still bootstrapping
 const GATE_FEE_RATE = 0.1;
 // Fraction of the rights fee refunded when you sell a slot back.
 const SELL_REFUND_RATE = 0.25;
-// Post-acquisition integration boost: for a while after buying an airline, the
-// merged carrier runs more slot applications at once and clears them faster —
-// digesting the merger into a burst of expansion. The extra-applications bonus
-// scales with the size of the airline absorbed, so a minnow gives a nudge and a
-// major gives a land-grab (and you can't cheese it by buying junk).
-const MERGER_BOOST_DAYS = 2 * 365;
-const MERGER_BONUS_PER = 5; // ~+1 concurrent application per 5 cities absorbed
-const MERGER_BONUS_MAX = 5; // capped so even a giant merger stays sane
-const MERGER_SPEEDUP = 0.3; // negotiations clear 30% faster while boosted
-
 export const MAX_HOME_SIZE = 3;
 
 /** A fresh airline with the starting stake, holding only its home slot. */
@@ -831,29 +821,6 @@ export const airportSlotsUsed = (g: GameState, airportId: string): number =>
 export const concurrentCap = (al: Airline): number =>
   NEGOTIATION_BASE + Math.floor(reputation(al) / NEGOTIATION_PER_AIRPORTS);
 
-/** True while a post-acquisition integration boost is running. */
-export const mergerBoostActive = (g: GameState, al: Airline): boolean =>
-  al.mergerBoostUntil !== undefined && g.day < al.mergerBoostUntil;
-
-/** Day the active merger boost ends (0 if none / expired). */
-export const mergerBoostUntil = (g: GameState, al: Airline): number =>
-  mergerBoostActive(g, al) ? al.mergerBoostUntil! : 0;
-
-/** Extra concurrent applications a merger grants, scaled to the cities absorbed. */
-export const mergerBonusForCities = (cities: number): number =>
-  Math.max(1, Math.min(MERGER_BONUS_MAX, Math.round(cities / MERGER_BONUS_PER)));
-
-/** Start (or refresh) the 2-year post-merger expansion boost, with a `bonus`
- *  to the concurrent-application cap (scaled to the acquired airline's size). */
-export function grantMergerBoost(g: GameState, al: Airline, bonus: number): void {
-  al.mergerBoostUntil = g.day + MERGER_BOOST_DAYS;
-  al.mergerBoostBonus = bonus;
-}
-
-/** Concurrent slot applications including the post-merger bonus while it lasts. */
-export const effectiveConcurrentCap = (g: GameState, al: Airline): number =>
-  concurrentCap(al) + (mergerBoostActive(g, al) ? (al.mergerBoostBonus ?? 0) : 0);
-
 /** How long an airport's slot takes to negotiate, in days (bigger = slower). */
 export const negotiationDays = (a: Airport): number =>
   NEGOTIATION_DAYS_BY_SIZE[a.size] ?? 60;
@@ -890,12 +857,11 @@ export const hasEasyNegotiation = (g: GameState, al: Airline): boolean =>
   al.negotiations.some((n) => isRegionalSlot(g, al, airportById(g, n.airportId)));
 
 /** Concurrent applications allowed when filing for this airport: the effective
- *  cap (incl. any merger boost), plus the bonus regional slot. The bonus stays
- *  reserved for an easy slot — it counts whenever this airport is easy or an
- *  easy negotiation is already running — so a regional never eats a base slot. */
+ *  cap, plus the bonus regional slot. The bonus stays reserved for an easy slot
+ *  — it counts whenever this airport is easy or an easy negotiation is already
+ *  running — so a regional never eats a base slot. */
 export const negotiationCapFor = (g: GameState, al: Airline, a: Airport): number =>
-  effectiveConcurrentCap(g, al) +
-  (isEasySlot(g, al, a) || hasEasyNegotiation(g, al) ? 1 : 0);
+  concurrentCap(al) + (isEasySlot(g, al, a) || hasEasyNegotiation(g, al) ? 1 : 0);
 
 /** Annual gate fee to keep one airport's slot, in era dollars. */
 export const gateFee = (g: GameState, a: Airport): number =>
@@ -971,9 +937,7 @@ export function startNegotiation(g: GameState, al: Airline, airportId: string): 
     al.log.unshift(`Acquired your first slot at ${a.code} (${a.city}) for ${money(fee)}.`);
     return null;
   }
-  const days = mergerBoostActive(g, al)
-    ? Math.round(negotiationDays(a) * (1 - MERGER_SPEEDUP))
-    : negotiationDays(a);
+  const days = negotiationDays(a);
   al.negotiations.push({ airportId, opensDay: g.day + days, fee });
   al.log.unshift(
     `Filed for a slot at ${a.code} (${a.city}) — ${money(fee)}, ~${Math.round(days / 30)} months.`,
