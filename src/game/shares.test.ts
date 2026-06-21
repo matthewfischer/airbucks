@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FinanceSnapshot } from './types';
 import { newAirline, newGame } from './engine';
 import {
+  bookValue,
   buyBack,
   buyShares,
   controllerOf,
@@ -14,7 +15,6 @@ import {
   publicFloat,
   retainedShares,
   sellShares,
-  shareValuation,
   sharesOwned,
   takeover,
 } from './shares';
@@ -57,39 +57,39 @@ describe('cap table', () => {
   });
 });
 
-describe('growthMultiple', () => {
+describe('growthMultiple (takeover premium)', () => {
   const al = newAirline('ai-1', 'A', '#fff', 'atl');
 
-  it('is the floor for a flat or single-point history', () => {
-    al.history = [snap(0, 1000, 0)];
-    expect(growthMultiple(al)).toBe(2);
+  it('is the floor for a flat history', () => {
     al.history = [snap(0, 1000, 0), snap(365, 1000, 0)];
-    expect(growthMultiple(al)).toBe(2);
+    expect(growthMultiple(al)).toBe(1);
   });
 
-  it('hits the cap for a doubling (and for growth off a ~zero base)', () => {
+  it('hits the cap for a doubling, growth off ~zero, or unknown history', () => {
     al.history = [snap(0, 1000, 0), snap(365, 2000, 0)];
-    expect(growthMultiple(al)).toBe(15);
+    expect(growthMultiple(al)).toBe(2.5);
     al.history = [snap(0, 0, 0), snap(365, 500, 0)];
-    expect(growthMultiple(al)).toBe(15);
+    expect(growthMultiple(al)).toBe(2.5);
+    al.history = [snap(0, 1000, 0)]; // single point — unknown, treated as a dear growth bet
+    expect(growthMultiple(al)).toBe(2.5);
   });
 
   it('scales linearly between for partial growth', () => {
     al.history = [snap(0, 1000, 0), snap(365, 1500, 0)]; // +50%/yr
-    expect(growthMultiple(al)).toBeCloseTo(8.5, 5); // 2 + 13 * 0.5
+    expect(growthMultiple(al)).toBeCloseTo(1.75, 5); // 1 + 1.5 * 0.5
   });
 });
 
-describe('shareValuation', () => {
+describe('bookValue', () => {
   it('is floored positive and rises with net worth', () => {
     const g = newGame('crw', 1);
     const al = newAirline('ai-1', 'A', '#fff', 'atl');
     g.airlines.push(al);
     al.cash = 0;
-    const v0 = shareValuation(g, al);
+    const v0 = bookValue(g, al);
     expect(v0).toBeGreaterThan(0);
     al.cash = 10_000_000;
-    expect(shareValuation(g, al)).toBeGreaterThan(v0);
+    expect(bookValue(g, al)).toBeGreaterThan(v0);
   });
 });
 

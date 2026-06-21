@@ -1,5 +1,5 @@
 import type { Airline, GameState } from './types';
-import { equity, eraScale, money, playerNews, weeklyTotals } from './engine';
+import { equity, eraScale, money, playerNews } from './engine';
 import { mergeInto, slotInvestment } from './distress';
 
 // A stock market for airlines (RRT-direction). Each carrier has a cap table of
@@ -21,22 +21,38 @@ export const PUBLIC = 'public';
  *  still has a non-zero share price. */
 const MIN_VALUATION = 100_000;
 
-// ---- Growth-aware valuation -------------------------------------------------
+// ---- Valuation --------------------------------------------------------------
 
-const GROWTH_MULT_MIN = 2; // flat/mature airline: a low earnings multiple
-const GROWTH_MULT_MAX = 15; // fast grower: a high multiple (like a growth stock)
+const GROWTH_MULT_MIN = 1; // flat/mature airline: an acquirer pays ~book
+const GROWTH_MULT_MAX = 2.5; // fast grower: a steep control premium, not absurd
 const GROWTH_CAP = 1.0; // growth at/above +100%/yr earns the max multiple
 
 /**
- * Earnings multiple applied to a healthy airline's profit, scaled by how fast
- * it's growing — measured from the revenue trend in its weekly `history`,
- * recent vs ~a year prior. A young, fast-growing carrier commands a high
- * multiple (expensive to buy young); a flat/mature one a low one. Bounded so a
- * tiny revenue base can't produce an absurd multiple.
+ * Book value: net worth + the replacement cost of the slot portfolio (no growth
+ * premium). The basis for the everyday share price — issuing, open-market float,
+ * buy-back, and selling all trade at book, so diluting yourself raises cash in
+ * proportion to your net worth rather than a speculative multiple.
+ */
+export function bookValue(g: GameState, al: Airline): number {
+  const value = equity(g, al) + slotInvestment(g, al);
+  return Math.max(Math.round(MIN_VALUATION * eraScale(g)), Math.round(value));
+}
+
+/** Plain (no-impact) price of a single share — book value split 100 ways. */
+export const sharePriceBase = (g: GameState, al: Airline): number =>
+  bookValue(g, al) / TOTAL_SHARES;
+
+/**
+ * The premium (≥1) an acquirer pays over book to take control of a *healthy*
+ * going concern, scaled by how fast it's growing — measured from the revenue
+ * trend in its weekly `history`, recent vs ~a year prior. A young, fast-growing
+ * carrier costs a steep premium (can't be rolled up cheaply); a flat/mature one
+ * sells near book. Applied only to takeovers, not to issuing or open-market
+ * float, so the everyday share price stays anchored to net worth.
  */
 export function growthMultiple(al: Airline): number {
   const h = al.history;
-  if (h.length < 2) return GROWTH_MULT_MIN;
+  if (h.length < 2) return GROWTH_MULT_MAX; // young/unknown: treat as a dear growth bet
   const now = h[h.length - 1];
   // The snapshot closest to a year before `now` (history is oldest-first).
   const cutoff = now.day - 365;
@@ -47,28 +63,10 @@ export function growthMultiple(al: Airline): number {
   }
   const r0 = prev.revenue;
   const r1 = now.revenue;
-  // From ~zero to positive revenue is maximal growth; flat/declining is minimal.
   if (r0 <= 0) return r1 > 0 ? GROWTH_MULT_MAX : GROWTH_MULT_MIN;
   const growth = Math.min(GROWTH_CAP, Math.max(0, (r1 - r0) / r0));
   return GROWTH_MULT_MIN + (GROWTH_MULT_MAX - GROWTH_MULT_MIN) * (growth / GROWTH_CAP);
 }
-
-/**
- * Growth-aware enterprise value of an airline: net worth + the replacement cost
- * of its slot portfolio + growth-scaled goodwill on its earnings. Floored. This
- * is the basis for the share price; the cheap-acquisition window closes from
- * both ends (young = growth premium on goodwill, old = large equity).
- */
-export function shareValuation(g: GameState, al: Airline): number {
-  const annualNet = weeklyTotals(g, al).net * 52;
-  const goodwill = Math.max(0, annualNet) * growthMultiple(al);
-  const value = equity(g, al) + slotInvestment(g, al) + goodwill;
-  return Math.max(Math.round(MIN_VALUATION * eraScale(g)), Math.round(value));
-}
-
-/** Plain (no-impact) price of a single share — the valuation split 100 ways. */
-export const sharePriceBase = (g: GameState, al: Airline): number =>
-  shareValuation(g, al) / TOTAL_SHARES;
 
 // ---- Cap table --------------------------------------------------------------
 
@@ -110,8 +108,8 @@ export function largestRivalStake(al: Airline): { ownerId: string; shares: numbe
 /** Marginal-price multiplier when the buyer would own fraction `f` (0..1) after
  *  a share: rises with the stake, with a steep premium on the shares that cross
  *  control (50%). Keeps cornering progressively expensive. */
-const IMPACT_SLOPE = 1.0; // gentle ramp from 1.0 toward control
-const CONTROL_PREMIUM = 2.0; // steep surcharge on shares past 50%
+const IMPACT_SLOPE = 0.5; // gentle ramp from 1.0 toward control
+const CONTROL_PREMIUM = 0.8; // surcharge on shares past 50%
 const premium = (f: number): number => 1 + IMPACT_SLOPE * f + CONTROL_PREMIUM * Math.max(0, f - 0.5);
 
 /**
@@ -160,6 +158,9 @@ function transferShares(
   target: Airline,
   count: number,
   force: boolean,
+  /** Premium (×) on shares prised from the founder/holders in a takeover; the
+   *  open-market float always trades at book (×1). */
+  forcedMult = 1,
 ): number {
   const cap = { ...ownership(target) };
   const buyerId = buyer.id;
@@ -179,7 +180,9 @@ function transferShares(
     if (src === buyerId) continue;
     const take = Math.min(need, cap[src] ?? 0);
     if (take <= 0) continue;
-    const c = costToAccumulate(g, target, owned, take);
+    // Open-market float trades at book; founder/holder shares carry the takeover
+    // premium (the acquirer pays up for control of a going concern).
+    const c = costToAccumulate(g, target, owned, take) * (src === PUBLIC ? 1 : forcedMult);
     cost += c;
     // Only other airlines (not the founder, not the public) pocket the proceeds.
     if (src !== PUBLIC && src !== target.id) credit.set(src, (credit.get(src) ?? 0) + c);
@@ -188,12 +191,13 @@ function transferShares(
     owned += take;
     need -= take;
   }
+  cost = Math.round(cost);
   const got = count - need;
   if (got <= 0) return 0;
   buyer.cash -= cost;
   for (const [owner, amt] of credit) {
     const al = g.airlines.find((a) => a.id === owner);
-    if (al && al !== buyer) al.cash += amt;
+    if (al && al !== buyer) al.cash += Math.round(amt);
   }
   for (const k of Object.keys(cap)) if (cap[k] <= 0) delete cap[k];
   target.shares = cap;
@@ -239,18 +243,23 @@ export function issueShares(g: GameState, al: Airline, count: number): number {
 }
 
 /** Cost to reach a controlling stake in `target` from the buyer's current
- *  holding (forcing founder/holders if the float is short). For affordability. */
+ *  holding, assuming the shares are prised from the founder at the growth
+ *  premium (the worst case — most rivals carry no float). For affordability. */
 export function controlCost(g: GameState, buyer: Airline, target: Airline): number {
   const owned = sharesOwned(target, buyer.id);
-  return costToAccumulate(g, target, owned, Math.max(0, CONTROL_SHARES - owned));
+  return Math.round(
+    costToAccumulate(g, target, owned, Math.max(0, CONTROL_SHARES - owned)) * growthMultiple(target),
+  );
 }
 
 /** Estimated total cost to fully take over `target` from the buyer's current
- *  holding: reach control, then squeeze out the rest. The affordability gate
- *  for an AI (or player) considering a hostile takeover. */
+ *  holding: reach control, then squeeze out the rest (both at the growth
+ *  premium). The affordability gate for an AI or player hostile takeover. */
 export function takeoverCost(g: GameState, buyer: Airline, target: Airline): number {
   const remaining = TOTAL_SHARES - CONTROL_SHARES;
-  const squeeze = Math.round(sharePriceBase(g, target) * remaining * SQUEEZE_PREMIUM);
+  const squeeze = Math.round(
+    sharePriceBase(g, target) * remaining * SQUEEZE_PREMIUM * growthMultiple(target),
+  );
   return controlCost(g, buyer, target) + squeeze;
 }
 
@@ -263,7 +272,7 @@ export function squeezeOut(g: GameState, buyer: Airline, target: Airline): boole
   if (!hasControl(target, buyer.id)) return false;
   const remaining = TOTAL_SHARES - sharesOwned(target, buyer.id);
   if (remaining > 0) {
-    const perShare = sharePriceBase(g, target) * SQUEEZE_PREMIUM;
+    const perShare = sharePriceBase(g, target) * SQUEEZE_PREMIUM * growthMultiple(target);
     buyer.cash -= Math.round(perShare * remaining);
     for (const [owner, n] of Object.entries(ownership(target))) {
       if (owner === buyer.id || owner === PUBLIC || owner === target.id) continue;
@@ -286,7 +295,7 @@ export function squeezeOut(g: GameState, buyer: Airline, target: Airline): boole
  */
 export function takeover(g: GameState, buyer: Airline, target: Airline): boolean {
   const need = Math.max(0, CONTROL_SHARES - sharesOwned(target, buyer.id));
-  if (need > 0) transferShares(g, buyer, target, need, true);
+  if (need > 0) transferShares(g, buyer, target, need, true, growthMultiple(target));
   if (!hasControl(target, buyer.id)) return false;
   return squeezeOut(g, buyer, target);
 }
