@@ -34,31 +34,36 @@ const MIN_VALUATION = 100_000;
 
 // ---- Valuation --------------------------------------------------------------
 
-/** Years of addressable revenue capitalized into the franchise value. */
-const FRANCHISE_YEARS = 1;
+/** Realizable fraction of a network's *theoretical* addressable revenue. The
+ *  gross below assumes 100% capture of every market each held city anchors, to
+ *  the whole world — wildly more than any carrier realizes — so franchise value
+ *  is a small slice of it (capture rate × margin × capitalization). Tunable. */
+const FRANCHISE_FACTOR = 0.0006;
+
+/** A city's weekly addressable revenue: the theoretical demand it anchors to
+ *  every other airport, at reference fares. The market's size, per city. */
+function cityMarket(g: GameState, a: ReturnType<typeof airportById>): number {
+  let weekly = 0;
+  for (const b of g.airports) {
+    if (b.id === a.id) continue;
+    const dist = distanceKm(a, b);
+    weekly += pairDemand(a, b) * distanceFactor(dist) * referenceFare(dist);
+  }
+  return weekly;
+}
 
 /**
- * Franchise value: the addressable market the network sits on, valued buyer-
- * independently. Sum the theoretical demand across every city-pair the airline's
- * rights span (it could fly any of them), price it at reference fares, and
- * capitalize. This is what the network is worth to a competent operator —
+ * Franchise value: what the network's market is worth to a competent operator,
  * regardless of how efficiently the *current* owner runs it (their slack is the
- * upside an acquirer buys). A network reaching big markets is worth more, young
- * or not.
+ * upside an acquirer buys). Sum the addressable market of every city held — so
+ * it's linear in the network's size and weighted toward big markets — and take a
+ * realizable slice. Buyer-independent: A and B stand on their own; a strategic
+ * fit is the acquirer's premium to pay, not a change to the target's worth.
  */
 export function franchiseValue(g: GameState, al: Airline): number {
-  const cities = al.rights.map((id) => airportById(g, id));
-  let weeklyRevenue = 0;
-  for (let i = 0; i < cities.length; i++) {
-    for (let j = i + 1; j < cities.length; j++) {
-      const a = cities[i];
-      const b = cities[j];
-      const dist = distanceKm(a, b);
-      const demand = pairDemand(a, b) * distanceFactor(dist); // theoretical weekly pax
-      weeklyRevenue += demand * referenceFare(dist);
-    }
-  }
-  return Math.round(weeklyRevenue * priceLevel(g) * 52 * FRANCHISE_YEARS);
+  let weekly = 0;
+  for (const id of al.rights) weekly += cityMarket(g, airportById(g, id));
+  return Math.round(weekly * priceLevel(g) * 52 * FRANCHISE_FACTOR);
 }
 
 /**

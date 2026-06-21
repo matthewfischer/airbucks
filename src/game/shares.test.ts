@@ -43,16 +43,16 @@ describe('cap table', () => {
   });
 });
 
-describe('franchiseValue (addressable market)', () => {
-  it('is zero for a single-city network and positive for a multi-city one', () => {
+describe('franchiseValue (market footprint)', () => {
+  it('grows with the network — a bigger footprint is worth more', () => {
     const g = newGame('crw', 1);
     const solo = newAirline('s', 'S', '#fff', 'clt');
-    solo.rights = ['clt']; // no city-pairs → no addressable market
+    solo.rights = ['clt'];
     const net = newAirline('n', 'N', '#000', 'atl');
     net.rights = ['atl', 'jfk', 'bna', 'den'];
     g.airlines.push(solo, net);
-    expect(franchiseValue(g, solo)).toBe(0);
-    expect(franchiseValue(g, net)).toBeGreaterThan(0);
+    expect(franchiseValue(g, solo)).toBeGreaterThan(0);
+    expect(franchiseValue(g, net)).toBeGreaterThan(franchiseValue(g, solo));
   });
 });
 
