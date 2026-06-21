@@ -68,7 +68,7 @@ import {
 import { distanceKm } from './game/geo';
 import { addAiAirlines, MAX_AI_AIRLINES, runAI } from './game/ai';
 import { acquire, buyoutPrice } from './game/distress';
-import { buyBack, buyShares, issueShares, sellShares, takeover, takeoverCost } from './game/shares';
+import { buyBack, buyShares, canAcquire, issueShares, sellShares, takeover, takeoverCost } from './game/shares';
 import { applySave, deserialize, serialize } from './game/persist';
 import { renderFinance } from './ui/finance';
 import { renderCompetitors } from './ui/competitors';
@@ -1167,6 +1167,7 @@ competitorsEl.addEventListener('click', (e) => {
   if (act === 'buy-airline') {
     const target = findTarget();
     if (!target || target === pl() || pl().cash < buyoutPrice(game, target)) return;
+    if (!canAcquire(game, pl())) return; // integration cooldown
     acquire(game, pl(), target);
     knownRights = new Set(pl().rights);
     render();

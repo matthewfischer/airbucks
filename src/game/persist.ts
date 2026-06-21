@@ -39,6 +39,7 @@ export interface SavedAirline {
   equityNegSince?: number;
   forSale?: ForSale;
   acquisitions?: number;
+  lastAcquireDay?: number;
   /** Cap table (ownerId → shares of 100). Absent ⇒ 100% self-held. */
   shares?: Record<string, number>;
 }
@@ -71,6 +72,7 @@ const saveAirline = (al: Airline): SavedAirline => ({
   ...(al.equityNegSince !== undefined ? { equityNegSince: al.equityNegSince } : {}),
   ...(al.forSale ? { forSale: al.forSale } : {}),
   ...(al.acquisitions !== undefined ? { acquisitions: al.acquisitions } : {}),
+  ...(al.lastAcquireDay !== undefined ? { lastAcquireDay: al.lastAcquireDay } : {}),
   ...(al.shares ? { shares: al.shares } : {}),
 });
 
@@ -135,6 +137,7 @@ function parseAirline(d: unknown): SavedAirline | null {
   const cashNegSince = optNum(s.cashNegSince);
   const equityNegSince = optNum(s.equityNegSince);
   const acquisitions = optNum(s.acquisitions);
+  const lastAcquireDay = optNum(s.lastAcquireDay);
   const shares = parseShares(s.shares);
   return {
     id: typeof s.id === 'string' ? s.id : 'player',
@@ -155,6 +158,7 @@ function parseAirline(d: unknown): SavedAirline | null {
     ...(equityNegSince !== undefined ? { equityNegSince } : {}),
     ...(forSale ? { forSale } : {}),
     ...(acquisitions !== undefined ? { acquisitions } : {}),
+    ...(lastAcquireDay !== undefined ? { lastAcquireDay } : {}),
     ...(shares ? { shares } : {}),
   };
 }
@@ -240,6 +244,7 @@ function applyAirline(
     ...(data.equityNegSince !== undefined ? { equityNegSince: data.equityNegSince } : {}),
     ...(data.forSale ? { forSale: data.forSale } : {}),
     ...(data.acquisitions !== undefined ? { acquisitions: data.acquisitions } : {}),
+    ...(data.lastAcquireDay !== undefined ? { lastAcquireDay: data.lastAcquireDay } : {}),
     ...(data.shares ? { shares: data.shares } : {}),
   };
 }

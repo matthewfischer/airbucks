@@ -2,6 +2,8 @@ import type { Airline, GameState } from '../game/types';
 import { airportById, equity, money, player, weeklyTotals } from '../game/engine';
 import { buyoutPrice } from '../game/distress';
 import {
+  acquireCooldownLeft,
+  canAcquire,
   controlCost,
   costToAccumulate,
   hasControl,
@@ -68,15 +70,19 @@ const BLOCK = 10;
 /** Fire-sale block for a distressed rival: instant buyout at the cheap sticker. */
 function fireSaleBlock(g: GameState, al: Airline): string {
   const price = buyoutPrice(g, al);
-  const afford = player(g).cash >= price;
+  const cooling = !canAcquire(g, player(g));
+  const afford = player(g).cash >= price && !cooling;
   const debtRow = al.debt > 0
     ? `<div class="comp-sale-row"><span class="muted">You assume</span><span class="bad">${money(al.debt)} debt ⚠</span></div>`
     : '';
+  const label = cooling
+    ? `Integrating · ${Math.ceil(acquireCooldownLeft(g, player(g)) / 30)}mo`
+    : afford ? `Buy · ${money(price)}` : `Need ${money(price)}`;
   return `<div class="comp-sale">
     <div class="comp-sale-row"><span class="muted">Asking</span><span>${money(price)}</span></div>
     ${debtRow}
     <button class="comp-buy ${afford ? 'primary' : ''}" data-act="buy-airline" data-airline="${al.id}" ${afford ? '' : 'disabled'}>
-      ${afford ? `Buy · ${money(price)}` : `Need ${money(price)}`}
+      ${label}
     </button>
   </div>`;
 }
@@ -108,11 +114,15 @@ function shareBlock(g: GameState, al: Airline): string {
     : '';
 
   // Hostile takeover: reach control (forcing retained shares), then squeeze out.
+  // Blocked while still digesting a recent acquisition (integration cooldown).
+  const cooling = !canAcquire(g, you);
   const overCost = control ? controlCost(g, you, al) : takeoverCost(g, you, al);
-  const overAfford = you.cash >= overCost;
-  const overLabel = control ? 'Squeeze out' : 'Take over';
-  const overBtn = `<button class="comp-share-btn ${overAfford ? 'danger' : ''}" data-act="takeover" data-airline="${al.id}" ${overAfford ? '' : 'disabled'} title="Reach >50% then absorb ${al.name}">
-    ${overLabel} · ${money(overCost)}</button>`;
+  const overReady = you.cash >= overCost && !cooling;
+  const overLabel = cooling
+    ? `Integrating · ${Math.ceil(acquireCooldownLeft(g, you) / 30)}mo`
+    : `${control ? 'Squeeze out' : 'Take over'} · ${money(overCost)}`;
+  const overBtn = `<button class="comp-share-btn ${overReady ? 'danger' : ''}" data-act="takeover" data-airline="${al.id}" ${overReady ? '' : 'disabled'} title="Reach >50% then absorb ${al.name}">
+    ${overLabel}</button>`;
 
   // Progress toward control.
   const pct = Math.min(100, Math.round((owned / 51) * 100));

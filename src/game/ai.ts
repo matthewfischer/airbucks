@@ -2,7 +2,7 @@ import type { AircraftType, Airline, Airport, GameState, Route } from './types';
 import { distanceKm } from './geo';
 import type { NetworkResult } from './engine';
 import { acquire, buyoutPrice, updateDistress } from './distress';
-import { takeover, takeoverCost } from './shares';
+import { canAcquire, takeover, takeoverCost } from './shares';
 import {
   airportById,
   assignPlane,
@@ -718,6 +718,7 @@ const DISTRESS_PREFERENCE = 1.5;
 export function acquisitionActions(g: GameState, al: Airline, p: Personality): Action[] {
   const actions: Action[] = [];
   if (equity(g, al) <= 0) return actions; // only solvent airlines acquire
+  if (!canAcquire(g, al)) return actions; // still digesting the last acquisition
   const appetite = p.debtAppetite * creditLimit(g, al);
   for (const target of g.airlines) {
     if (target === al || !target.ai) continue; // never the human; not self

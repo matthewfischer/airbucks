@@ -141,6 +141,8 @@ export interface Airline {
   forSale?: ForSale;
   /** Rival airlines absorbed via acquisition (for the Takeover badge). */
   acquisitions?: number;
+  /** Day of the most recent acquisition — gates the next one (integration time). */
+  lastAcquireDay?: number;
   /** Cap table: ownerId → share count out of 100. Owners are this airline's own
    *  id (retained), `'public'` (the open float), or another airline's id (a
    *  strategic stake). Absent ⇒ 100% self-held. See shares.ts. */

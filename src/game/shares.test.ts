@@ -12,6 +12,7 @@ import {
   largestRivalStake,
   ownership,
   publicFloat,
+  publicValue,
   retainedShares,
   sellShares,
   sharesOwned,
@@ -103,17 +104,19 @@ describe('costToAccumulate (price impact)', () => {
 });
 
 describe('valuation pricing (issue at book, premium only on takeover)', () => {
-  it('issuing 10% raises about 10% of book — proportional to net worth', () => {
+  it('issuing 10% raises ~10% of public value, at a discount to full value', () => {
     const g = newGame('crw', 1);
     const al = newAirline('a', 'A', '#fff', 'clt');
     al.cash = 5_000_000;
     g.airlines.push(al);
-    const book = bookValue(g, al);
+    const pub = publicValue(g, al);
     const before = al.cash;
     issueShares(g, al, 10);
     const raised = al.cash - before;
-    expect(raised).toBeGreaterThan(book * 0.08);
-    expect(raised).toBeLessThan(book * 0.12); // not a speculative multiple of net worth
+    expect(raised).toBeGreaterThan(pub * 0.08);
+    expect(raised).toBeLessThan(pub * 0.12);
+    // The public pays less than full intrinsic value (franchise is discounted).
+    expect(raised).toBeLessThan(bookValue(g, al) * 0.1);
   });
 
   it('a takeover costs a premium over the intrinsic (book) value', () => {
@@ -196,6 +199,26 @@ describe('share transactions', () => {
     expect(b.rights).toContain('clt'); // network inherited
     // Cost is real, not a wash with the inherited treasury (founder proceeds leave the game).
     expect(b.cash).toBeLessThan(before);
+  });
+
+  it('blocks a second acquisition during the integration cooldown', () => {
+    const g = newGame('crw', 1);
+    const b = newAirline('b', 'B', '#fff', 'atl');
+    b.cash = 1_000_000_000;
+    const t1 = newAirline('t1', 'T1', '#f00', 'clt');
+    t1.cash = 2_000_000;
+    const t2 = newAirline('t2', 'T2', '#00f', 'den');
+    t2.cash = 2_000_000;
+    g.airlines.push(b, t1, t2);
+
+    expect(takeover(g, b, t1)).toBe(true); // first acquisition lands
+    expect(g.airlines).not.toContain(t1);
+    expect(takeover(g, b, t2)).toBe(false); // second blocked — still integrating
+    expect(g.airlines).toContain(t2);
+
+    g.day += 365; // integration done
+    expect(takeover(g, b, t2)).toBe(true);
+    expect(g.airlines).not.toContain(t2);
   });
 
   it('pays an other-airline minority holder when squeezing it out', () => {

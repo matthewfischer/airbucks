@@ -112,6 +112,7 @@ export function mergeInto(g: GameState, buyer: Airline, target: Airline): void {
     if (!cur || n.opensDay < cur.opensDay) pending.set(n.airportId, n);
   }
   buyer.negotiations = [...pending.values()];
+  buyer.lastAcquireDay = g.day; // start the integration cooldown before the next deal
   removeAirline(g, target);
 }
 
