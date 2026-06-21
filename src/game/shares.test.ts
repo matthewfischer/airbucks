@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { FinanceSnapshot } from './types';
 import { newAirline, newGame } from './engine';
 import {
   bookValue,
@@ -7,7 +6,7 @@ import {
   buyShares,
   controllerOf,
   costToAccumulate,
-  growthMultiple,
+  franchiseValue,
   hasControl,
   issueShares,
   largestRivalStake,
@@ -20,20 +19,6 @@ import {
   takeoverCost,
 } from './shares';
 import { applySave, deserialize, serialize } from './persist';
-
-/** A weekly snapshot with just the fields the share math reads. */
-const snap = (day: number, revenue: number, net: number): FinanceSnapshot => ({
-  day,
-  cash: 0,
-  debt: 0,
-  fleetValue: 0,
-  revenue,
-  cost: 0,
-  interest: 0,
-  interestEarned: 0,
-  net,
-  pax: 0,
-});
 
 describe('cap table', () => {
   it('defaults an unset table to 100% self-held', () => {
@@ -58,26 +43,16 @@ describe('cap table', () => {
   });
 });
 
-describe('growthMultiple (takeover premium)', () => {
-  const al = newAirline('ai-1', 'A', '#fff', 'atl');
-
-  it('is the floor for a flat history', () => {
-    al.history = [snap(0, 1000, 0), snap(365, 1000, 0)];
-    expect(growthMultiple(al)).toBe(1);
-  });
-
-  it('hits the cap for a doubling, growth off ~zero, or unknown history', () => {
-    al.history = [snap(0, 1000, 0), snap(365, 2000, 0)];
-    expect(growthMultiple(al)).toBe(2.5);
-    al.history = [snap(0, 0, 0), snap(365, 500, 0)];
-    expect(growthMultiple(al)).toBe(2.5);
-    al.history = [snap(0, 1000, 0)]; // single point — unknown, treated as a dear growth bet
-    expect(growthMultiple(al)).toBe(2.5);
-  });
-
-  it('scales linearly between for partial growth', () => {
-    al.history = [snap(0, 1000, 0), snap(365, 1500, 0)]; // +50%/yr
-    expect(growthMultiple(al)).toBeCloseTo(1.75, 5); // 1 + 1.5 * 0.5
+describe('franchiseValue (addressable market)', () => {
+  it('is zero for a single-city network and positive for a multi-city one', () => {
+    const g = newGame('crw', 1);
+    const solo = newAirline('s', 'S', '#fff', 'clt');
+    solo.rights = ['clt']; // no city-pairs → no addressable market
+    const net = newAirline('n', 'N', '#000', 'atl');
+    net.rights = ['atl', 'jfk', 'bna', 'den'];
+    g.airlines.push(solo, net);
+    expect(franchiseValue(g, solo)).toBe(0);
+    expect(franchiseValue(g, net)).toBeGreaterThan(0);
   });
 });
 
@@ -91,6 +66,18 @@ describe('bookValue', () => {
     expect(v0).toBeGreaterThan(0);
     al.cash = 10_000_000;
     expect(bookValue(g, al)).toBeGreaterThan(v0);
+  });
+
+  it('is higher for a bigger-market network at equal net worth', () => {
+    const g = newGame('crw', 1);
+    const small = newAirline('a', 'A', '#fff', 'clt');
+    small.cash = 5_000_000;
+    small.rights = ['clt'];
+    const big = newAirline('b', 'B', '#000', 'atl');
+    big.cash = 5_000_000;
+    big.rights = ['atl', 'jfk', 'bna', 'den', 'clt'];
+    g.airlines.push(small, big);
+    expect(bookValue(g, big)).toBeGreaterThan(bookValue(g, small)); // same equity, more market
   });
 });
 
@@ -129,24 +116,15 @@ describe('valuation pricing (issue at book, premium only on takeover)', () => {
     expect(raised).toBeLessThan(book * 0.12); // not a speculative multiple of net worth
   });
 
-  it('book ignores growth, but a takeover carries a premium — steeper for a faster grower', () => {
+  it('a takeover costs a premium over the intrinsic (book) value', () => {
     const g = newGame('crw', 1);
-    const flat = newAirline('flat', 'F', '#fff', 'clt');
-    flat.cash = 5_000_000;
-    flat.history = [snap(0, 1000, 0), snap(365, 1000, 0)]; // no growth
-    const grow = newAirline('grow', 'G', '#0f0', 'clt');
-    grow.cash = 5_000_000;
-    grow.history = [snap(0, 1000, 0), snap(365, 2000, 0)]; // doubling
+    const t = newAirline('t', 'T', '#fff', 'atl');
+    t.cash = 5_000_000;
+    t.rights = ['atl', 'jfk', 'bna', 'den'];
     const buyer = newAirline('b', 'B', '#00f', 'clt');
     buyer.cash = 1_000_000_000;
-    g.airlines.push(flat, grow, buyer);
-
-    // Same net worth → same book, regardless of growth.
-    expect(bookValue(g, grow)).toBe(bookValue(g, flat));
-    // Takeover costs a premium over book…
-    expect(takeoverCost(g, buyer, flat)).toBeGreaterThan(bookValue(g, flat));
-    // …and the fast grower commands a steeper one.
-    expect(takeoverCost(g, buyer, grow)).toBeGreaterThan(takeoverCost(g, buyer, flat));
+    g.airlines.push(t, buyer);
+    expect(takeoverCost(g, buyer, t)).toBeGreaterThan(bookValue(g, t));
   });
 });
 
