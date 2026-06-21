@@ -17,6 +17,7 @@ import {
   sellShares,
   sharesOwned,
   takeover,
+  takeoverCost,
 } from './shares';
 import { applySave, deserialize, serialize } from './persist';
 
@@ -111,6 +112,41 @@ describe('costToAccumulate (price impact)', () => {
     const below = costToAccumulate(g, al, 0, 10); // shares 1..10
     const crossing = costToAccumulate(g, al, 45, 10); // shares 46..55, crosses 50
     expect(crossing).toBeGreaterThan(below);
+  });
+});
+
+describe('valuation pricing (issue at book, premium only on takeover)', () => {
+  it('issuing 10% raises about 10% of book — proportional to net worth', () => {
+    const g = newGame('crw', 1);
+    const al = newAirline('a', 'A', '#fff', 'clt');
+    al.cash = 5_000_000;
+    g.airlines.push(al);
+    const book = bookValue(g, al);
+    const before = al.cash;
+    issueShares(g, al, 10);
+    const raised = al.cash - before;
+    expect(raised).toBeGreaterThan(book * 0.08);
+    expect(raised).toBeLessThan(book * 0.12); // not a speculative multiple of net worth
+  });
+
+  it('book ignores growth, but a takeover carries a premium — steeper for a faster grower', () => {
+    const g = newGame('crw', 1);
+    const flat = newAirline('flat', 'F', '#fff', 'clt');
+    flat.cash = 5_000_000;
+    flat.history = [snap(0, 1000, 0), snap(365, 1000, 0)]; // no growth
+    const grow = newAirline('grow', 'G', '#0f0', 'clt');
+    grow.cash = 5_000_000;
+    grow.history = [snap(0, 1000, 0), snap(365, 2000, 0)]; // doubling
+    const buyer = newAirline('b', 'B', '#00f', 'clt');
+    buyer.cash = 1_000_000_000;
+    g.airlines.push(flat, grow, buyer);
+
+    // Same net worth → same book, regardless of growth.
+    expect(bookValue(g, grow)).toBe(bookValue(g, flat));
+    // Takeover costs a premium over book…
+    expect(takeoverCost(g, buyer, flat)).toBeGreaterThan(bookValue(g, flat));
+    // …and the fast grower commands a steeper one.
+    expect(takeoverCost(g, buyer, grow)).toBeGreaterThan(takeoverCost(g, buyer, flat));
   });
 });
 
