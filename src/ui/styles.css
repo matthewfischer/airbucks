@@ -509,6 +509,33 @@ input[type='number'] { width: 84px; }
 .comp-sale-row { display: flex; justify-content: space-between; font-size: 12px; }
 .comp-buy { margin-top: 6px; width: 100%; }
 
+/* Share-market controls on a competitor card. */
+.comp-share-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.comp-share-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.comp-share-btn:hover:not(:disabled) { border-color: var(--accent); }
+.comp-share-btn:disabled { opacity: 0.45; cursor: default; }
+.comp-share-btn.danger { border-color: var(--bad); color: var(--bad); }
+.comp-share-btn.danger:hover:not(:disabled) { background: var(--bad); color: #fff; }
+.comp-share-progress {
+  height: 4px;
+  border-radius: 3px;
+  background: var(--panel-2);
+  overflow: hidden;
+  margin: 2px 0;
+}
+.comp-share-fill { height: 100%; background: var(--accent); }
+
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

@@ -68,6 +68,7 @@ import {
 import { distanceKm } from './game/geo';
 import { addAiAirlines, MAX_AI_AIRLINES, runAI } from './game/ai';
 import { acquire, buyoutPrice } from './game/distress';
+import { buyBack, buyShares, issueShares, sellShares, takeover, takeoverCost } from './game/shares';
 import { applySave, deserialize, serialize } from './game/persist';
 import { renderFinance } from './ui/finance';
 import { renderCompetitors } from './ui/competitors';
@@ -1158,12 +1159,45 @@ function render() {
 // (market price). The acquisition logs to the player's news feed; sync
 // knownRights so the bulk of inherited cities doesn't fire a postcard per city.
 competitorsEl.addEventListener('click', (e) => {
-  const btn = (e.target as HTMLElement).closest('[data-act="buy-airline"]') as HTMLElement | null;
-  if (btn) {
-    const target = game.airlines.find((a) => a.id === btn.dataset.airline);
+  const actEl = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
+  const act = actEl?.dataset.act;
+  const findTarget = () => game.airlines.find((a) => a.id === actEl!.dataset.airline);
+
+  // Fire-sale instant buyout of a distressed rival.
+  if (act === 'buy-airline') {
+    const target = findTarget();
     if (!target || target === pl() || pl().cash < buyoutPrice(game, target)) return;
     acquire(game, pl(), target);
     knownRights = new Set(pl().rights);
+    render();
+    return;
+  }
+  // Share-market moves on a rival.
+  if (act === 'buy-shares' || act === 'sell-shares' || act === 'takeover') {
+    const target = findTarget();
+    if (!target || target === pl()) return;
+    if (act === 'buy-shares') {
+      buyShares(game, pl(), target, 10);
+    } else if (act === 'sell-shares') {
+      sellShares(game, pl(), target, 10);
+    } else {
+      const cost = takeoverCost(game, pl(), target);
+      if (!confirm(`Take over ${target.name} for about ${money(cost)}? You'll reach control and absorb it.`)) return;
+      if (pl().cash < cost) return;
+      takeover(game, pl(), target);
+      knownRights = new Set(pl().rights);
+    }
+    render();
+    return;
+  }
+  // Issue / buy back your own shares.
+  if (act === 'issue-shares') {
+    issueShares(game, pl(), 10);
+    render();
+    return;
+  }
+  if (act === 'buy-back') {
+    buyBack(game, pl(), 10);
     render();
     return;
   }
