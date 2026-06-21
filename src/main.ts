@@ -69,7 +69,6 @@ import { distanceKm } from './game/geo';
 import { addAiAirlines, MAX_AI_AIRLINES, runAI } from './game/ai';
 import { acquire, buyoutPrice } from './game/distress';
 import { applySave, deserialize, serialize } from './game/persist';
-import { AIRPORTS } from './game/data';
 import { renderFinance } from './ui/finance';
 import { renderCompetitors } from './ui/competitors';
 import { renderAwards } from './ui/awards';
@@ -103,6 +102,9 @@ let selected: string[] = [];
 
 /** Whether competitor route networks are drawn on the map (toggleable). */
 let showCompetitors = true;
+
+/** True while the new-game home airport is being picked directly on the map. */
+let homeSelecting = false;
 
 /** Aircraft type whose Buy button is mid "✓ Added" confirmation flash, if any. */
 let justBoughtType: string | null = null;
@@ -380,6 +382,11 @@ function drawMap() {
   ctx.clearRect(0, 0, w, h);
   ctx.drawImage(ensureBaseMap(w, h, dpr), 0, 0, w, h);
 
+  if (homeSelecting) {
+    drawHomePicker(w, h);
+    return;
+  }
+
   // Competitor route networks, drawn first so the player's sit on top — thin
   // and dim, in each airline's color (a for-sale rival's network is dashed).
   if (showCompetitors) {
@@ -533,6 +540,63 @@ function drawMap() {
   }
 
   drawLegend(w, h);
+}
+
+/** Whether an airport can be chosen as a starting home (small/mid cities only). */
+const isHomeEligible = (ap: Airport) => ap.size <= MAX_HOME_SIZE;
+
+/**
+ * New-game map: eligible cities glow green and are clickable; major hubs are
+ * dimmed. Hovering an eligible city shows its name and population.
+ */
+function drawHomePicker(w: number, h: number) {
+  for (const ap of game.airports) {
+    const p = airportScreen(ap.id, w, h);
+    const eligible = isHomeEligible(ap);
+    const r = (5 + ap.size) * Math.max(0.2, Math.min(1.0, view.scale));
+    const hover = eligible && lastHoveredAirport === ap.id;
+
+    ctx.globalAlpha = eligible ? 1 : 0.22;
+    if (eligible) acquireRing(p.x, p.y, r + (hover ? 7 : 4), false);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = eligible ? '#f5a623' : '#3a5675';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = hover ? '#ffffff' : '#0b1622';
+    ctx.stroke();
+
+    // Code labels for eligible cities once zoomed in a little; hubs stay quiet.
+    const minScale = ap.size <= 1 ? 2.0 : ap.size <= 2 ? 1.4 : 0;
+    if (eligible && view.scale >= minScale && !hover) {
+      ctx.fillStyle = '#e8eef6';
+      ctx.font = 'bold 13px system-ui';
+      ctx.fillText(ap.code, p.x + 10, p.y + 4);
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // Hover card: city + population for the airport under the cursor.
+  if (lastHoveredAirport) {
+    const ap = airportById(game, lastHoveredAirport);
+    if (isHomeEligible(ap)) {
+      const p = airportScreen(ap.id, w, h);
+      const label = `${ap.code} · ${ap.city} · ${(ap.population / 1_000_000).toFixed(1)}M`;
+      ctx.font = 'bold 13px system-ui';
+      const tw = ctx.measureText(label).width;
+      const lx = p.x + 14;
+      const ly = p.y - 16;
+      ctx.fillStyle = 'rgba(11,22,34,0.95)';
+      ctx.beginPath();
+      ctx.roundRect(lx - 6, ly - 14, tw + 12, 22, 6);
+      ctx.fill();
+      ctx.strokeStyle = '#4ade80';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = '#e8eef6';
+      ctx.fillText(label, lx, ly + 1);
+    }
+  }
 }
 
 /** Small gold badge listing a staged stop's position(s) on the route. */
@@ -715,6 +779,12 @@ canvas.addEventListener('mousemove', (e) => {
   const foundId = found?.id ?? null;
   if (foundId === lastHoveredAirport) return;
   lastHoveredAirport = foundId;
+  if (homeSelecting) {
+    // No popover during home selection — just highlight + redraw the hover card.
+    canvas.style.cursor = found && isHomeEligible(found) ? 'pointer' : '';
+    drawMap();
+    return;
+  }
   if (showPopoverTimer) { clearTimeout(showPopoverTimer); showPopoverTimer = null; }
   if (found) {
     // Brief pause before opening, so sweeping the mouse across airports
@@ -742,6 +812,10 @@ canvas.addEventListener('click', (e) => {
   for (const ap of game.airports) {
     const p = airportScreen(ap.id, w, h);
     if (Math.hypot(p.x - mx, p.y - my) <= 14) {
+      if (homeSelecting) {
+        if (isHomeEligible(ap)) startGameAt(ap.id);
+        return;
+      }
       if (e.shiftKey) {
         // Toggle the measuring pin — works on any airport, owned or not.
         measureFrom = measureFrom === ap.id ? null : ap.id;
@@ -1533,7 +1607,6 @@ function afterStateSwap() {
 }
 
 const homeSelectEl = document.getElementById('home-select')!;
-const homeAirportList = document.getElementById('home-airport-list')!;
 const aiCountEl = document.getElementById('ai-count')!;
 
 /** Competitor count for the next new game. Remembered for the session. */
@@ -1549,35 +1622,33 @@ for (let n = 0; n <= MAX_AI_AIRLINES; n++) {
   aiCountEl.appendChild(btn);
 }
 
+/** Enter map home-selection mode: show the world and the picker banner. */
 function showHomeSelect() {
-  const eligible = AIRPORTS.filter((a) => a.size <= MAX_HOME_SIZE)
-    .slice()
-    .sort((a, b) => b.size - a.size || a.city.localeCompare(b.city));
-  homeAirportList.innerHTML = '';
-  for (const ap of eligible) {
-    const btn = document.createElement('button');
-    btn.className = 'home-ap-btn';
-    btn.innerHTML =
-      `<span class="ap-code">${ap.code}</span>` +
-      `<span class="ap-city">${ap.city}</span>` +
-      `<span class="ap-pop">${(ap.population / 1_000_000).toFixed(1)}M</span>`;
-    btn.addEventListener('click', () => {
-      homeSelectEl.classList.add('hidden');
-      Object.assign(game, newGame(ap.id));
-      addAiAirlines(game, chosenAiCount);
-      if (chosenAiCount > 0) {
-        pl().log.unshift(
-          `${chosenAiCount} rival airline${chosenAiCount === 1 ? ' is' : 's are'} setting up: ` +
-            game.airlines.slice(1).map((a) => `${a.name} (${a.homeId.toUpperCase()})`).join(', ') + '.',
-        );
-      }
-      afterStateSwap();
-      render();
-      zoomToAirport(ap.id);
-    });
-    homeAirportList.appendChild(btn);
-  }
+  homeSelecting = true;
+  lastHoveredAirport = null;
+  hideAirportPopover();
+  sidebar.classList.add('hidden'); // no airline yet — keep the map clean
   homeSelectEl.classList.remove('hidden');
+  resetView(); // fit the whole globe so every eligible city is in view
+}
+
+/** Start a fresh game from the clicked home airport, leaving selection mode. */
+function startGameAt(homeId: string) {
+  homeSelecting = false;
+  canvas.style.cursor = '';
+  homeSelectEl.classList.add('hidden');
+  sidebar.classList.remove('hidden');
+  Object.assign(game, newGame(homeId));
+  addAiAirlines(game, chosenAiCount);
+  if (chosenAiCount > 0) {
+    pl().log.unshift(
+      `${chosenAiCount} rival airline${chosenAiCount === 1 ? ' is' : 's are'} setting up: ` +
+        game.airlines.slice(1).map((a) => `${a.name} (${a.homeId.toUpperCase()})`).join(', ') + '.',
+    );
+  }
+  afterStateSwap();
+  render();
+  zoomToAirport(homeId);
 }
 
 const upgradeSelectEl = document.getElementById('upgrade-select')!;

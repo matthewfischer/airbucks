@@ -328,27 +328,27 @@ input[type='number'] { width: 84px; }
 #ai-count button { border: none; background: transparent; padding: 5px 11px; border-radius: 6px; color: var(--muted); }
 #ai-count button.active { background: var(--panel-2); color: var(--accent); font-weight: 700; }
 
-#home-airport-list {
-  overflow-y: auto;
+/* Slim top banner for picking a home airport directly on the map. */
+#home-select {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-.home-ap-btn {
-  display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border-radius: 8px;
+  gap: 10px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: rgba(11, 22, 34, 0.92);
   border: 1px solid var(--border);
-  background: var(--panel-2);
-  cursor: pointer;
-  text-align: left;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
 }
-.home-ap-btn:hover { border-color: var(--accent); background: #1e3d5e; }
-.home-ap-btn .ap-code { font-size: 16px; font-weight: 800; color: var(--accent); width: 42px; flex-shrink: 0; }
-.home-ap-btn .ap-city { font-size: 14px; flex: 1; }
-.home-ap-btn .ap-pop { font-size: 12px; color: var(--muted); }
+#home-select.hidden { display: none; }
+#sidebar.hidden { display: none; }
+.home-title { font-size: 15px; font-weight: 800; color: var(--accent); white-space: nowrap; }
 
 .upgrade-btn {
   font-size: 11px;
