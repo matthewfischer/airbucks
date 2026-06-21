@@ -12,3 +12,8 @@ coverage/
 .*.swp
 *.swp
 /q
+
+# local playtest/sim artifacts
+/save.json
+/win.png
+/scripts/sweep-results.txt
