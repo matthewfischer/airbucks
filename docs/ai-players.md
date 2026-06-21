@@ -81,6 +81,14 @@ Decision pass every N weeks (with jitter), one action per pass: score
 candidate routes/slots/planes, pick one. Slow expansion to match the game's
 pacing philosophy — competitors creep, not blitz.
 
+Route candidates are scored by **connection-aware marginal network profit** (a
+what-if clone re-runs `evaluateNetwork`), so a spoke that only feeds the hub
+still earns its place. Candidates include both point-to-point pairs **and
+multi-stop "milk run" chains** — greedy nearest-city chains (≤4 stops) anchored
+at the home/largest held cities. Both compete on the same profit basis, so the
+AI flies a single plane down a chain of thin clustered markets where that beats
+dedicating a plane to each leg, and stays point-to-point on trunk routes.
+
 Deliberately imperfect, via three levers:
 
 1. **Noisy scoring** — each candidate's score is multiplied by a random

@@ -429,18 +429,130 @@ function candidatePairs(
 }
 
 export interface NewRoute {
+  /** The route's path. Two stops for a point-to-point; three or more for a
+   *  multi-stop "milk run" that serves several legs with one plane. */
+  stops: string[];
+  /** Path endpoints — used for size/hub scoring and the player news line. */
   a: Airport;
   b: Airport;
   type: AircraftType;
   marginal: number;
 }
 
-/** The shortlist of new two-stop routes, each scored by connection-aware
- *  marginal network profit. One what-if per finalist (the plane type is the
+/** Longest leg of a path (what limits which aircraft can fly it). */
+function pathMaxLeg(g: GameState, stops: string[]): number {
+  let max = 0;
+  for (let i = 0; i < stops.length - 1; i++)
+    max = Math.max(max, distanceKm(airportById(g, stops[i]), airportById(g, stops[i + 1])));
+  return max;
+}
+
+/** True if the airline already flies this exact path (either direction). */
+function hasRouteWithStops(al: Airline, stops: string[]): boolean {
+  const fwd = stops.join('>');
+  const rev = [...stops].reverse().join('>');
+  return al.routes.some((r) => r.stops.join('>') === fwd || r.stops.join('>') === rev);
+}
+
+/** Affordable, in-range type that earns the most flown over a whole path, by
+ *  the cheap per-leg standalone estimate (no clone). null if nothing fits. */
+function bestTypeForStops(
+  g: GameState,
+  al: Airline,
+  stops: string[],
+  budget: number,
+): AircraftType | null {
+  const maxLeg = pathMaxLeg(g, stops);
+  let best: { type: AircraftType; est: number } | null = null;
+  for (const t of availableTypes(g)) {
+    if (t.range < maxLeg || t.price > budget) continue;
+    let est = 0;
+    for (let i = 0; i < stops.length - 1; i++) {
+      const a = airportById(g, stops[i]);
+      const b = airportById(g, stops[i + 1]);
+      est += estimateRouteProfit(g, al, a, b, distanceKm(a, b), t);
+    }
+    if (!best || est > best.est) best = { type: t, est };
+  }
+  return best?.type ?? null;
+}
+
+/** True if any stop on the path is the airline's home base. */
+const touchesHome = (al: Airline, stops: string[]): boolean => stops.includes(al.homeId);
+
+/** Cap on a chain's stops, and how many held cities anchor a chain. */
+const MAX_CHAIN_STOPS = 4;
+const CHAIN_ANCHORS = 3;
+
+/**
+ * Multi-stop "milk run" candidates: chains that string several held cities onto
+ * one plane's circuit. The engine pays each leg for the connecting traffic it
+ * carries, so one plane chaining three thin markets can clear the floor where
+ * three dedicated point-to-point planes never would — capital the AI otherwise
+ * leaves on the table. Built greedily (nearest held city, within early-plane
+ * leg reach) from a few anchors (home first, then the largest held cities), so
+ * the eval count stays bounded. Each prefix of length ≥3 is one what-if; length
+ * 2 is already covered by the point-to-point pair candidates.
+ */
+function chainCandidates(
+  g: GameState,
+  al: Airline,
+  p: Personality,
+  base: number,
+  budget: number,
+): NewRoute[] {
+  if (al.rights.length < 3) return [];
+  const held = al.rights.map((id) => airportById(g, id));
+  const anchors = [...held]
+    .sort((x, y) => Number(y.id === al.homeId) - Number(x.id === al.homeId) || y.size - x.size)
+    .slice(0, CHAIN_ANCHORS);
+  const out: NewRoute[] = [];
+  const seen = new Set<string>();
+  for (const anchor of anchors) {
+    const stops = [anchor.id];
+    const used = new Set([anchor.id]);
+    while (stops.length < MAX_CHAIN_STOPS) {
+      const last = airportById(g, stops[stops.length - 1]);
+      let next: Airport | null = null;
+      let nearest = Infinity;
+      for (const c of held) {
+        if (used.has(c.id)) continue;
+        const d = distanceKm(last, c);
+        if (d <= HOME_REACH_KM && d < nearest) {
+          nearest = d;
+          next = c;
+        }
+      }
+      if (!next) break;
+      stops.push(next.id);
+      used.add(next.id);
+      if (stops.length < 3 || hasRouteWithStops(al, stops)) continue;
+      const norm = [...stops].sort().join('|');
+      if (seen.has(norm)) continue;
+      seen.add(norm);
+      const type = bestTypeForStops(g, al, stops, budget);
+      if (!type) continue;
+      const path = [...stops];
+      const a = anchor;
+      const b = next;
+      const marginal = marginalProfit(g, al, base, (clone) => {
+        clone.routes.push({ id: '_hyp', stops: path, fareFactor: 1 });
+        clone.fleet.push({ id: '_hypp', typeId: type.id, routeId: '_hyp', kmFlown: 0 });
+      });
+      out.push({ stops: path, a, b, type, marginal });
+    }
+  }
+  return out;
+}
+
+/** The shortlist of new routes, each scored by connection-aware marginal
+ *  network profit: point-to-point pairs plus multi-stop chains, which compete
+ *  on equal footing so the AI picks a milk run when it beats serving the same
+ *  cities with separate planes. One what-if per finalist (the plane type is the
  *  cheap standalone pick; run() sizes the real plane connection-aware via
  *  staffRoute), so the eval count per pass is bounded regardless of network
  *  size. Computed once per decision pass and shared by route + realloc actions. */
-function newRouteCandidates(
+export function newRouteCandidates(
   g: GameState,
   al: Airline,
   p: Personality,
@@ -455,8 +567,9 @@ function newRouteCandidates(
       clone.routes.push({ id: '_hyp', stops: [a.id, b.id], fareFactor: 1 });
       clone.fleet.push({ id: '_hypp', typeId: choice.type.id, routeId: '_hyp', kmFlown: 0 });
     });
-    out.push({ a, b, type: choice.type, marginal });
+    out.push({ stops: [a.id, b.id], a, b, type: choice.type, marginal });
   }
+  out.push(...chainCandidates(g, al, p, base, budget));
   return out;
 }
 
@@ -465,19 +578,19 @@ function newRouteCandidates(
  *  point-to-point but feeds the hub still earns its place. */
 function routeActions(g: GameState, al: Airline, p: Personality, candidates: NewRoute[]): Action[] {
   const actions: Action[] = [];
-  for (const { a, b, marginal } of candidates) {
+  for (const { a, b, stops, marginal } of candidates) {
     if (marginal < minProfit(g)) continue;
     let score = marginal * sizePreference(p, a, b);
-    if (a.id === al.homeId || b.id === al.homeId) score *= p.hubBonus;
+    if (touchesHome(al, stops)) score *= p.hubBonus;
     actions.push({
       score,
       run: () => {
-        if (openRoute(g, al, [a.id, b.id]) === null) {
+        if (openRoute(g, al, stops) === null) {
           staffRoute(g, al, p, al.routes[al.routes.length - 1].id);
           // Flag the move only if it touches a city you serve — keeps the
           // news feed about your world, not every distant AI route.
           const youHold = g.airlines[0].rights;
-          if (youHold.includes(a.id) || youHold.includes(b.id))
+          if (stops.some((id) => youHold.includes(id)))
             playerNews(g, `✈ ${al.name} opened ${a.code} → ${b.code} — moving into your network.`);
         }
       },
@@ -598,13 +711,13 @@ export function reallocateActions(
   });
   if (alt.marginal <= contribution * REALLOC_MARGIN) return [];
   const source = weak;
-  const { a, b } = alt;
+  const { stops } = alt;
   return [
     {
       score: alt.marginal - contribution,
       run: () => {
         closeRoute(g, al, source.id); // planes go idle…
-        if (openRoute(g, al, [a.id, b.id]) === null)
+        if (openRoute(g, al, stops) === null)
           staffRoute(g, al, p, al.routes[al.routes.length - 1].id); // …and get reused
       },
     },

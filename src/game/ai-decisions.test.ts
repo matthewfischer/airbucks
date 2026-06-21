@@ -3,6 +3,7 @@ import type { Airline, GameState } from './types';
 import {
   acquisitionActions,
   addAiAirlines,
+  newRouteCandidates,
   PERSONALITIES,
   reallocateActions,
   repayActions,
@@ -130,6 +131,7 @@ describe('reallocateActions', () => {
 
   /** A fabricated new-route candidate to JFK with a chosen marginal value. */
   const jfkCandidate = (marginal: number): NewRoute => ({
+    stops: ['atl', 'jfk'],
     a: airportById(g, 'atl'),
     b: airportById(g, 'jfk'),
     type: typeById(g, 'dc3'),
@@ -164,6 +166,34 @@ describe('reallocateActions', () => {
     g.airlines.push(idle);
     const inet = evaluateNetwork(g, idle);
     expect(reallocateActions(g, idle, HUB, inet, inet.profit, [jfkCandidate(1e9)])).toHaveLength(0);
+  });
+});
+
+describe('newRouteCandidates', () => {
+  /** An AI holding a hub plus a cluster of nearby small cities. */
+  function clusterAirline(): Airline {
+    const buyer = newAirline('ai-c', 'Chainer', '#fff', 'atl');
+    buyer.ai = { personality: 'hub-builder', nextDecisionDay: 0 };
+    buyer.cash = 100_000_000;
+    buyer.rights = ['atl', 'tys', 'chs', 'gso']; // ATL ringed by small SE cities
+    g.airlines.push(buyer);
+    return buyer;
+  }
+
+  it('proposes multi-stop chains, not only point-to-point pairs', () => {
+    const buyer = clusterAirline();
+    const cands = newRouteCandidates(g, buyer, HUB, 0, buyer.cash);
+    expect(cands.some((c) => c.stops.length >= 3)).toBe(true);
+  });
+
+  it('every candidate carries a runnable path of held airports', () => {
+    const buyer = clusterAirline();
+    for (const c of newRouteCandidates(g, buyer, HUB, 0, buyer.cash)) {
+      expect(c.stops.length).toBeGreaterThanOrEqual(2);
+      expect(c.stops.every((id) => buyer.rights.includes(id))).toBe(true);
+      expect(c.stops[0]).toBe(c.a.id);
+      expect(c.stops[c.stops.length - 1]).toBe(c.b.id);
+    }
   });
 });
 
