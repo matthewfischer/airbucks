@@ -37,7 +37,7 @@ function standings(year: number): void {
   );
   console.log(
     pad('airline', 26) + pad('personality', 14) + pad('home', 6) +
-    num('cities', 7) + num('routes', 7) + num('planes', 7) +
+    num('cities', 7) + num('routes', 7) + num('multi', 7) + num('planes', 7) +
     num('cash', 10) + num('debt', 9) + num('equity', 10) + num('net/wk', 10),
   );
   const rows = g.airlines
@@ -45,12 +45,14 @@ function standings(year: number): void {
     .sort((a, b) => equity(g, b) - equity(g, a));
   for (const al of rows) {
     const w = weeklyTotals(g, al);
+    const multi = al.routes.filter((r) => r.stops.length >= 3).length;
     console.log(
       pad(al.name + (al.forSale ? ' ⚠' : ''), 26) +
       pad(al.ai?.personality ?? '-', 14) +
       pad(al.homeId.toUpperCase(), 6) +
       num(String(al.rights.length), 7) +
       num(String(al.routes.length), 7) +
+      num(String(multi), 7) +
       num(String(al.fleet.length), 7) +
       num(money(al.cash), 10) +
       num(money(al.debt), 9) +
@@ -89,6 +91,29 @@ for (const p of PERSONALITIES) {
   if (!own.length) continue;
   const eq = own.map((al) => equity(g, al));
   console.log(`  ${pad(p.id, 14)} ${own.length}x  avg ${money(eq.reduce((a, b) => a + b, 0) / own.length)}`);
+}
+
+// Route structure: are AIs flying more than point-to-point? Histogram of stop
+// counts across every live AI route, with the multi-stop (≥3) share.
+const hist = new Map<number, number>();
+let totalRoutes = 0;
+for (const al of g.airlines.slice(1)) {
+  for (const r of al.routes) {
+    hist.set(r.stops.length, (hist.get(r.stops.length) ?? 0) + 1);
+    totalRoutes++;
+  }
+}
+const multiRoutes = [...hist].filter(([n]) => n >= 3).reduce((s, [, c]) => s + c, 0);
+console.log('\nRoute structure (all live AIs):');
+if (totalRoutes === 0) {
+  console.log('  no routes');
+} else {
+  for (const n of [...hist.keys()].sort((a, b) => a - b)) {
+    const c = hist.get(n)!;
+    const label = n === 2 ? 'point-to-point' : `${n}-stop`;
+    console.log(`  ${pad(label, 16)} ${num(String(c), 5)}  (${((c / totalRoutes) * 100).toFixed(0)}%)`);
+  }
+  console.log(`  ${pad('→ multi-stop', 16)} ${num(String(multiRoutes), 5)}  (${((multiRoutes / totalRoutes) * 100).toFixed(0)}% of ${totalRoutes} routes)`);
 }
 
 // Surface anything that exploded.
