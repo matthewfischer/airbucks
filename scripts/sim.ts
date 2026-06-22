@@ -116,6 +116,24 @@ if (totalRoutes === 0) {
   console.log(`  ${pad('→ multi-stop', 16)} ${num(String(multiRoutes), 5)}  (${((multiRoutes / totalRoutes) * 100).toFixed(0)}% of ${totalRoutes} routes)`);
 }
 
+// Network connectivity: the real "more than point-to-point" test. Point-to-point
+// spokes through a hub still carry connecting passengers (the engine routes them
+// across separate routes), so a high connecting share means an integrated hub
+// network — not isolated city-pairs — even when few routes are literally multi-stop.
+let pax = 0;
+let connecting = 0;
+for (const al of g.airlines.slice(1)) {
+  const net = evaluateNetwork(g, al);
+  pax += net.passengers;
+  connecting += net.connectingPassengers;
+}
+console.log('\nNetwork connectivity (all live AIs):');
+console.log(
+  pax > 0
+    ? `  ${num(String(Math.round(connecting)), 8)} / ${Math.round(pax)} pax connect through a hub  (${((connecting / pax) * 100).toFixed(0)}%)`
+    : '  no passengers',
+);
+
 // Surface anything that exploded.
 for (const al of g.airlines) {
   const assets = airlineAssets(g, al);
