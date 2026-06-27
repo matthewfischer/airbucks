@@ -93,6 +93,20 @@ describe('acquisitionActions', () => {
     expect(acquisitionActions(g, al, HUB)).toHaveLength(0);
   });
 
+  it('still grabs a fire-sale during the integration cooldown', () => {
+    al.lastAcquireDay = g.day; // mid-integration of a prior deal
+    const target = listRival(1_000_000);
+    const actions = acquisitionActions(g, al, HUB);
+    expect(actions).toHaveLength(1); // the rescue grab is exempt from the cooldown
+    actions[0].run();
+    expect(g.airlines).not.toContain(target);
+  });
+
+  it('still refuses a healthy takeover during the integration cooldown', () => {
+    al.lastAcquireDay = g.day; // mid-integration — g.airlines[2] is a going concern
+    expect(acquisitionActions(g, al, HUB)).toHaveLength(0);
+  });
+
   it('never targets the human player', () => {
     g.airlines.splice(2, 1); // remove the rival, leaving only player + buyer
     expect(acquisitionActions(g, al, HUB)).toHaveLength(0);

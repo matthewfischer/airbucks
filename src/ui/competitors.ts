@@ -71,14 +71,12 @@ const BLOCK = 10;
 /** Fire-sale block for a distressed rival: instant buyout at the cheap sticker. */
 function fireSaleBlock(g: GameState, al: Airline): string {
   const price = buyoutPrice(g, al);
-  const cooling = !canAcquire(g, player(g));
-  const afford = player(g).cash >= price && !cooling;
+  // A fire-sale is buyable even mid-integration — a time-limited rescue grab.
+  const afford = player(g).cash >= price;
   const debtRow = al.debt > 0
     ? `<div class="comp-sale-row"><span class="muted">You assume</span><span class="bad">${money(al.debt)} debt ⚠</span></div>`
     : '';
-  const label = cooling
-    ? `Integrating · ${Math.ceil(acquireCooldownLeft(g, player(g)) / 30)}mo`
-    : afford ? `Buy · ${money(price)}` : `Need ${money(price)}`;
+  const label = afford ? `Buy · ${money(price)}` : `Need ${money(price)}`;
   return `<div class="comp-sale">
     <div class="comp-sale-row"><span class="muted">Asking</span><span>${money(price)}</span></div>
     ${debtRow}

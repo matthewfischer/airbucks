@@ -842,10 +842,14 @@ const DISTRESS_PREFERENCE = 1.5;
 export function acquisitionActions(g: GameState, al: Airline, p: Personality): Action[] {
   const actions: Action[] = [];
   if (equity(g, al) <= 0) return actions; // only solvent airlines acquire
-  if (!canAcquire(g, al)) return actions; // still digesting the last acquisition
   const appetite = p.debtAppetite * creditLimit(g, al);
-  const raid = playerRaidAction(g, al, p, appetite);
-  if (raid) actions.push(raid);
+  // A fire-sale is a time-limited rescue grab — allowed even mid-integration.
+  // Healthy takeovers and player raids wait out the integration cooldown.
+  const cooled = canAcquire(g, al);
+  if (cooled) {
+    const raid = playerRaidAction(g, al, p, appetite);
+    if (raid) actions.push(raid);
+  }
   for (const target of g.airlines) {
     if (target === al || !target.ai) continue; // never the human; not self
     const reach = evaluateNetwork(g, target).revenue; // strategic value
@@ -863,6 +867,7 @@ export function acquisitionActions(g: GameState, al: Airline, p: Personality): A
         },
       });
     } else {
+      if (!cooled) continue; // healthy takeover waits out the integration cooldown
       // Healthy: hostile takeover via the share market — expensive by design.
       const cost = takeoverCost(g, al, target);
       const borrowNeed = Math.max(0, cost - al.cash);

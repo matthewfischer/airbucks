@@ -72,7 +72,6 @@ import {
   affordableForce,
   buyBack,
   buyShares,
-  canAcquire,
   forceBuy,
   issueShares,
   sellShares,
@@ -1176,11 +1175,11 @@ competitorsEl.addEventListener('click', (e) => {
   const act = actEl?.dataset.act;
   const findTarget = () => game.airlines.find((a) => a.id === actEl!.dataset.airline);
 
-  // Fire-sale instant buyout of a distressed rival.
+  // Fire-sale instant buyout of a distressed rival — allowed even mid-integration
+  // (a time-limited rescue grab; only healthy takeovers wait out the cooldown).
   if (act === 'buy-airline') {
     const target = findTarget();
     if (!target || target === pl() || pl().cash < buyoutPrice(game, target)) return;
-    if (!canAcquire(game, pl())) return; // integration cooldown
     acquire(game, pl(), target);
     knownRights = new Set(pl().rights);
     render();
