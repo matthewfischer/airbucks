@@ -31,6 +31,8 @@ export interface AircraftType {
   costPerKm: number;
   /** Fixed weekly upkeep regardless of flying (maintenance, parking). */
   weeklyUpkeep: number;
+  /** First year the type can no longer be bought. Omit for still-in-production types. */
+  retired?: number;
 }
 
 export interface Plane {

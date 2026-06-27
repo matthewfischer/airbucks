@@ -755,13 +755,13 @@ export function fedFundsRate(g: GameState): number {
   return a[a.length - 1][1]; // unreachable
 }
 
-/** Years a type stays in production after introduction. */
-export const PLANE_PRODUCTION_YEARS = 30;
+/** First year a type can no longer be bought; Infinity if still in production. */
+export const productionEnd = (type: AircraftType): number => type.retired ?? Infinity;
 
 /** Whether an aircraft type is currently available for purchase. */
 export const typeAvailable = (g: GameState, type: AircraftType): boolean => {
   const year = currentYear(g);
-  return type.introduced <= year && year < type.introduced + PLANE_PRODUCTION_YEARS;
+  return type.introduced <= year && year < productionEnd(type);
 };
 
 export const availableTypes = (g: GameState): AircraftType[] =>
@@ -773,7 +773,7 @@ export function buyPlane(g: GameState, al: Airline, typeId: string): string | nu
     const year = currentYear(g);
     if (type.introduced > year)
       return `The ${type.name} doesn't enter service until ${type.introduced}.`;
-    return `The ${type.name} left production in ${type.introduced + PLANE_PRODUCTION_YEARS}.`;
+    return `The ${type.name} left production in ${type.retired}.`;
   }
   if (al.cash < type.price) return `Not enough cash to buy ${type.name}.`;
   al.cash -= type.price;
@@ -1074,7 +1074,7 @@ export function upgradeRoute(g: GameState, al: Airline, routeId: string, newType
     const year = currentYear(g);
     if (type.introduced > year)
       return `The ${type.name} doesn't enter service until ${type.introduced}.`;
-    return `The ${type.name} left production in ${type.introduced + PLANE_PRODUCTION_YEARS}.`;
+    return `The ${type.name} left production in ${type.retired}.`;
   }
   const longest = routeMaxLeg(g, route);
   if (type.range < longest)
@@ -1195,7 +1195,7 @@ export function advanceDay(g: GameState): void {
       for (const t of g.aircraftTypes) {
         if (t.introduced === year)
           al.log.unshift(`✈ The ${t.name} has entered service (${year}).`);
-        if (t.introduced + PLANE_PRODUCTION_YEARS === year)
+        if (t.retired === year)
           al.log.unshift(`The ${t.name} has left production (${year}).`);
       }
     }

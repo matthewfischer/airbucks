@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AIRPORTS, AIRCRAFT_TYPES, LEGACY_TYPE_IDS } from './data';
 import { distanceKm } from './geo';
+import { currentYear, newGame, typeAvailable } from './engine';
 
 describe('airport data', () => {
   it('has unique ids and codes', () => {
@@ -102,6 +103,27 @@ describe('aircraft data', () => {
     for (const [oldId, newId] of Object.entries(LEGACY_TYPE_IDS)) {
       expect(ids.has(oldId), oldId).toBe(false);
       expect(ids.has(newId), newId).toBe(true);
+    }
+  });
+});
+
+describe('aircraft availability over time', () => {
+  it('retired year is always after introduced', () => {
+    for (const t of AIRCRAFT_TYPES) {
+      if (t.retired !== undefined) expect(t.retired, t.name).toBeGreaterThan(t.introduced);
+    }
+  });
+
+  // The game starts in 1950; per-type retirement must never open a hole. Every
+  // year needs at least one buyable plane AND one small regional (≤70 seats) so
+  // thin short-haul routes always have an affordable option.
+  it('every year 1950–2030 has a buyable type and a small regional (≤70 seats)', () => {
+    const g = newGame('crw', 1);
+    for (let y = 1950; y <= 2030; y++) {
+      while (currentYear(g) < y) g.day += 30;
+      const types = AIRCRAFT_TYPES.filter((t) => typeAvailable(g, t));
+      expect(types.length, `${y}: no plane on sale`).toBeGreaterThan(0);
+      expect(types.some((t) => t.capacity <= 70), `${y}: no small (≤70-seat) plane`).toBe(true);
     }
   });
 });
