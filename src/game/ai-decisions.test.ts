@@ -8,6 +8,7 @@ import {
   reallocateActions,
   repayActions,
   retrenchActions,
+  slotActions,
 } from './ai';
 import type { NewRoute } from './ai';
 import {
@@ -217,6 +218,32 @@ describe('newRouteCandidates', () => {
       expect(c.stops[0]).toBe(c.a.id);
       expect(c.stops[c.stops.length - 1]).toBe(c.b.id);
     }
+  });
+});
+
+describe('slotActions', () => {
+  /** A carrier at TYS holding `held` spoke cities, each already flown so no
+   *  unserved-rights penalty skews the slot discount. */
+  function carrier(id: string, held: string[]): Airline {
+    const a = newAirline(id, id, '#fff', 'tys');
+    a.ai = { personality: 'hub-builder', nextDecisionDay: 0 };
+    a.cash = 500_000_000;
+    a.rights = ['tys', ...held];
+    for (const c of held) openRoute(g, a, ['tys', c]);
+    g.airlines.push(a);
+    return a;
+  }
+
+  const topScore = (al: Airline) =>
+    slotActions(g, al, HUB).reduce((m, x) => Math.max(m, x.score), 0);
+
+  it('wants a hub slot more when it opens routes to several held cities', () => {
+    // A slot is worth the sum of the markets it unlocks, not just the best one:
+    // a carrier ringed by a cluster should covet its next hub more than a carrier
+    // holding a lone spoke, even with the per-route discount held equal.
+    const cluster = carrier('c', ['chs', 'gso']);
+    const spoke = carrier('s', ['chs']);
+    expect(topScore(cluster)).toBeGreaterThan(topScore(spoke));
   });
 });
 

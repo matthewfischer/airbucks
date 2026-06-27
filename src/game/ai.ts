@@ -740,8 +740,13 @@ export function reallocateActions(
 const unservedRights = (al: Airline): number =>
   al.rights.filter((id) => !al.routes.some((r) => r.stops.includes(id))).length;
 
+/** How many enabled routes feed a slot's value. A hub slot that unlocks several
+ *  markets at once is worth more than a spur that adds a single thin route — so
+ *  value the best few connections it opens, not just the single best. */
+const SLOT_ROUTES_VALUED = 3;
+
 /** Candidate: file for a slot at a reachable, affordable, attractive airport. */
-function slotActions(g: GameState, al: Airline, p: Personality): Action[] {
+export function slotActions(g: GameState, al: Airline, p: Personality): Action[] {
   const actions: Action[] = [];
   const budget = spendable(g, al, p);
   // A slot is future value: discount it against flying today, and discount
@@ -751,17 +756,20 @@ function slotActions(g: GameState, al: Airline, p: Personality): Action[] {
     if (!rightsAvailable(g, al, ap.id) || isNegotiating(al, ap.id)) continue;
     const fee = rightsFee(g, ap);
     if (fee > budget) continue;
-    // Value: the best single route this slot would enable from a held airport.
-    let bestPair = 0;
+    // Value: the best few routes this slot would enable from held airports — a
+    // hub slot that unlocks many markets outscores one that adds a lone spur.
+    const enabled: number[] = [];
     for (const id of al.rights) {
       const held = airportById(g, id);
       const d = distanceKm(ap, held);
       const choice = bestTypeFor(g, al, ap, held, d, budget);
       if (!choice || choice.profit < minProfit(g)) continue;
-      bestPair = Math.max(bestPair, choice.profit * sizePreference(p, ap, held));
+      enabled.push(choice.profit * sizePreference(p, ap, held));
     }
-    if (bestPair <= 0) continue;
-    const score = bestPair * discount * (al.homeId === ap.id ? p.hubBonus : 1);
+    if (enabled.length === 0) continue;
+    enabled.sort((x, y) => y - x);
+    const value = enabled.slice(0, SLOT_ROUTES_VALUED).reduce((s, v) => s + v, 0);
+    const score = value * discount * (al.homeId === ap.id ? p.hubBonus : 1);
     actions.push({
       score,
       run: () => {
