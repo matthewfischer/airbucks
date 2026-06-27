@@ -195,10 +195,12 @@ function selfShareBlock(g: GameState): string {
   </div>`;
 }
 
-function card(g: GameState, al: Airline, rank: number, you = false): string {
+function card(g: GameState, al: Airline, rank: number, you = false, watching = false): string {
   const home = airportById(g, al.homeId);
-  const cls = you ? ' you' : al.forSale ? ' for-sale' : '';
-  const flag = you
+  const cls = (you ? ' you' : al.forSale ? ' for-sale' : '') + (watching ? ' watching' : '');
+  const flag = watching
+    ? '<span class="comp-watch-tag">👁 Watching</span>'
+    : you
     ? '<span class="comp-you-tag">You</span>'
     : al.forSale ? '<span class="comp-flag">⚠ FOR SALE</span>' : '';
   const rankCls = rank === 1 ? ' first' : '';
@@ -223,18 +225,23 @@ function card(g: GameState, al: Airline, rank: number, you = false): string {
 }
 
 /** Render the Competitors standings: a "you" strip plus a card per rival. */
-export function renderCompetitors(g: GameState, el: HTMLElement): void {
+export function renderCompetitors(g: GameState, el: HTMLElement, watchedId?: string): void {
   const you = player(g);
   const rivals = g.airlines.slice(1);
   const forSale = rivals.filter((a) => a.forSale).length;
+  // In a watch-only sim, every card is a "follow this airline" target.
+  const spectating = !!you.ai;
+  const watchHint = spectating
+    ? '<span class="muted">watch-only · click a card to follow that airline</span>'
+    : `<span class="muted">${rivals.length} rival${rivals.length === 1 ? '' : 's'}${forSale ? ` · ${forSale} for sale` : ''}</span>`;
 
   const head = `<div class="comp-head-row">
     <h2>Competitors</h2>
-    <span class="muted">${rivals.length} rival${rivals.length === 1 ? '' : 's'}${forSale ? ` · ${forSale} for sale` : ''}</span>
+    ${watchHint}
   </div>`;
 
   if (rivals.length === 0) {
-    el.innerHTML = `${head}<div class="comp-grid">${card(g, you, 1, true)}</div>
+    el.innerHTML = `${head}<div class="comp-grid">${card(g, you, 1, true, spectating && you.id === watchedId)}</div>
       <div class="fin-empty">A solo game — no competitors. Start a new game and add rivals on the setup screen.</div>`;
     return;
   }
@@ -242,7 +249,7 @@ export function renderCompetitors(g: GameState, el: HTMLElement): void {
   // Every airline, the player included, ranked by net worth (highest first).
   const cards = [...g.airlines]
     .sort((a, b) => equity(g, b) - equity(g, a))
-    .map((al, i) => card(g, al, i + 1, al === you))
+    .map((al, i) => card(g, al, i + 1, al === you, spectating && al.id === watchedId))
     .join('');
 
   el.innerHTML = `${head}<div class="comp-grid">${cards}</div>`;

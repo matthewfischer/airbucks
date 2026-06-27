@@ -66,7 +66,7 @@ import {
   START_EPOCH,
 } from './game/engine';
 import { distanceKm } from './game/geo';
-import { addAiAirlines, MAX_AI_AIRLINES, raidPlayer, runAI } from './game/ai';
+import { addAiAirlines, makeAiControlled, MAX_AI_AIRLINES, raidPlayer, runAI } from './game/ai';
 import { acquire, buyoutPrice } from './game/distress';
 import {
   affordableForce,
@@ -86,8 +86,19 @@ import { badgeById } from './game/badges';
 
 const game: GameState = newGame('crw');
 game.humanControlled = true; // the app drives airlines[0] — enables the player-raid mechanic
-/** The player's airline (always airlines[0]); resolved per call since loads/resets swap state. */
-const pl = () => player(game);
+/** The canonical player airline — always airlines[0]. Game logic uses this. */
+const me = () => player(game);
+/** Whether the AI is driving the player's airline (a watch-only sim). */
+const spectating = () => !!me().ai;
+/**
+ * Which airline the views follow. You, normally; in spectate mode you can switch
+ * focus to any airline from the Competitors tab so the HUD, sidebar, map, and
+ * news feed render it. Falls back to you if the watched airline is gone.
+ */
+let watchedId = me().id;
+const watched = () => (spectating() ? game.airlines.find((a) => a.id === watchedId) ?? me() : me());
+/** The airline the views render — your own, or whoever you're watching. */
+const pl = () => watched();
 (window as unknown as { game: GameState }).game = game;
 if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
   (window as unknown as { dbg: unknown }).dbg = {
@@ -129,7 +140,7 @@ let winShown = false;
 let defeatShown = false;
 
 /** Rights we've already announced — anything new triggers the slot-granted popup. */
-let knownRights = new Set(pl().rights);
+let knownRights = new Set(me().rights);
 /** Airports whose popups are waiting behind the one on screen. */
 const slotQueue: string[] = [];
 
@@ -139,7 +150,7 @@ let knownForSale = new Set(game.airlines.filter((a) => a.forSale).map((a) => a.i
 const distressQueue: string[] = [];
 
 /** Badges we've already celebrated — anything new triggers the award popup. */
-let knownBadges = new Set(pl().badges.map((b) => b.id));
+let knownBadges = new Set(me().badges.map((b) => b.id));
 /** Badge ids waiting behind the award popup on screen. */
 const badgeQueue: string[] = [];
 
@@ -1100,6 +1111,8 @@ popover.addEventListener('click', (e) => {
   if (!btn) return;
   if (btn.dataset.pop === 'close') {
     hideAirportPopover();
+  } else if (spectating()) {
+    return; // watch-only: the AI buys and sells its own slots
   } else if (btn.dataset.pop === 'buy' && popAirport) {
     flash(startNegotiation(game, pl(), popAirport));
     hideAirportPopover();
@@ -1153,7 +1166,7 @@ function setView(view: View) {
     .querySelectorAll('#views-nav .view-tab')
     .forEach((b) => b.classList.toggle('active', (b as HTMLElement).dataset.view === view));
   if (view === 'finance') renderFinance(game, financeEl);
-  else if (view === 'competitors') renderCompetitors(game, competitorsEl);
+  else if (view === 'competitors') renderCompetitors(game, competitorsEl, watchedId);
   else if (view === 'awards') renderAwards(game, awardsEl);
   else resizeCanvas(); // map was hidden (zero-size); re-fit now that it's visible
 }
@@ -1164,12 +1177,13 @@ document.getElementById('views-nav')!.addEventListener('click', (e) => {
 });
 
 function render() {
+  document.body.classList.toggle('spectating', spectating());
   renderHud();
   renderSidebar();
   renderLog();
   drawMap();
   if (currentView === 'finance') renderFinance(game, financeEl);
-  else if (currentView === 'competitors') renderCompetitors(game, competitorsEl);
+  else if (currentView === 'competitors') renderCompetitors(game, competitorsEl, watchedId);
   else if (currentView === 'awards') renderAwards(game, awardsEl);
 }
 
@@ -1177,6 +1191,19 @@ function render() {
 // (market price). The acquisition logs to the player's news feed; sync
 // knownRights so the bulk of inherited cities doesn't fire a postcard per city.
 competitorsEl.addEventListener('click', (e) => {
+  // Watch-only: the AI runs its own acquisitions, so the only interaction here is
+  // picking which airline the views follow. Click any card (yours included).
+  if (spectating()) {
+    const cardEl = (e.target as HTMLElement).closest('[data-act="show-airline"]') as HTMLElement | null;
+    const al = cardEl && game.airlines.find((a) => a.id === cardEl.dataset.airline);
+    if (al) {
+      watchedId = al.id;
+      setView('map');
+      zoomToAirport(al.homeId, 8);
+      render();
+    }
+    return;
+  }
   const actEl = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
   const act = actEl?.dataset.act;
   const findTarget = () => game.airlines.find((a) => a.id === actEl!.dataset.airline);
@@ -1187,7 +1214,7 @@ competitorsEl.addEventListener('click', (e) => {
     const target = findTarget();
     if (!target || target === pl() || pl().cash < buyoutPrice(game, target)) return;
     acquire(game, pl(), target);
-    knownRights = new Set(pl().rights);
+    knownRights = new Set(me().rights);
     render();
     return;
   }
@@ -1204,7 +1231,7 @@ competitorsEl.addEventListener('click', (e) => {
       if (!confirm(`Take over ${target.name} for about ${money(cost)}? You'll reach control and absorb it.`)) return;
       if (pl().cash < cost) return;
       takeover(game, pl(), target);
-      knownRights = new Set(pl().rights);
+      knownRights = new Set(me().rights);
     }
     render();
     return;
@@ -1248,6 +1275,7 @@ function renderHud() {
     <div class="stat"><span class="label">Debt</span><span class="value">${money(pl().debt)}</span></div>
     <div class="stat"><span class="label">Fleet</span><span class="value">${pl().fleet.length}</span></div>
     <div class="stat"><span class="label">Routes</span><span class="value">${pl().routes.length}</span></div>
+    ${spectating() ? `<div class="stat spectate-badge"><span class="label">🤖 Watching</span><span class="value">${pl().name}</span></div>` : ''}
   `;
 }
 
@@ -1548,6 +1576,8 @@ function flash(message: string | null) {
 sidebar.addEventListener('click', (e) => {
   const btn = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
   if (!btn) return;
+  // Watch-only: the AI owns the airline. Allow view-only acts, block moves.
+  if (spectating() && btn.dataset.act !== 'toggle-card' && btn.dataset.act !== 'sort-routes') return;
   switch (btn.dataset.act) {
     case 'undo-sel':
       selected = selected.slice(0, -1);
@@ -1623,6 +1653,7 @@ sidebar.addEventListener('click', (e) => {
 });
 
 sidebar.addEventListener('change', (e) => {
+  if (spectating()) return; // watch-only: the AI manages assignments and fares
   const el = e.target as HTMLElement;
   if (el.dataset.act === 'assign') {
     const sel = el as unknown as HTMLSelectElement;
@@ -1651,18 +1682,19 @@ const SAVE_KEY = 'airbucks-save';
 /** Shared cleanup after the game state is swapped out (reset or load). */
 function afterStateSwap() {
   game.humanControlled = true; // persists nothing — the app always drives airlines[0]
+  watchedId = me().id; // a fresh game/load always starts focused on you
   selected = [];
   anim.clear();
   setPlaying(false);
   dayAccumulator = 0;
-  knownRights = new Set(pl().rights);
+  knownRights = new Set(me().rights);
   slotQueue.length = 0;
   slotGrantedEl.classList.add('hidden');
   knownForSale = new Set(game.airlines.filter((a) => a.forSale).map((a) => a.id));
   distressQueue.length = 0;
   distressShownId = null;
   distressEl.classList.add('hidden');
-  knownBadges = new Set(pl().badges.map((b) => b.id));
+  knownBadges = new Set(me().badges.map((b) => b.id));
   badgeQueue.length = 0;
   badgeShownId = null;
   badgeEarnedEl.classList.add('hidden');
@@ -1676,6 +1708,14 @@ function afterStateSwap() {
 
 const homeSelectEl = document.getElementById('home-select')!;
 const aiCountEl = document.getElementById('ai-count')!;
+const spectateBtn = document.getElementById('spectate-toggle')!;
+
+/** Whether the next new game starts as a watch-only sim. Session-remembered. */
+let spectate = false;
+spectateBtn.addEventListener('click', () => {
+  spectate = !spectate;
+  spectateBtn.classList.toggle('active', spectate);
+});
 
 /** Competitor count for the next new game. Remembered for the session. */
 let chosenAiCount = 8;
@@ -1710,6 +1750,7 @@ function startGameAt(homeId: string) {
   delete game.raid; // newGame has no raid/defeat; Object.assign won't clear stale ones
   delete game.defeat;
   addAiAirlines(game, chosenAiCount);
+  if (spectate) makeAiControlled(game, pl()); // watch-only: AI drives airlines[0] too
   if (chosenAiCount > 0) {
     pl().log.unshift(
       `${chosenAiCount} rival airline${chosenAiCount === 1 ? ' is' : 's are'} setting up: ` +
@@ -1829,8 +1870,9 @@ function hideSlotGranted() {
 
 /** Pause and pop up a card for any airport whose rights just arrived. */
 function announceNewRights() {
-  const fresh = pl().rights.filter((id) => !knownRights.has(id));
-  knownRights = new Set(pl().rights);
+  const fresh = me().rights.filter((id) => !knownRights.has(id));
+  knownRights = new Set(me().rights);
+  if (spectating()) return; // watch-only: the AI won these; no popup
   if (!fresh.length) return;
   setPlaying(false);
   if (slotShownId === null) showSlotGranted(fresh.shift()!);
@@ -1894,6 +1936,12 @@ function pumpDistress() {
 
 /** Pause and pop up a card for any AI airline that just entered distress. */
 function announceDistress() {
+  // Watch-only: don't interrupt an unattended sim; the Competitors panel and
+  // news feed still surface failing rivals.
+  if (spectating()) {
+    for (const al of game.airlines) if (al.ai && al.forSale) knownForSale.add(al.id);
+    return;
+  }
   for (const al of game.airlines) {
     if (al.ai && al.forSale && !knownForSale.has(al.id)) {
       knownForSale.add(al.id);
@@ -1949,10 +1997,16 @@ function pumpBadges() {
 
 /** Queue a card for any badge the player just earned, then show it. */
 function announceBadges() {
-  for (const b of pl().badges) {
+  // Watch-only: the AI earns these; don't pause the sim with a popup. Keep the
+  // seen-set current so nothing floods if control ever returns.
+  if (spectating()) {
+    knownBadges = new Set(me().badges.map((b) => b.id));
+    return;
+  }
+  for (const b of me().badges) {
     if (!knownBadges.has(b.id)) badgeQueue.push(b.id);
   }
-  knownBadges = new Set(pl().badges.map((b) => b.id));
+  knownBadges = new Set(me().badges.map((b) => b.id));
   pumpBadges();
 }
 
@@ -2039,7 +2093,7 @@ const km = (n: number) => `${Math.round(n).toLocaleString()} km`;
 
 /** Build the victory scorecard tiles from the player's final stats. */
 function winStatsHtml(): string {
-  const s = finalStats(game, pl());
+  const s = finalStats(game, me());
   const tiles: Array<[string, string]> = [];
   if (s.longestRoute)
     tiles.push(['Longest route', `${s.longestRoute.label}<br><small>${km(s.longestRoute.distanceKm)}</small>`]);
@@ -2073,10 +2127,10 @@ function checkWin() {
 
 function showWin() {
   setPlaying(false);
-  const m = financeMetrics(game, pl());
+  const m = financeMetrics(game, me());
   winSubEl.textContent =
     `${dateStr()} — every competitor has been bought out or driven under. ` +
-    `Air Bucks stands alone with ${pl().rights.length} cities and a net worth of ${money(m.equity)}.`;
+    `Air Bucks stands alone with ${me().rights.length} cities and a net worth of ${money(m.equity)}.`;
   winStatsEl.innerHTML = winStatsHtml();
   winScreenEl.classList.remove('hidden');
 }
@@ -2104,7 +2158,7 @@ function showDefeat() {
   const raider = game.airlines.find((a) => a.id === game.defeat!.raiderId);
   defeatSubEl.textContent =
     `${dateStr()} — ${raider?.name ?? 'A rival'} bought a controlling stake in ` +
-    `${pl().name} and you failed to win it back in time. The crown has changed hands.`;
+    `${me().name} and you failed to win it back in time. The crown has changed hands.`;
   defeatScreenEl.classList.remove('hidden');
 }
 
@@ -2120,7 +2174,7 @@ function frame(ts: number) {
   let sidebarDirty = false;
   if (playing) {
     dayAccumulator += (dt * speed) / DAY_MS;
-    const badgesBefore = pl().badges.length;
+    const badgesBefore = me().badges.length;
     while (dayAccumulator >= 1) {
       dayAccumulator -= 1;
       advanceDay(game);
@@ -2129,11 +2183,11 @@ function frame(ts: number) {
       if (game.day % 7 === 0) {
         raidPlayer(game); // rivals hunt a dominant player; may end the game
         logWeekly();
-        recordFinanceSnapshot(game, pl());
+        if (!spectating()) recordFinanceSnapshot(game, me()); // runAI records the AI-run player itself
       }
       if (game.defeat) break; // game over — stop advancing
     }
-    if (pl().badges.length > badgesBefore) renderLog(); // surface freshly-earned badges
+    if (me().badges.length > badgesBefore) renderLog(); // surface freshly-earned badges
     if (sidebarDirty) {
       announceNewRights();
       announceDistress();
@@ -2146,7 +2200,7 @@ function frame(ts: number) {
   renderHud();
   if (sidebarDirty && !sidebar.contains(document.activeElement)) renderSidebar();
   if (sidebarDirty && currentView === 'finance') renderFinance(game, financeEl);
-  if (sidebarDirty && currentView === 'competitors') renderCompetitors(game, competitorsEl);
+  if (sidebarDirty && currentView === 'competitors') renderCompetitors(game, competitorsEl, watchedId);
   if (sidebarDirty && currentView === 'awards') renderAwards(game, awardsEl);
   drawMap();
   requestAnimationFrame(frame);

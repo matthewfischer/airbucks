@@ -250,6 +250,18 @@ export function addAiAirlines(g: GameState, count: number): void {
   }
 }
 
+/**
+ * Hand an existing airline (normally the human's airlines[0]) to the AI, so the
+ * game can be watched as a self-playing sim. Picks a personality from the RNG.
+ * Acts on the very next pass (unlike a spawned rival, which idles its first
+ * cadence) — a human plays from day one, so the watched airline shouldn't sit
+ * idle for a week-plus before its opening move. Idempotent-ish: re-assigns each call.
+ */
+export function makeAiControlled(g: GameState, al: Airline): void {
+  const p = shuffle(g, PERSONALITIES)[0];
+  al.ai = { personality: p.id, nextDecisionDay: g.day };
+}
+
 // ---- Decision pass ----------------------------------------------------------
 
 /** One candidate move, scored; the pass executes the noisy best. */
@@ -907,7 +919,9 @@ export function acquisitionActions(g: GameState, al: Airline, p: Personality): A
     if (raid) actions.push(raid);
   }
   for (const target of g.airlines) {
-    if (target === al || !target.ai) continue; // never the human; not self
+    // Not self, not the player (airlines[0] is unremovable, even when AI-driven
+    // in a spectate sim — the raid path handles a dominant human instead).
+    if (target === al || !target.ai || target === g.airlines[0]) continue;
     const reach = evaluateNetwork(g, target).revenue; // strategic value
     if (target.forSale) {
       // Fire-sale: buy off the block at the cheap sticker (cash + debt alike).

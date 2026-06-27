@@ -328,6 +328,28 @@ input[type='number'] { width: 84px; }
 #ai-count button { border: none; background: transparent; padding: 5px 11px; border-radius: 6px; color: var(--muted); }
 #ai-count button.active { background: var(--panel-2); color: var(--accent); font-weight: 700; }
 
+#spectate-row { display: flex; justify-content: center; }
+#spectate-toggle {
+  font-size: 13px;
+  padding: 5px 12px;
+  background: #0f1d2e;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+}
+#spectate-toggle.active { background: var(--panel-2); color: var(--accent); border-color: var(--accent); font-weight: 700; }
+
+/* Watch-only sim: the AI drives the player's airline. Flag it and stop the
+   manual controls from looking clickable. */
+.spectate-badge .value { color: var(--accent); font-size: 13px; }
+body.spectating #sidebar button:not(.card-head):not(.sort-btn),
+body.spectating #sidebar select,
+body.spectating #sidebar input,
+body.spectating #competitors button {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 /* Slim top banner for picking a home airport directly on the map. */
 #home-select {
   position: absolute;
@@ -486,6 +508,11 @@ input[type='number'] { width: 84px; }
 }
 .comp-card:hover { border-color: var(--accent); }
 .comp-card.for-sale { border-color: var(--bad); background: #2a1822; }
+.comp-card.watching { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+.comp-watch-tag {
+  margin-left: auto; font-size: 10px; font-weight: 800;
+  color: var(--accent); letter-spacing: 0.5px;
+}
 .comp-head { display: flex; align-items: center; gap: 8px; }
 .comp-rank {
   font-size: 11px; font-weight: 800; color: var(--muted);

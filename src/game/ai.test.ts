@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { GameState } from './types';
 import {
   addAiAirlines,
+  makeAiControlled,
   MAX_AI_AIRLINES,
   PERSONALITIES,
   runAI,
@@ -222,4 +223,48 @@ describe.runIf(process.env.RUN_SLOW_TESTS)('long-run invariants (headless sim)',
     // Slow on purpose: a full 8-rival field rolling each other up via hostile
     // takeovers builds huge merged networks, so the per-day sim is heavy.
   }, 600_000);
+});
+
+describe('makeAiControlled (watch-only / spectate)', () => {
+  it('gives the human airline a valid personality and decision schedule', () => {
+    const g = gameWith(3);
+    const human = player(g);
+    expect(human.ai).toBeUndefined();
+
+    makeAiControlled(g, human);
+
+    expect(human.ai).toBeDefined();
+    expect(PERSONALITIES.some((p) => p.id === human.ai!.personality)).toBe(true);
+    // Acts immediately — no idle week before its opening move.
+    expect(human.ai!.nextDecisionDay).toBe(g.day);
+  });
+
+  it('lets the AI build a real network for the player when run forward', () => {
+    const g = gameWith(2);
+    makeAiControlled(g, player(g));
+    for (let i = 0; i < 365; i++) {
+      advanceDay(g);
+      runAI(g);
+    }
+    // airlines[0] is no longer idle: the AI opened routes and bought planes.
+    expect(player(g).routes.length).toBeGreaterThan(0);
+    expect(player(g).fleet.length).toBeGreaterThan(0);
+  });
+
+  it('never lists or sells the AI-driven player, even in deep distress', () => {
+    // Regression: the spectated player has an `ai` field, which once let the
+    // distress sweep list it and rivals "buy" it on repeat (it's unremovable).
+    const g = gameWith(3);
+    const human = player(g);
+    makeAiControlled(g, human);
+    for (let i = 0; i < 365; i++) {
+      advanceDay(g);
+      human.cash = -50_000_000; // keep it underwater past every distress fuse
+      human.debt = 50_000_000;
+      runAI(g);
+    }
+    expect(player(g)).toBe(human); // still airlines[0]
+    expect(human.forSale).toBeUndefined(); // never put on the block
+    expect(g.airlines).toContain(human); // never removed
+  });
 });

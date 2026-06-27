@@ -171,7 +171,10 @@ function liquidate(g: GameState, al: Airline): void {
 export function updateDistress(g: GameState): void {
   if (g.day % 7 !== 0) return;
   for (const al of [...g.airlines]) {
-    if (!al.ai) continue;
+    // Skip non-AI airlines, and never list the player (airlines[0]) — it can't be
+    // removed (see removeAirline), so listing it would let rivals "buy" it on
+    // repeat. In a spectate sim the player is AI-driven but stays protected.
+    if (!al.ai || al === g.airlines[0]) continue;
     if (al.forSale) {
       if (g.day >= al.forSale.deadlineDay) liquidate(g, al);
       continue;
