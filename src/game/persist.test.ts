@@ -122,7 +122,7 @@ describe('serialize / deserialize', () => {
     player(src).history.push({
       day: 7, cash: 5_000_000, debt: 1_000_000, fleetValue: 2_000_000,
       revenue: 300_000, cost: 200_000, interest: 1_000, interestEarned: 100,
-      net: 99_100, pax: 1234,
+      net: 99_100, pax: 1234, loadFactor: 0.65,
     });
     const restored = deserialize(serialize(src))!;
     expect(restored.airlines[0].history).toEqual(player(src).history);

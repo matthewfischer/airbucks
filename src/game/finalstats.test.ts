@@ -58,8 +58,8 @@ describe('finalStats', () => {
 
   it('sums lifetime passengers and tracks the peak net worth above the final', () => {
     al.history = [
-      { day: 7, cash: 100, debt: 0, fleetValue: 0, revenue: 0, cost: 0, interest: 0, interestEarned: 0, net: 0, pax: 1000 },
-      { day: 14, cash: 5000, debt: 0, fleetValue: 0, revenue: 0, cost: 0, interest: 0, interestEarned: 0, net: 0, pax: 1500 },
+      { day: 7, cash: 100, debt: 0, fleetValue: 0, revenue: 0, cost: 0, interest: 0, interestEarned: 0, net: 0, pax: 1000, loadFactor: 0 },
+      { day: 14, cash: 5000, debt: 0, fleetValue: 0, revenue: 0, cost: 0, interest: 0, interestEarned: 0, net: 0, pax: 1500, loadFactor: 0 },
     ];
     al.cash = 200; // current worth well below the week-14 peak of 5000
     const s = finalStats(g, al);

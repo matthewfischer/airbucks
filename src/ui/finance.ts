@@ -1,6 +1,5 @@
 import type { GameState } from '../game/types';
 import {
-  depositRate,
   financeMetrics,
   interestRate,
   player,
@@ -23,6 +22,7 @@ interface Series {
 
 const pct = (v: number): string => `${(v * 100).toFixed(0)}%`;
 const rate = (v: number): string => `${(v * 100).toFixed(1)}%`;
+const count = (v: number): string => Math.round(v).toLocaleString('en-US');
 const signed = (v: number, fmt: (n: number) => string): string =>
   `${v >= 0 ? '+' : ''}${fmt(v)}`;
 const goodBad = (v: number): string => (v >= 0 ? 'good' : 'bad');
@@ -39,8 +39,10 @@ export function renderFinance(g: GameState, el: HTMLElement): void {
       ${kpi('Net / wk', signed(m.net, money), goodBad(m.net))}
       ${kpi('Profit margin', pct(m.margin), goodBad(m.margin), 'net ÷ revenue')}
       ${kpi('Return on capital', pct(m.roc), goodBad(m.roc), 'annualized')}
+      ${kpi('Passengers / wk', count(m.pax))}
+      ${kpi('Profit / plane', signed(m.profitPerPlane, money), goodBad(m.profitPerPlane), `over ${m.fleetSize} plane${m.fleetSize === 1 ? '' : 's'}`)}
+      ${kpi('Load factor', pct(m.loadFactor), '', 'seats filled')}
       ${kpi('Loan rate', rate(interestRate(g, al)), '', 'on debt, annual')}
-      ${kpi('Deposit rate', rate(depositRate(g)), '', 'on cash, annual')}
     </div>`;
 
   const h = al.history;
@@ -75,6 +77,14 @@ export function renderFinance(g: GameState, el: HTMLElement): void {
     { label: 'Net worth', color: GOOD, values: h.map((s) => s.cash + s.fleetValue - s.debt) },
   ], money, true);
 
+  const traffic = chartCard('Passengers carried (weekly)', days, [
+    { label: 'Passengers', color: ACCENT, values: h.map((s) => s.pax) },
+  ], count, true);
+
+  const load = chartCard('Load factor', days, [
+    { label: 'Load factor', color: ACCENT_2, values: h.map((s) => s.loadFactor ?? 0) },
+  ], pct, true);
+
   // Effective annual rates the airline actually paid/earned each week, recovered
   // from the stored interest figures (0 in weeks with no debt / no cash).
   const annual = (weekly: number, principal: number): number =>
@@ -85,7 +95,7 @@ export function renderFinance(g: GameState, el: HTMLElement): void {
   ], rate, true);
 
   el.innerHTML = `<h2 class="fin-title">Finance</h2>${kpis}
-    <div class="chart-grid">${cashDebt}${revCost}${margins}${rates}${netWorth}</div>`;
+    <div class="chart-grid">${cashDebt}${revCost}${margins}${traffic}${load}${rates}${netWorth}</div>`;
 }
 
 function kpi(label: string, value: string, cls = '', sub = ''): string {

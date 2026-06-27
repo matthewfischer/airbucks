@@ -24,6 +24,7 @@ function snap(over: Partial<FinanceSnapshot> = {}): FinanceSnapshot {
     interestEarned: 0,
     net: 50_000,
     pax: 1_200,
+    loadFactor: 0.7,
     ...over,
   };
 }
@@ -60,11 +61,13 @@ describe('renderFinance', () => {
     expect(el.innerHTML).toContain('fin-empty'); // < 2 snapshots → no charts yet
   });
 
-  it('shows the era loan and deposit interest rates', () => {
+  it('shows the loan rate and operating KPIs', () => {
     const el = stubEl();
     renderFinance(g, el);
     expect(el.innerHTML).toContain('Loan rate');
-    expect(el.innerHTML).toContain('Deposit rate');
+    expect(el.innerHTML).toContain('Passengers / wk');
+    expect(el.innerHTML).toContain('Profit / plane');
+    expect(el.innerHTML).toContain('Load factor');
   });
 
   it('charts the history once a couple of weeks have accrued', () => {

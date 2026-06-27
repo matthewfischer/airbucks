@@ -541,6 +541,18 @@ describe('network evaluation', () => {
     expect(rs.loadFactor).toBeLessThanOrEqual(1);
   });
 
+  it('reports a system load factor between 0 and 1 for a flown network', () => {
+    withRoute(['clt', 'dca'], 'q400');
+    const net = evaluateNetwork(g, al);
+    expect(net.loadFactor).toBeGreaterThan(0);
+    expect(net.loadFactor).toBeLessThanOrEqual(1);
+  });
+
+  it('a network with no flying has a zero system load factor', () => {
+    openRoute(g, al, ['clt', 'dca']); // unflown
+    expect(evaluateNetwork(g, al).loadFactor).toBe(0);
+  });
+
   it('a faster fleet lifts the route speed premium', () => {
     g.day = 21915; // 2010 — saab340 still in production
     const slow = withRoute(['clt', 'dca'], 'saab340');
@@ -1387,6 +1399,16 @@ describe('finance metrics', () => {
     expect(m.assets).toBeCloseTo(Math.max(0, al.cash) + fleetValue(g, al));
     expect(m.margin).toBeCloseTo(profitMargin(w.revenue, w.net));
     expect(m.roc).toBeCloseTo(returnOnCapital(m.assets, w.net));
+    expect(m.pax).toBeCloseTo(w.pax);
+    expect(m.loadFactor).toBeCloseTo(w.loadFactor);
+    expect(m.fleetSize).toBe(al.fleet.length);
+    expect(m.profitPerPlane).toBeCloseTo(w.net / al.fleet.length);
+  });
+
+  it('profit per plane is zero with an empty fleet', () => {
+    const m = financeMetrics(g, al);
+    expect(m.fleetSize).toBe(0);
+    expect(m.profitPerPlane).toBe(0);
   });
 });
 

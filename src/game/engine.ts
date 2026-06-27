@@ -147,6 +147,7 @@ export function newAirline(id: string, name: string, color: string, homeId: stri
       interestEarned: 0,
       net: 0,
       pax: 0,
+      loadFactor: 0,
     }],
   };
 }
@@ -297,6 +298,8 @@ export interface NetworkResult {
   profit: number;
   passengers: number;
   connectingPassengers: number;
+  /** System load factor: seats filled ÷ seats offered across all legs (0..1). */
+  loadFactor: number;
   routes: Map<string, RouteSummary>;
 }
 
@@ -604,6 +607,15 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
     }
   }
 
+  // System load factor: seats sold across every leg over seats offered.
+  let seatsOffered = 0;
+  let seatsFilled = 0;
+  for (const [k, info] of legs) {
+    seatsOffered += info.capacity;
+    seatsFilled += legCarried.get(k) ?? 0;
+  }
+  const loadFactor = seatsOffered > 0 ? seatsFilled / seatsOffered : 0;
+
   // 4) Per-route cost: fly only enough circuits to cover the busiest leg's load.
   //    Passengers and connecting passengers are set from the busiest leg so they
   //    stay consistent with loadFactor and don't double-count connecting pax
@@ -645,6 +657,7 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
     profit: revenue - totalCost,
     passengers,
     connectingPassengers,
+    loadFactor,
     routes: summaries,
   };
 }
@@ -1094,6 +1107,8 @@ export interface WeeklyTotals {
   revenue: number;
   cost: number;
   pax: number;
+  /** System load factor this week: seats filled ÷ seats offered (0..1). */
+  loadFactor: number;
   /** Debt interest paid this week (a cost). */
   interest: number;
   /** Required principal repayment this week (a cash outflow, not a P&L cost). */
@@ -1128,6 +1143,7 @@ export function weeklyTotals(g: GameState, al: Airline): WeeklyTotals {
     revenue: net.revenue,
     cost,
     pax: net.passengers,
+    loadFactor: net.loadFactor,
     interest,
     principal,
     interestEarned,
@@ -1244,6 +1260,14 @@ export interface FinanceMetrics {
   margin: number;
   /** annualized net / assets. */
   roc: number;
+  /** Passengers carried this week. */
+  pax: number;
+  /** Planes owned. */
+  fleetSize: number;
+  /** Weekly net ÷ planes owned (0 with an empty fleet). */
+  profitPerPlane: number;
+  /** System load factor: seats filled ÷ seats offered (0..1). */
+  loadFactor: number;
 }
 
 /** Current finance KPIs, computed from the live state's weekly run-rate. */
@@ -1262,6 +1286,10 @@ export function financeMetrics(g: GameState, al: Airline): FinanceMetrics {
     net: w.net,
     margin: profitMargin(w.revenue, w.net),
     roc: returnOnCapital(assets, w.net),
+    pax: w.pax,
+    fleetSize: al.fleet.length,
+    profitPerPlane: al.fleet.length > 0 ? w.net / al.fleet.length : 0,
+    loadFactor: w.loadFactor,
   };
 }
 
@@ -1339,6 +1367,7 @@ export function recordFinanceSnapshot(g: GameState, al: Airline): void {
     interestEarned: w.interestEarned,
     net: w.net,
     pax: w.pax,
+    loadFactor: w.loadFactor,
   });
   // ~30 years of weekly points is plenty; drop the oldest beyond that.
   const MAX_SNAPSHOTS = 1600;

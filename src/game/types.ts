@@ -65,6 +65,8 @@ export interface FinanceSnapshot {
   interestEarned: number;
   net: number;
   pax: number;
+  /** System load factor: seats filled ÷ seats offered (0..1). */
+  loadFactor: number;
 }
 
 export type Continent =
