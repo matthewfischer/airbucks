@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { newAirline, newGame } from './engine';
 import {
+  bookValue,
   buyBack,
   buyShares,
   controllerOf,
@@ -15,7 +16,6 @@ import {
   publicValue,
   retainedShares,
   sellShares,
-  sharePriceBase,
   sharesOwned,
   takeover,
   takeoverCost,
@@ -58,16 +58,16 @@ describe('franchiseValue (market footprint)', () => {
   });
 });
 
-describe('publicValue', () => {
+describe('bookValue', () => {
   it('is floored positive and rises with net worth', () => {
     const g = newGame('crw', 1);
     const al = newAirline('ai-1', 'A', '#fff', 'atl');
     g.airlines.push(al);
     al.cash = 0;
-    const v0 = publicValue(g, al);
+    const v0 = bookValue(g, al);
     expect(v0).toBeGreaterThan(0);
     al.cash = 10_000_000;
-    expect(publicValue(g, al)).toBeGreaterThan(v0);
+    expect(bookValue(g, al)).toBeGreaterThan(v0);
   });
 
   it('is higher for a bigger-market network at equal net worth', () => {
@@ -79,7 +79,7 @@ describe('publicValue', () => {
     big.cash = 5_000_000;
     big.rights = ['atl', 'jfk', 'bna', 'den', 'clt'];
     g.airlines.push(small, big);
-    expect(publicValue(g, big)).toBeGreaterThan(publicValue(g, small)); // same equity, more market
+    expect(bookValue(g, big)).toBeGreaterThan(bookValue(g, small)); // same equity, more market
   });
 });
 
@@ -104,7 +104,7 @@ describe('portfolioValue (stakes are balance-sheet assets)', () => {
     expect(portfolioValue(g, holder)).toBeCloseTo(publicValue(g, issuer) * 0.3, -3);
   });
 
-  it('lifts the holder’s public value (and so its takeover price)', () => {
+  it('lifts the holder’s book value (and so its takeover price)', () => {
     const g = newGame('crw', 1);
     const holder = newAirline('h', 'H', '#fff', 'clt');
     holder.rights = ['clt'];
@@ -112,9 +112,9 @@ describe('portfolioValue (stakes are balance-sheet assets)', () => {
     const issuer = newAirline('i', 'I', '#000', 'atl');
     issuer.rights = ['atl', 'jfk', 'bna', 'den'];
     g.airlines.push(holder, issuer);
-    const before = publicValue(g, holder);
+    const before = bookValue(g, holder);
     issuer.shares = { i: 70, h: 30 };
-    expect(publicValue(g, holder)).toBeGreaterThan(before);
+    expect(bookValue(g, holder)).toBeGreaterThan(before);
   });
 
   it('does not recurse on a mutual cross-holding', () => {
@@ -126,8 +126,8 @@ describe('portfolioValue (stakes are balance-sheet assets)', () => {
     g.airlines.push(a, b);
     a.shares = { a: 80, b: 20 }; // b owns 20% of a
     b.shares = { b: 80, a: 20 }; // a owns 20% of b
-    expect(Number.isFinite(publicValue(g, a))).toBe(true);
-    expect(Number.isFinite(publicValue(g, b))).toBe(true);
+    expect(Number.isFinite(bookValue(g, a))).toBe(true);
+    expect(Number.isFinite(bookValue(g, b))).toBe(true);
   });
 });
 
@@ -152,8 +152,8 @@ describe('costToAccumulate (price impact)', () => {
   });
 });
 
-describe('valuation pricing (everything prices off public value)', () => {
-  it('issuing 10% raises ~10% of public value', () => {
+describe('valuation pricing (issue at book, premium only on takeover)', () => {
+  it('issuing 10% raises ~10% of public value, at a discount to full value', () => {
     const g = newGame('crw', 1);
     const al = newAirline('a', 'A', '#fff', 'clt');
     al.cash = 5_000_000;
@@ -164,9 +164,11 @@ describe('valuation pricing (everything prices off public value)', () => {
     const raised = al.cash - before;
     expect(raised).toBeGreaterThan(pub * 0.08);
     expect(raised).toBeLessThan(pub * 0.12);
+    // The public pays less than full intrinsic value (franchise is discounted).
+    expect(raised).toBeLessThan(bookValue(g, al) * 0.1);
   });
 
-  it('prices a takeover off the public value, and is Infinity without enough float', () => {
+  it('a takeover costs a premium over the intrinsic (book) value', () => {
     const g = newGame('crw', 1);
     const t = newAirline('t', 'T', '#fff', 'atl');
     t.cash = 5_000_000;
@@ -174,13 +176,7 @@ describe('valuation pricing (everything prices off public value)', () => {
     const buyer = newAirline('b', 'B', '#00f', 'clt');
     buyer.cash = 1_000_000_000;
     g.airlines.push(t, buyer);
-    // 100%-held: no float can deliver control — un-takeoverable via shares.
-    expect(takeoverCost(g, buyer, t)).toBe(Infinity);
-    // Float a majority and the cost becomes finite, scaled to the public value.
-    issueShares(g, t, 60);
-    const cost = takeoverCost(g, buyer, t);
-    expect(Number.isFinite(cost)).toBe(true);
-    expect(cost).toBeGreaterThan(publicValue(g, t) / 2); // ~control's worth, with impact
+    expect(takeoverCost(g, buyer, t)).toBeGreaterThan(bookValue(g, t));
   });
 });
 
@@ -239,33 +235,19 @@ describe('share transactions', () => {
     expect(b.cash).toBeGreaterThan(cash0);
   });
 
-  it('cannot take over a founder that kept its majority — no float to reach control', () => {
+  it('hostile takeover of a 100%-held airline always works, at a real cost', () => {
     const g = newGame('crw', 1);
     const b = newAirline('b', 'B', '#fff', 'atl');
     b.cash = 1_000_000_000;
     const t = newAirline('t', 'T', '#f00', 'clt');
     t.cash = 5_000_000;
-    g.airlines.push(b, t);
-    issueShares(g, t, 40); // founder keeps 60 — float can't deliver control
-    const before = b.cash;
-    expect(takeover(g, b, t)).toBe(false);
-    expect(g.airlines).toContain(t); // still standing
-    expect(b.cash).toBe(before); // nothing spent on a doomed bid
-  });
-
-  it('takes over once the float exceeds control, at a real cost', () => {
-    const g = newGame('crw', 1);
-    const b = newAirline('b', 'B', '#fff', 'atl');
-    b.cash = 1_000_000_000;
-    const t = newAirline('t', 'T', '#f00', 'clt');
-    t.cash = 5_000_000;
-    g.airlines.push(b, t);
-    issueShares(g, t, 60); // float 60 > 51 needed
+    g.airlines.push(b, t); // t is 100% founder-held — no float
     const before = b.cash;
     expect(takeover(g, b, t)).toBe(true);
     expect(g.airlines.find((a) => a.id === 't')).toBeUndefined(); // merged & dissolved
     expect(b.rights).toContain('clt'); // network inherited
-    expect(b.cash).toBeLessThan(before); // a real cost, not a wash
+    // Cost is real, not a wash with the inherited treasury (founder proceeds leave the game).
+    expect(b.cash).toBeLessThan(before);
   });
 
   it('blocks a second acquisition during the integration cooldown', () => {
@@ -277,8 +259,6 @@ describe('share transactions', () => {
     const t2 = newAirline('t2', 'T2', '#00f', 'den');
     t2.cash = 2_000_000;
     g.airlines.push(b, t1, t2);
-    issueShares(g, t1, 60); // both floated enough to be takeoverable
-    issueShares(g, t2, 60);
 
     expect(takeover(g, b, t1)).toBe(true); // first acquisition lands
     expect(g.airlines).not.toContain(t1);
@@ -290,24 +270,23 @@ describe('share transactions', () => {
     expect(g.airlines).not.toContain(t2);
   });
 
-  it('cashes out an other-airline minority at the public price (no premium)', () => {
+  it('pays an other-airline minority holder when squeezing it out', () => {
     const g = newGame('crw', 1);
     const t = newAirline('t', 'T', '#f00', 'clt');
     t.cash = 5_000_000;
     g.airlines.push(t);
-    issueShares(g, t, 90); // founder 10, float 90
+    issueShares(g, t, 40); // founder 60, float 40
     const x = newAirline('x', 'X', '#0f0', 'den');
     x.cash = 1_000_000_000;
     g.airlines.push(x);
-    buyShares(g, x, t, 20); // x holds 20, float 70
+    buyShares(g, x, t, 40); // x holds 40
     const b = newAirline('b', 'B', '#fff', 'sea');
     b.cash = 1_000_000_000;
     g.airlines.push(b);
-    const perShare = sharePriceBase(g, t); // public price is stable through a float buy
     const xCash0 = x.cash;
-    takeover(g, b, t); // buy float to control, then squeeze out the rest
+    takeover(g, b, t); // forces founder for control, squeezes out x's 40
     expect(g.airlines.find((a) => a.id === 't')).toBeUndefined();
-    expect(x.cash - xCash0).toBeCloseTo(perShare * 20, -3); // public price, no premium
+    expect(x.cash).toBeGreaterThan(xCash0); // x got paid for its forced stake
   });
 });
 

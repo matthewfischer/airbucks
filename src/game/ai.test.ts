@@ -201,5 +201,7 @@ describe('long-run invariants (headless sim)', () => {
     const survivors = g.airlines.slice(1);
     expect(survivors.length).toBeGreaterThanOrEqual(1);
     expect(survivors.some((al) => equity(g, al) > 0)).toBe(true);
-  }, 60_000);
+    // Slow on purpose: a full 8-rival field rolling each other up via hostile
+    // takeovers builds huge merged networks, so the per-day sim is heavy.
+  }, 300_000);
 });

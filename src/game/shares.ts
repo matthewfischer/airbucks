@@ -72,9 +72,13 @@ export function franchiseValue(g: GameState, al: Airline): number {
   return Math.round(weekly * priceLevel(g) * 52 * FRANCHISE_FACTOR);
 }
 
-/** Tangible + discounted franchise, with NO portfolio term — the basis for
+/** Tangible + full franchise value, with NO portfolio term — the basis for
  *  pricing a *holding* in this airline, kept portfolio-free so cross-holdings
  *  can't value themselves in a loop. */
+const baseBookValue = (g: GameState, al: Airline): number =>
+  equity(g, al) + franchiseValue(g, al);
+
+/** Tangible + discounted franchise, portfolio-free (see `baseBookValue`). */
 const basePublicValue = (g: GameState, al: Airline): number =>
   equity(g, al) + franchiseValue(g, al) * PUBLIC_FRACTION;
 
@@ -95,19 +99,32 @@ export function portfolioValue(g: GameState, al: Airline): number {
   return Math.round(total);
 }
 
+/**
+ * Full intrinsic value: tangible net worth (the assets a buyer inherits), the
+ * whole franchise value of the network's addressable market, and the market
+ * value of any stakes it holds in other airlines. What a control acquirer pays —
+ * the basis for takeover pricing.
+ */
+export function bookValue(g: GameState, al: Airline): number {
+  const value = baseBookValue(g, al) + portfolioValue(g, al);
+  return Math.max(Math.round(MIN_VALUATION * eraScale(g)), Math.round(value));
+}
+
 /** Public-market value: tangible net worth, a discounted slice of franchise, and
- *  the full value of its share portfolio. The sole basis for every share trade —
- *  issuing, open-market float, buy-back, selling, and takeovers (only floated
- *  shares ever change hands, all at this price). */
+ *  the full value of its share portfolio. The basis for issuing, open-market
+ *  float, buy-back, and selling. */
 export function publicValue(g: GameState, al: Airline): number {
   const value = basePublicValue(g, al) + portfolioValue(g, al);
   return Math.max(Math.round(MIN_VALUATION * eraScale(g)), Math.round(value));
 }
 
-/** Price of a single share — the one price for every trade (float buys,
- *  issuance, buy-back, sale, takeover, and squeeze-out). */
+/** Everyday (public) price of a single share — issuing/float/buyback/sell. */
 export const sharePriceBase = (g: GameState, al: Airline): number =>
   publicValue(g, al) / TOTAL_SHARES;
+
+/** Control price of a single share — what a takeover/squeeze-out pays. */
+export const fullSharePrice = (g: GameState, al: Airline): number =>
+  bookValue(g, al) / TOTAL_SHARES;
 
 // ---- Cap table --------------------------------------------------------------
 
@@ -187,18 +204,19 @@ const CONTROL_PREMIUM = 0.8; // surcharge on shares past 50%
 const premium = (f: number): number => 1 + IMPACT_SLOPE * f + CONTROL_PREMIUM * Math.max(0, f - 0.5);
 
 /**
- * Cost for a buyer holding `ownedBefore` shares of `al` to acquire `count` more
- * off the float, with price impact: each successive share is dearer, and the
- * control-crossing shares carry a premium. Everything prices off the public
- * value. A per-share sum — pure/deterministic.
+ * Cost for a buyer holding `ownedBefore` shares of `al` to acquire `count` more,
+ * with price impact: each successive share is dearer, and the control-crossing
+ * shares carry a premium. Open-market buys price at the public value; a takeover
+ * (`full`) prices at the full control value. A per-share sum — pure/deterministic.
  */
 export function costToAccumulate(
   g: GameState,
   al: Airline,
   ownedBefore: number,
   count: number,
+  full = false,
 ): number {
-  const base = sharePriceBase(g, al);
+  const base = full ? fullSharePrice(g, al) : sharePriceBase(g, al);
   let total = 0;
   for (let i = 1; i <= count; i++) {
     const ownedAfter = ownedBefore + i;
@@ -211,46 +229,78 @@ export function costToAccumulate(
 
 /** Shares needed to control an airline (>50%). */
 export const CONTROL_SHARES = Math.floor(TOTAL_SHARES / 2) + 1;
+/** Premium paid to minority holders when forcing them out at a squeeze-out. */
+const SQUEEZE_PREMIUM = 1.25;
 
 /** True if `ownerId` holds a controlling stake in `target`. */
 export const hasControl = (target: Airline, ownerId: string): boolean =>
   sharesOwned(target, ownerId) >= CONTROL_SHARES;
 
 /**
- * Move `count` shares of `target` to `buyer` at the impact price, pulling only
- * from the public float — never from the founder or other holders. You are
- * exposed exactly to the extent you floated, and not one share more. The buyer
- * pays cash; the float's proceeds leave the game (no personal accounts — Tier 3
- * is out of scope), so a buy is a real cost, not a wash with treasury the buyer
- * might later inherit. Returns shares actually transferred.
+ * Move `count` shares of `target` to `buyer` at the impact price, pulling from
+ * the public float first, then — only if `force` — the founder and other
+ * holders. The buyer pays cash; proceeds go only to *other airlines* whose
+ * stakes are bought (they realize the investment). Founder and public proceeds
+ * leave the game (no personal accounts — Tier 3 is out of scope), so a takeover
+ * is a real cost, not a wash with the treasury the buyer later inherits.
+ * Returns shares actually transferred.
  */
 function transferShares(
   g: GameState,
   buyer: Airline,
   target: Airline,
   count: number,
+  force: boolean,
 ): number {
   const cap = { ...ownership(target) };
   const buyerId = buyer.id;
-  const owned = cap[buyerId] ?? 0;
-  const take = Math.min(count, cap[PUBLIC] ?? 0);
-  if (take <= 0) return 0;
-  const cost = costToAccumulate(g, target, owned, take);
+  const sources: string[] = [PUBLIC];
+  if (force) {
+    sources.push(target.id);
+    for (const o of Object.keys(cap)) {
+      if (o !== PUBLIC && o !== target.id && o !== buyerId) sources.push(o);
+    }
+  }
+  let owned = cap[buyerId] ?? 0;
+  let need = count;
+  let cost = 0;
+  const credit = new Map<string, number>();
+  for (const src of sources) {
+    if (need <= 0) break;
+    if (src === buyerId) continue;
+    const take = Math.min(need, cap[src] ?? 0);
+    if (take <= 0) continue;
+    // A forced acquisition (takeover) pays the full control price; open-market
+    // float trades at the public price.
+    const c = costToAccumulate(g, target, owned, take, force);
+    cost += c;
+    // Only other airlines (not the founder, not the public) pocket the proceeds.
+    if (src !== PUBLIC && src !== target.id) credit.set(src, (credit.get(src) ?? 0) + c);
+    cap[src] -= take;
+    cap[buyerId] = (cap[buyerId] ?? 0) + take;
+    owned += take;
+    need -= take;
+  }
+  cost = Math.round(cost);
+  const got = count - need;
+  if (got <= 0) return 0;
   buyer.cash -= cost;
-  cap[PUBLIC] -= take;
-  cap[buyerId] = owned + take;
+  for (const [owner, amt] of credit) {
+    const al = g.airlines.find((a) => a.id === owner);
+    if (al && al !== buyer) al.cash += Math.round(amt);
+  }
   for (const k of Object.keys(cap)) if (cap[k] <= 0) delete cap[k];
   target.shares = cap;
-  return take;
+  return got;
 }
 
 /** Buy `count` shares of `target` on the open market (public float only). */
 export const buyShares = (g: GameState, buyer: Airline, target: Airline, count: number): number =>
-  transferShares(g, buyer, target, count);
+  transferShares(g, buyer, target, Math.min(count, publicFloat(target)), false);
 
 /** Founder repurchases `count` shares from the float to re-secure its stake. */
 export const buyBack = (g: GameState, al: Airline, count: number): number =>
-  transferShares(g, al, al, count);
+  transferShares(g, al, al, Math.min(count, publicFloat(al)), false);
 
 /** A holder sells `count` of its shares in `target` back to the float for cash.
  *  (The founder raises capital via `issueShares`, not this.) */
@@ -295,49 +345,32 @@ export const acquireCooldownLeft = (g: GameState, buyer: Airline): number =>
     ? 0
     : Math.max(0, ACQUIRE_COOLDOWN_DAYS - (g.day - buyer.lastAcquireDay));
 
-/** Shares of float `buyer` must still buy to control `target` (0 if already in
- *  control). */
-const sharesToControl = (target: Airline, buyer: Airline): number =>
-  Math.max(0, CONTROL_SHARES - sharesOwned(target, buyer.id));
-
-/** Whether `target`'s public float is deep enough to deliver control to `buyer`.
- *  A founder that kept a majority is un-takeoverable via shares (distress is the
- *  only path for those). */
-export const canReachControl = (target: Airline, buyer: Airline): boolean =>
-  publicFloat(target) >= sharesToControl(target, buyer);
-
-/** Cost to reach a controlling stake in `target` by buying the float, at the
- *  impact price (the curve carries the control premium). `Infinity` when the
- *  float can't deliver control — so callers naturally skip the un-takeoverable. */
+/** Cost to reach a controlling stake in `target` (at the full control price; the
+ *  price-impact curve carries the control premium). */
 export function controlCost(g: GameState, buyer: Airline, target: Airline): number {
-  if (!canReachControl(target, buyer)) return Infinity;
   const owned = sharesOwned(target, buyer.id);
-  return costToAccumulate(g, target, owned, sharesToControl(target, buyer));
+  return costToAccumulate(g, target, owned, Math.max(0, CONTROL_SHARES - owned), true);
 }
 
-/** Estimated total cost to fully take over `target`: buy the float to control,
- *  then cash out the remaining minority at the public price (no premium). The
- *  affordability gate for an AI or player hostile takeover; `Infinity` when the
- *  float can't reach control. */
+/** Estimated total cost to fully take over `target` from the buyer's current
+ *  holding: reach control, then squeeze out the rest. The affordability gate for
+ *  an AI or player hostile takeover. */
 export function takeoverCost(g: GameState, buyer: Airline, target: Airline): number {
-  const control = controlCost(g, buyer, target);
-  if (!Number.isFinite(control)) return Infinity;
-  const afterControl = Math.max(sharesOwned(target, buyer.id), CONTROL_SHARES);
-  const remaining = TOTAL_SHARES - afterControl;
-  return control + Math.round(sharePriceBase(g, target) * remaining);
+  const remaining = TOTAL_SHARES - CONTROL_SHARES;
+  const squeeze = Math.round(fullSharePrice(g, target) * remaining * SQUEEZE_PREMIUM);
+  return controlCost(g, buyer, target) + squeeze;
 }
 
 /**
- * With a controlling stake (only reachable via the float now), cash out the
- * remaining minority at the public price and merge the airline into the buyer.
- * Other-airline minority holders are paid; founder/public remainders dissolve.
- * Returns true on success.
+ * With a controlling stake, force-buy the remaining minority at a premium and
+ * merge the airline into the buyer. Other-airline minority holders are paid;
+ * founder/public remainders leave the game. Returns true on success.
  */
 export function squeezeOut(g: GameState, buyer: Airline, target: Airline): boolean {
   if (!hasControl(target, buyer.id) || !canAcquire(g, buyer)) return false;
   const remaining = TOTAL_SHARES - sharesOwned(target, buyer.id);
   if (remaining > 0) {
-    const perShare = sharePriceBase(g, target);
+    const perShare = fullSharePrice(g, target) * SQUEEZE_PREMIUM;
     buyer.cash -= Math.round(perShare * remaining);
     for (const [owner, n] of Object.entries(ownership(target))) {
       if (owner === buyer.id || owner === PUBLIC || owner === target.id) continue;
@@ -353,18 +386,42 @@ export function squeezeOut(g: GameState, buyer: Airline, target: Airline): boole
 }
 
 /**
- * Hostile takeover: buy the float up to a controlling stake, then cash out the
- * rest and merge. Only possible when the float can deliver control — a founder
- * that kept its majority can't be taken over this way. Returns true if control
- * was reached.
+ * Hostile takeover: buy up to a controlling stake (forcing retained shares at
+ * the control-premium price when the float is short), then squeeze out the rest
+ * and merge. Always possible at a price — never permanently blocked. Returns
+ * true if control was reached.
  */
 export function takeover(g: GameState, buyer: Airline, target: Airline): boolean {
   if (!canAcquire(g, buyer)) return false; // still digesting the last acquisition
-  const need = sharesToControl(target, buyer);
-  if (need > 0) {
-    if (!canReachControl(target, buyer)) return false; // float can't deliver control
-    buyShares(g, buyer, target, need);
-  }
+  const need = Math.max(0, CONTROL_SHARES - sharesOwned(target, buyer.id));
+  if (need > 0) transferShares(g, buyer, target, need, true);
   if (!hasControl(target, buyer.id)) return false;
   return squeezeOut(g, buyer, target);
+}
+
+/**
+ * Force-buy `count` shares of `target` for `buyer` at the control price, biting
+ * into retained shares when the float runs short. The engine behind a gradual
+ * raid (buyer ≠ target) and the player's defensive buyback (buyer === target,
+ * clawing the stake back from a controlling rival). Returns shares transferred.
+ */
+export const forceBuy = (g: GameState, buyer: Airline, target: Airline, count: number): number =>
+  transferShares(g, buyer, target, count, true);
+
+/** The largest block (≤ `max`) of `target` that `buyer` can force-buy out of
+ *  cash on hand, with its cost. {count:0} if even one share is unaffordable. */
+export function affordableForce(
+  g: GameState,
+  buyer: Airline,
+  target: Airline,
+  max: number,
+): { count: number; cost: number } {
+  const owned = sharesOwned(target, buyer.id);
+  let n = Math.min(max, TOTAL_SHARES - owned);
+  while (n > 0) {
+    const cost = costToAccumulate(g, target, owned, n, true);
+    if (cost <= buyer.cash) return { count: n, cost };
+    n--;
+  }
+  return { count: 0, cost: 0 };
 }

@@ -23,7 +23,6 @@ import {
   openRoute,
   typeById,
 } from './engine';
-import { issueShares } from './shares';
 
 const HUB = PERSONALITIES[0]; // debtAppetite 0.5, the workhorse personality
 
@@ -58,10 +57,9 @@ describe('acquisitionActions', () => {
   });
 
   it('takes over a healthy rival through the share market, not only the distressed', () => {
-    // g.airlines[2] is not for sale — a going concern captured via a hostile share
-    // takeover. It floated a majority, so the bid can buy control off the float.
+    // g.airlines[2] exists but is not for sale — a going concern captured via a
+    // hostile share takeover (it has no float, so the bid forces retained shares).
     const target = g.airlines[2];
-    issueShares(g, target, 60);
     const actions = acquisitionActions(g, al, HUB);
     expect(actions).toHaveLength(1);
 
@@ -70,13 +68,7 @@ describe('acquisitionActions', () => {
     expect(al.acquisitions).toBeGreaterThanOrEqual(1);
   });
 
-  it('skips a private rival that kept its majority — no float to reach control', () => {
-    // g.airlines[2] floated nothing (100% founder-held) — un-takeoverable via shares.
-    expect(acquisitionActions(g, al, HUB)).toHaveLength(0);
-  });
-
   it('skips a healthy takeover it cannot finance (the share-price brake)', () => {
-    issueShares(g, g.airlines[2], 60); // takeoverable, but...
     al.cash = 100_000; // tiny — a hostile takeover priced on a growth-aware
     al.debt = 0; //       valuation is far out of reach, even with credit
     expect(acquisitionActions(g, al, HUB)).toHaveLength(0);
@@ -112,7 +104,6 @@ describe('acquisitionActions', () => {
   });
 
   it('still refuses a healthy takeover during the integration cooldown', () => {
-    issueShares(g, g.airlines[2], 60); // takeoverable — only the cooldown blocks it
     al.lastAcquireDay = g.day; // mid-integration — g.airlines[2] is a going concern
     expect(acquisitionActions(g, al, HUB)).toHaveLength(0);
   });
