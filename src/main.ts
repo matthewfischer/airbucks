@@ -82,6 +82,7 @@ import { applySave, deserialize, serialize } from './game/persist';
 import { renderFinance } from './ui/finance';
 import { renderCompetitors } from './ui/competitors';
 import { renderAwards } from './ui/awards';
+import { badgeById } from './game/badges';
 
 const game: GameState = newGame('crw');
 game.humanControlled = true; // the app drives airlines[0] — enables the player-raid mechanic
@@ -136,6 +137,11 @@ const slotQueue: string[] = [];
 let knownForSale = new Set(game.airlines.filter((a) => a.forSale).map((a) => a.id));
 /** Distressed airlines waiting behind the popup on screen. */
 const distressQueue: string[] = [];
+
+/** Badges we've already celebrated — anything new triggers the award popup. */
+let knownBadges = new Set(pl().badges.map((b) => b.id));
+/** Badge ids waiting behind the award popup on screen. */
+const badgeQueue: string[] = [];
 
 // Real-time clock state.
 let playing = false;
@@ -1656,6 +1662,10 @@ function afterStateSwap() {
   distressQueue.length = 0;
   distressShownId = null;
   distressEl.classList.add('hidden');
+  knownBadges = new Set(pl().badges.map((b) => b.id));
+  badgeQueue.length = 0;
+  badgeShownId = null;
+  badgeEarnedEl.classList.add('hidden');
   justBoughtType = null;
   everHadRivals = false;
   winShown = false;
@@ -1874,7 +1884,10 @@ function pumpDistress() {
   while (id && !game.airlines.some((a) => a.id === id && a.forSale)) {
     id = distressQueue.shift();
   }
-  if (!id) return;
+  if (!id) {
+    pumpBadges(); // nothing left to list — let any queued award through
+    return;
+  }
   setPlaying(false);
   showDistress(game.airlines.find((a) => a.id === id)!);
 }
@@ -1897,6 +1910,59 @@ distressEl.addEventListener('click', (e) => {
 document.getElementById('distress-view')!.addEventListener('click', () => {
   hideDistress();
   setView('competitors');
+});
+
+// ---- "Award earned" popup --------------------------------------------------
+
+const badgeEarnedEl = document.getElementById('badge-earned')!;
+const badgeIconEl = document.getElementById('badge-earned-icon')!;
+const badgeNameEl = document.getElementById('badge-earned-name')!;
+const badgeHintEl = document.getElementById('badge-earned-hint')!;
+/** Badge currently shown in the popup. */
+let badgeShownId: string | null = null;
+
+function showBadgeEarned(id: string) {
+  const b = badgeById(id);
+  if (!b) return;
+  badgeShownId = id;
+  badgeIconEl.textContent = b.icon;
+  badgeNameEl.textContent = b.name;
+  badgeHintEl.textContent = b.hint;
+  badgeEarnedEl.classList.remove('hidden');
+}
+
+/** Close the popup; if more awards are queued behind it, show the next one. */
+function hideBadgeEarned() {
+  badgeShownId = null;
+  badgeEarnedEl.classList.add('hidden');
+  pumpBadges();
+}
+
+/** Show the next queued award — unless a slot or distress popup is up; defer. */
+function pumpBadges() {
+  if (badgeShownId || slotShownId || distressShownId) return;
+  const id = badgeQueue.shift();
+  if (!id) return;
+  setPlaying(false);
+  showBadgeEarned(id);
+}
+
+/** Queue a card for any badge the player just earned, then show it. */
+function announceBadges() {
+  for (const b of pl().badges) {
+    if (!knownBadges.has(b.id)) badgeQueue.push(b.id);
+  }
+  knownBadges = new Set(pl().badges.map((b) => b.id));
+  pumpBadges();
+}
+
+document.getElementById('badge-earned-later')!.addEventListener('click', hideBadgeEarned);
+badgeEarnedEl.addEventListener('click', (e) => {
+  if (e.target === badgeEarnedEl) hideBadgeEarned();
+});
+document.getElementById('badge-earned-view')!.addEventListener('click', () => {
+  hideBadgeEarned();
+  setView('awards');
 });
 
 /** Reset to a fresh airline — shows home airport selection first. */
@@ -2071,6 +2137,7 @@ function frame(ts: number) {
     if (sidebarDirty) {
       announceNewRights();
       announceDistress();
+      announceBadges();
     }
     updateAnimations(dt);
   }

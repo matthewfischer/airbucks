@@ -62,6 +62,16 @@ describe('checkBadges', () => {
     expect(has('globetrotter')).toBe(true);
   });
 
+  it('Country Roads is earned only once CRW is held', () => {
+    const lon = newGame('lhr');
+    const lal = player(lon);
+    checkBadges(lon, lal);
+    expect(lal.badges.some((b) => b.id === 'country-roads')).toBe(false);
+    lal.rights.push('crw');
+    checkBadges(lon, lal);
+    expect(lal.badges.some((b) => b.id === 'country-roads')).toBe(true);
+  });
+
   it('awards network badges at their thresholds', () => {
     al.rights = ['crw', 'clt', 'dca', 'pit', 'cle', 'cvg', 'cmh', 'ric', 'sdf', 'tys'];
     checkBadges(g, al);

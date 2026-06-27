@@ -600,6 +600,9 @@ input[type='number'] { width: 84px; }
 }
 .slot-photo.hidden,
 .slot-credit.hidden { display: none; }
+.badge-pop { position: relative; text-align: center; }
+.badge-pop-icon { font-size: 56px; line-height: 1; margin: 6px 0 2px; }
+.badge-pop .slot-actions { justify-content: center; }
 .slot-city { font-size: 16px; font-weight: 700; }
 .slot-actions { display: flex; gap: 10px; margin-top: 4px; }
 /* Size to its label instead of stretching the full popup width. */
