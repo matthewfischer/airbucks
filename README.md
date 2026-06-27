@@ -4,6 +4,8 @@ A modern remake of [Air Bucks](https://en.wikipedia.org/wiki/Air_Bucks), the 199
 
 Built as an Electron desktop app with Vite + TypeScript.
 
+![Air Bucks — building a European network out of Marseille](screenshots/main.png)
+
 ## What it is
 
 You start a regional airline anywhere in the world. At the start of a new game you **pick your home airport** by clicking it on the world map — any secondary/regional city (the big mega-hubs are off-limits as a starting base). Begin with $3M cash and a credit line that grows with your revenue, then buy planes, open routes, and grow from a regional carrier into a global network.
@@ -20,6 +22,11 @@ The game runs on a real-time clock (pause/play, 1×/2×/4× speed), modeled afte
 - Feeder spokes are credited for connecting traffic — a thin spoke earns more when it feeds a trunk route at your hub.
 - Plane depreciation is factored into P&L.
 - Demand is realistic: small city-pairs are marginal, big city-pairs are the profit centers, and intercontinental trunk routes are the prizes.
+- **Interest rates track real history.** Borrowing and deposit rates float on the actual U.S. federal funds rate for the year you're playing — interpolated from historical anchors, so you live through the Volcker spike (~16% in 1981), the near-zero ZIRP 2010s, and the 2022–23 climb. Your loan rate is that macro floor plus a credit spread that widens with leverage.
+
+![Per-route detail: load factors, connecting traffic, and fares](screenshots/routes.png)
+
+![Finance dashboard: cash & debt, profitability, interest rates, and net worth over time](screenshots/finance.png)
 
 ## Running
 
