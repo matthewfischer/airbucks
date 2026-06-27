@@ -112,14 +112,26 @@ const AI_NAMES = [
   'Transcontinental Airways', 'Pacific Crown', 'Lone Star Air', 'Lakeshore Airways',
   'Gulf Stream Air', 'Northern Cross', 'Cactus Air Lines', 'Maple Leaf Air',
   'Aztec Airways', 'Gateway Air', 'Bluegrass Airways', 'Cascade Air',
+  'Meridian Air', 'Equator Airways', 'Silk Road Air', 'Southern Cross Air',
 ];
 
 const AI_COLORS = [
   '#e85d75', '#c084fc', '#5ac8fa', '#ffd166',
   '#80ed99', '#f4845f', '#a3b18a', '#e07be0',
+  '#4dd0e1', '#ff9e6d', '#b388ff', '#9ccc65',
 ];
 
-export const MAX_AI_AIRLINES = 4;
+export const MAX_AI_AIRLINES = 8;
+
+/** Of the AI field, how many spawn from the worldwide pool instead of the
+ *  player's region — distant megacarriers you only collide with once your own
+ *  network reaches their continent. The rest stay regional rivals you tangle
+ *  with from the opening years. */
+const GLOBAL_AI_SHARE = 0.375; // ~3 of a full field of 8
+
+/** A rival counts as "global" only if its home is at least this far from the
+ *  player — far enough to sit on another continent, not just across the region. */
+const GLOBAL_MIN_DIST_KM = 6000;
 
 /** Deterministically shuffle (Fisher–Yates over the game RNG). */
 function shuffle<T>(g: GameState, items: T[]): T[] {
@@ -159,20 +171,51 @@ function hubAppeal(g: GameState, home: Airport): number {
  * cluster near the player or each other when that pays. Drawn without
  * replacement (deterministically, over the game RNG) so no two share a home.
  */
-function pickHomes(g: GameState, count: number): Airport[] {
+function pickHomes(g: GameState, count: number, exclude: Set<string>): Airport[] {
   if (count <= 0) return [];
   const playerHome = airportById(g, g.airlines[0].homeId);
-  const remaining = g.airports
-    .filter((a) => a.id !== playerHome.id && a.size >= AI_HOME_MIN_SIZE && a.size <= AI_HOME_MAX_SIZE)
+  const pool = g.airports
+    .filter((a) => a.id !== playerHome.id && !exclude.has(a.id) &&
+      a.size >= AI_HOME_MIN_SIZE && a.size <= AI_HOME_MAX_SIZE)
     .sort((a, b) => distanceKm(a, playerHome) - distanceKm(b, playerHome))
     .slice(0, Math.max(10, count * 3));
-  const weight = new Map(remaining.map((a) => {
+  const weight = new Map(pool.map((a) => {
     const proximity = 1 / (1 + (distanceKm(a, playerHome) / REGION_SCALE_KM) ** 2);
     return [a.id, hubAppeal(g, a) * proximity];
   }));
+  return drawHomes(g, pool, weight, count);
+}
+
+/**
+ * Pick `count` global AI homes: the richest hubs anywhere far enough from the
+ * player to sit on another continent, weighted by raw appeal with no proximity
+ * term — so distant megacarriers grow where the money is, not near you. Falls
+ * back to fewer (or zero) when the map can't supply that many far hubs.
+ */
+function pickGlobalHomes(g: GameState, count: number): Airport[] {
+  if (count <= 0) return [];
+  const playerHome = airportById(g, g.airlines[0].homeId);
+  const pool = g.airports.filter(
+    (a) => a.id !== playerHome.id && a.size >= AI_HOME_MIN_SIZE && a.size <= AI_HOME_MAX_SIZE &&
+      distanceKm(a, playerHome) >= GLOBAL_MIN_DIST_KM,
+  );
+  const weight = new Map(pool.map((a) => [a.id, hubAppeal(g, a)]));
+  return drawHomes(g, pool, weight, count);
+}
+
+/** Draw `count` airports from `pool` without replacement, weighted, over the
+ *  game RNG (deterministic). Shared by the regional and global home pickers. */
+function drawHomes(
+  g: GameState,
+  pool: Airport[],
+  weight: Map<string, number>,
+  count: number,
+): Airport[] {
+  const remaining = [...pool];
   const picked: Airport[] = [];
   while (picked.length < count && remaining.length > 0) {
     const total = remaining.reduce((s, a) => s + weight.get(a.id)!, 0);
+    if (total <= 0) break;
     let r = rand(g) * total;
     let i = 0;
     while (i < remaining.length - 1 && (r -= weight.get(remaining[i].id)!) > 0) i++;
@@ -192,7 +235,12 @@ const scheduleNext = (g: GameState, p: Personality): number =>
  */
 export function addAiAirlines(g: GameState, count: number): void {
   const n = Math.max(0, Math.min(MAX_AI_AIRLINES, count));
-  const homes = pickHomes(g, n);
+  // A few rivals spawn worldwide; the rest stay in the player's region. Seed the
+  // global ones first so a regional pick never steals one of their far hubs.
+  const globalHomes = pickGlobalHomes(g, Math.round(n * GLOBAL_AI_SHARE));
+  const taken = new Set(globalHomes.map((a) => a.id));
+  const regionalHomes = pickHomes(g, n - globalHomes.length, taken);
+  const homes = [...regionalHomes, ...globalHomes];
   const names = shuffle(g, AI_NAMES);
   const personalities = shuffle(g, PERSONALITIES);
   for (let i = 0; i < homes.length; i++) {

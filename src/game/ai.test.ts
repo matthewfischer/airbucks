@@ -7,6 +7,7 @@ import {
   runAI,
 } from './ai';
 import { continentOf } from './data';
+import { distanceKm } from './geo';
 import {
   advanceDay,
   airportById,
@@ -62,25 +63,30 @@ describe('addAiAirlines', () => {
     }
   });
 
-  it('biases AI homes toward the player’s region', () => {
-    // Across many seeds, most rivals share the player's continent — a CRW start
-    // draws mostly North American rivals, a Cape Town start mostly African ones.
-    const regionShare = (home: string) => {
+  it('seeds a regional majority plus a global contingent', () => {
+    // Most rivals share the player's continent — a CRW start draws mostly North
+    // American rivals — but a few megacarriers spawn worldwide, on other
+    // continents, so the late game collides with distant powers too.
+    const shares = (home: string) => {
       const want = continentOf(home);
-      let hit = 0, total = 0;
+      const ph = airportById(newGame(home, 0), home);
+      let regional = 0, far = 0, total = 0;
       for (let seed = 0; seed < 60; seed++) {
         const g = newGame(home, seed);
         addAiAirlines(g, MAX_AI_AIRLINES);
         for (const al of g.airlines.slice(1)) {
           total++;
-          if (continentOf(al.homeId) === want) hit++;
+          if (continentOf(al.homeId) === want) regional++;
+          if (distanceKm(ph, airportById(g, al.homeId)) >= 6000) far++;
         }
       }
-      return hit / total;
+      return { regional: regional / total, far: far / total };
     };
-    expect(regionShare('crw')).toBeGreaterThan(0.9); // dense region: all-local
-    expect(regionShare('cpt')).toBeGreaterThan(0.9); // Africa now has enough hubs
-    expect(regionShare('zrh')).toBeGreaterThan(0.8); // Europe
+    for (const home of ['crw', 'cpt', 'zrh']) {
+      const s = shares(home);
+      expect(s.regional, `${home} regional`).toBeGreaterThan(0.5); // still mostly local
+      expect(s.far, `${home} far`).toBeGreaterThan(0.25); // but a global contingent
+    }
   });
 
   it('gives each AI a distinct name and color', () => {

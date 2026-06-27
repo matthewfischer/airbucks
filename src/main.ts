@@ -1659,7 +1659,7 @@ const homeSelectEl = document.getElementById('home-select')!;
 const aiCountEl = document.getElementById('ai-count')!;
 
 /** Competitor count for the next new game. Remembered for the session. */
-let chosenAiCount = 4;
+let chosenAiCount = 8;
 for (let n = 0; n <= MAX_AI_AIRLINES; n++) {
   const btn = document.createElement('button');
   btn.textContent = String(n);
