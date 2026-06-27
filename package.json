@@ -16,7 +16,8 @@
     "sim": "vite-node scripts/sim.ts",
     "sweep": "vite-node scripts/sweep.ts",
     "analyze": "vite-node scripts/analyze.ts",
-    "pack:win": "vite build && electron-builder --win zip --x64"
+    "pack:win": "vite build && electron-builder --win zip --x64",
+    "pack:mac": "vite build && electron-builder --mac zip --arm64"
   },
   "build": {
     "appId": "com.mattfischer.airbucks",
@@ -29,6 +30,9 @@
       "output": "release"
     },
     "win": {
+      "target": "zip"
+    },
+    "mac": {
       "target": "zip"
     }
   },

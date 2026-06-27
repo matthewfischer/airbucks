@@ -46,3 +46,39 @@ jobs:
         with:
           files: release/*.zip
           generate_release_notes: true
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The git tag is the source of truth for the version. Sync package.json
+      # so the built zip filename and the app's version match the release.
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
+
+      - name: Build Mac package
+        run: npm run pack:mac
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: airbucks-mac-arm64
+          path: release/*.zip
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.zip
+          generate_release_notes: true
