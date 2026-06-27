@@ -555,7 +555,7 @@ const CHAIN_ANCHORS = 3;
 function chainCandidates(
   g: GameState,
   al: Airline,
-  p: Personality,
+  _p: Personality,
   base: number,
   budget: number,
 ): NewRoute[] {

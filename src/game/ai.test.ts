@@ -173,7 +173,12 @@ describe('determinism', () => {
   });
 });
 
-describe('long-run invariants (headless sim)', () => {
+// A full 10-year, max-rivals sim takes ~2.5 min of synchronous work — long
+// enough to trip vitest's worker-RPC heartbeat when it shares threads with the
+// rest of the suite. It's excluded from the default `npm test` and runs on its
+// own via `npm run test:slow` (RUN_SLOW_TESTS=1), which CI runs as a separate
+// isolated job. See .github/workflows/ci.yml.
+describe.runIf(process.env.RUN_SLOW_TESTS)('long-run invariants (headless sim)', () => {
   it('ten years at max AIs: finances stay finite and the world stays sane', () => {
     const g = gameWith(MAX_AI_AIRLINES, 3);
     run(g, 365 * 10);
@@ -203,5 +208,5 @@ describe('long-run invariants (headless sim)', () => {
     expect(survivors.some((al) => equity(g, al) > 0)).toBe(true);
     // Slow on purpose: a full 8-rival field rolling each other up via hostile
     // takeovers builds huge merged networks, so the per-day sim is heavy.
-  }, 300_000);
+  }, 600_000);
 });
