@@ -2,7 +2,17 @@ import type { AircraftType, Airline, Airport, GameState, Route } from './types';
 import { distanceKm } from './geo';
 import type { NetworkResult } from './engine';
 import { acquire, buyoutPrice, updateDistress } from './distress';
-import { canAcquire, takeover, takeoverCost } from './shares';
+import {
+  canAcquire,
+  costToAccumulate,
+  forceBuy,
+  hasControl,
+  isPlayerDominant,
+  sharesOwned,
+  takeover,
+  takeoverCost,
+  TOTAL_SHARES,
+} from './shares';
 import {
   airportById,
   assignPlane,
@@ -995,5 +1005,96 @@ export function runAI(g: GameState): void {
     const p = personalityById.get(al.ai.personality) ?? PERSONALITIES[0];
     decide(g, al, p);
     al.ai.nextDecisionDay = scheduleNext(g, p);
+  }
+}
+
+// ---- "Uneasy lies the crown": rivals raid a dominant player ------------------
+
+/** Days the player has to claw a raider back below control before losing. */
+export const DEFENSE_WINDOW_DAYS = 120;
+/** A rival stake in the player big enough to warrant an early heads-up. */
+const RAID_WARN_SHARES = 30;
+/** Shares a raider grabs in one weekly press of the bid. */
+const RAID_BLOCK = 8;
+
+/** The strongest solvent AI — the natural aggressor against a dominant player
+ *  ("the strongest rival can bid for you back"), and the one that can fund it. */
+function strongestRaider(g: GameState): Airline | null {
+  let best: Airline | null = null;
+  let bestEq = -Infinity;
+  for (const al of g.airlines) {
+    if (!al.ai || al.forSale) continue;
+    const eq = equity(g, al);
+    if (eq > 0 && eq > bestEq) {
+      bestEq = eq;
+      best = al;
+    }
+  }
+  return best;
+}
+
+/** Raider grabs up to RAID_BLOCK of the player's shares it can finance, forcing
+ *  retained shares at the control premium once the float is exhausted. Returns
+ *  shares taken this press. */
+function pressRaid(g: GameState, raider: Airline): number {
+  const player = g.airlines[0];
+  const p = personalityById.get(raider.ai!.personality) ?? PERSONALITIES[0];
+  const owned = sharesOwned(player, raider.id);
+  let n = Math.min(RAID_BLOCK, TOTAL_SHARES - owned);
+  while (n > 0) {
+    const cost = costToAccumulate(g, player, owned, n, true);
+    if (coverCost(g, raider, p, cost)) return forceBuy(g, raider, player, n);
+    n--;
+  }
+  return 0;
+}
+
+/**
+ * Once-a-week raid sweep against the human. Only fires when the player is
+ * dominant; the strongest rival accumulates the player's stock (warning the
+ * player along the way), and on crossing control opens a defense window. Letting
+ * that window expire while still controlled ends the game. Driven from the main
+ * loop, not runAI — headless sims (no human) never call it.
+ */
+export function raidPlayer(g: GameState): void {
+  if (g.defeat) return;
+  const player = g.airlines[0];
+  if (player.ai) return; // no human to depose
+
+  if (g.raid) {
+    const raider = g.airlines.find((a) => a.id === g.raid!.raiderId);
+    if (!raider || !raider.ai) {
+      g.raid = undefined; // raider merged away or liquidated — threat gone
+      return;
+    }
+    if (!hasControl(player, raider.id)) {
+      playerNews(g, `🛡 You fought off ${raider.name}'s takeover — ${player.name} is yours again.`);
+      g.raid = undefined;
+      return;
+    }
+    if (g.day >= g.raid.deadlineDay) {
+      g.defeat = { raiderId: raider.id, day: g.day };
+      playerNews(g, `🏴 ${raider.name} completed its takeover of ${player.name}. Game over.`);
+      return;
+    }
+    pressRaid(g, raider); // tighten the grip while the clock runs
+    return;
+  }
+
+  if (!isPlayerDominant(g)) return;
+  const raider = strongestRaider(g);
+  if (!raider) return;
+  const before = sharesOwned(player, raider.id);
+  if (pressRaid(g, raider) === 0) return; // couldn't fund a single share
+  const after = sharesOwned(player, raider.id);
+  if (hasControl(player, raider.id)) {
+    g.raid = { raiderId: raider.id, sinceDay: g.day, deadlineDay: g.day + DEFENSE_WINDOW_DAYS };
+    const months = Math.round(DEFENSE_WINDOW_DAYS / 30);
+    playerNews(
+      g,
+      `⚠ ${raider.name} seized control of ${player.name} (${after}%)! Buy back a majority within ${months} months or lose.`,
+    );
+  } else if (after >= RAID_WARN_SHARES && before < RAID_WARN_SHARES) {
+    playerNews(g, `⚠ ${raider.name} is raiding your stock — it now holds ${after}% of you.`);
   }
 }

@@ -1,7 +1,14 @@
 # Airline Shares — acquisition via a stock market (design)
 
-Status: design agreed 2026-06-20, not built. Branch: `airline-shares` (off the
-AI route-optimization work). RRT-inspired. Full model (all decisions resolved).
+Status: BUILT and merged to main (phases 1–5, 2026-06-26). RRT-inspired. Full
+model (all decisions resolved). Phase 5 — "uneasy lies the crown": once the
+player passes `DOMINANCE_THRESHOLD` (45% of industry equity) the strongest rival
+hostile-accumulates the player's stock (`raidPlayer` in `ai.ts`, driven weekly
+from the main loop, never from `runAI`/sims); crossing 50% opens a
+`DEFENSE_WINDOW_DAYS` (120) grace period; let it expire still controlled and
+`g.defeat` is set → game-over screen. Defense is `forceBuy(player, player, …)` —
+clawing shares back from the raider at the control price. Holding a majority is
+NOT a shield: force-tender is always possible at a (steep, rising) price.
 
 ## Why
 

@@ -3,6 +3,7 @@ import { airportById, equity, money, player, weeklyTotals } from '../game/engine
 import { buyoutPrice } from '../game/distress';
 import {
   acquireCooldownLeft,
+  affordableForce,
   canAcquire,
   controlCost,
   costToAccumulate,
@@ -150,6 +151,23 @@ function selfShareBlock(g: GameState): string {
       }</span><span class="bad">holds ${raid.shares}% of you</span></div>`
     : '';
 
+  // Under an active takeover: show the countdown and a defensive buyback that
+  // claws shares back from the controlling raider at the control price.
+  let siegeRow = '';
+  let defendBtn = '';
+  if (g.raid) {
+    const raider = g.airlines.find((a) => a.id === g.raid!.raiderId);
+    const daysLeft = Math.max(0, g.raid.deadlineDay - g.day);
+    siegeRow = `<div class="comp-sale-row"><span class="bad">🏴 ${
+      raider?.name ?? 'A rival'
+    } controls you</span><span class="bad">${Math.ceil(daysLeft / 30)}mo to defend</span></div>`;
+    const def = affordableForce(g, al, al, BLOCK);
+    defendBtn = def.count > 0
+      ? `<button class="comp-share-btn primary" data-act="defend" title="Buy your shares back from the raider to break their control">
+          Defend ${def.count}% · ${money(def.cost)}</button>`
+      : `<button class="comp-share-btn" disabled>Can't afford defense</button>`;
+  }
+
   const issueN = Math.min(BLOCK, retained - 1); // keep at least 1% so you still exist
   const issueBtn = issueN > 0
     ? `<button class="comp-share-btn" data-act="issue-shares" title="Sell ${issueN}% of yourself to the public for cash">
@@ -164,11 +182,11 @@ function selfShareBlock(g: GameState): string {
         Buy back ${backN}% · ${money(backCost)}</button>`
     : '';
 
-  if (!issueBtn && !backBtn && !raid) return '';
+  if (!issueBtn && !backBtn && !raid && !g.raid) return '';
   return `<div class="comp-sale">
     <div class="comp-sale-row"><span class="muted">You hold</span><span>${retained}%${float ? ` · ${float}% floated` : ''}</span></div>
-    ${raidRow}
-    <div class="comp-share-row">${issueBtn}${backBtn}</div>
+    ${raidRow}${siegeRow}
+    <div class="comp-share-row">${defendBtn}${issueBtn}${backBtn}</div>
   </div>`;
 }
 

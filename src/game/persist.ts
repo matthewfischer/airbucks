@@ -7,6 +7,7 @@ import type {
   GameState,
   Negotiation,
   Plane,
+  Raid,
   Route,
 } from './types';
 import { LEGACY_TYPE_IDS } from './data';
@@ -15,7 +16,7 @@ import { reseedIds } from './engine';
 import { PUBLIC, TOTAL_SHARES } from './shares';
 
 /** Bump when the save shape changes incompatibly. */
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 /** One airline's persisted slice. */
 export interface SavedAirline {
@@ -51,6 +52,8 @@ export interface SaveData {
   rngState: number;
   nextId: number;
   airlines: SavedAirline[];
+  raid?: Raid;
+  defeat?: { raiderId: string; day: number };
 }
 
 const saveAirline = (al: Airline): SavedAirline => ({
@@ -98,6 +101,27 @@ const parseForSale = (d: unknown): ForSale | undefined => {
 
 const optNum = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
 
+/** Parse an active player-raid record (ids validated later against survivors). */
+const parseRaid = (d: unknown): Raid | undefined => {
+  if (typeof d !== 'object' || d === null) return undefined;
+  const s = d as Record<string, unknown>;
+  if (
+    typeof s.raiderId !== 'string' ||
+    typeof s.sinceDay !== 'number' ||
+    typeof s.deadlineDay !== 'number'
+  )
+    return undefined;
+  return { raiderId: s.raiderId, sinceDay: s.sinceDay, deadlineDay: s.deadlineDay };
+};
+
+/** Parse a defeat record (raider id validated later against survivors). */
+const parseDefeat = (d: unknown): { raiderId: string; day: number } | undefined => {
+  if (typeof d !== 'object' || d === null) return undefined;
+  const s = d as Record<string, unknown>;
+  if (typeof s.raiderId !== 'string' || typeof s.day !== 'number') return undefined;
+  return { raiderId: s.raiderId, day: s.day };
+};
+
 /** Parse a cap table: an object of ownerId → non-negative share count. */
 const parseShares = (d: unknown): Record<string, number> | undefined => {
   if (typeof d !== 'object' || d === null) return undefined;
@@ -116,6 +140,8 @@ export function serialize(g: GameState): string {
     rngState: g.rngState,
     nextId: g.nextId,
     airlines: g.airlines.map(saveAirline),
+    ...(g.raid ? { raid: g.raid } : {}),
+    ...(g.defeat ? { defeat: g.defeat } : {}),
   };
   return JSON.stringify(data);
 }
@@ -189,6 +215,8 @@ export function deserialize(json: string): SaveData | null {
     // Missing/garbage counter is fine — applySave reseeds past every loaded id.
     nextId: typeof s.nextId === 'number' ? s.nextId : 1,
     airlines,
+    ...(parseRaid(s.raid) ? { raid: parseRaid(s.raid) } : {}),
+    ...(parseDefeat(s.defeat) ? { defeat: parseDefeat(s.defeat) } : {}),
   };
 }
 
@@ -280,5 +308,9 @@ export function applySave(g: GameState, data: SaveData): void {
   g.nextId = data.nextId;
   g.airlines = data.airlines.map((a) => applyAirline(a, airportIds, typeIds));
   sanitizeShares(g);
+  // Drop a raid/defeat whose raider no longer exists in the loaded roster.
+  const ids = new Set(g.airlines.map((a) => a.id));
+  g.raid = data.raid && ids.has(data.raid.raiderId) ? data.raid : undefined;
+  g.defeat = data.defeat && ids.has(data.defeat.raiderId) ? data.defeat : undefined;
   reseedIds(g);
 }

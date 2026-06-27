@@ -132,6 +132,29 @@ export function largestRivalStake(al: Airline): { ownerId: string; shares: numbe
   return best;
 }
 
+// ---- Player dominance (raid trigger) ----------------------------------------
+
+/** Equity share above which the player is "most of the market" and rivals start
+ *  hostile accumulation of the player. "Uneasy lies the crown." */
+export const DOMINANCE_THRESHOLD = 0.45;
+
+/** The player's equity as a fraction of the whole industry's positive equity
+ *  (0..1). 0 if the industry has no positive equity. The player is airlines[0]. */
+export function playerEquityShare(g: GameState): number {
+  let total = 0;
+  let mine = 0;
+  for (const al of g.airlines) {
+    const e = Math.max(0, equity(g, al));
+    total += e;
+    if (al === g.airlines[0]) mine = e;
+  }
+  return total > 0 ? mine / total : 0;
+}
+
+/** True once the player towers over the field enough to become a raid target. */
+export const isPlayerDominant = (g: GameState): boolean =>
+  g.airlines.length > 1 && playerEquityShare(g) >= DOMINANCE_THRESHOLD;
+
 // ---- Price with impact ------------------------------------------------------
 
 /** Marginal-price multiplier when the buyer would own fraction `f` (0..1) after
@@ -335,4 +358,31 @@ export function takeover(g: GameState, buyer: Airline, target: Airline): boolean
   if (need > 0) transferShares(g, buyer, target, need, true);
   if (!hasControl(target, buyer.id)) return false;
   return squeezeOut(g, buyer, target);
+}
+
+/**
+ * Force-buy `count` shares of `target` for `buyer` at the control price, biting
+ * into retained shares when the float runs short. The engine behind a gradual
+ * raid (buyer ≠ target) and the player's defensive buyback (buyer === target,
+ * clawing the stake back from a controlling rival). Returns shares transferred.
+ */
+export const forceBuy = (g: GameState, buyer: Airline, target: Airline, count: number): number =>
+  transferShares(g, buyer, target, count, true);
+
+/** The largest block (≤ `max`) of `target` that `buyer` can force-buy out of
+ *  cash on hand, with its cost. {count:0} if even one share is unaffordable. */
+export function affordableForce(
+  g: GameState,
+  buyer: Airline,
+  target: Airline,
+  max: number,
+): { count: number; cost: number } {
+  const owned = sharesOwned(target, buyer.id);
+  let n = Math.min(max, TOTAL_SHARES - owned);
+  while (n > 0) {
+    const cost = costToAccumulate(g, target, owned, n, true);
+    if (cost <= buyer.cash) return { count: n, cost };
+    n--;
+  }
+  return { count: 0, cost: 0 };
 }

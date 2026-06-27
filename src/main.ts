@@ -66,9 +66,19 @@ import {
   START_EPOCH,
 } from './game/engine';
 import { distanceKm } from './game/geo';
-import { addAiAirlines, MAX_AI_AIRLINES, runAI } from './game/ai';
+import { addAiAirlines, MAX_AI_AIRLINES, raidPlayer, runAI } from './game/ai';
 import { acquire, buyoutPrice } from './game/distress';
-import { buyBack, buyShares, canAcquire, issueShares, sellShares, takeover, takeoverCost } from './game/shares';
+import {
+  affordableForce,
+  buyBack,
+  buyShares,
+  canAcquire,
+  forceBuy,
+  issueShares,
+  sellShares,
+  takeover,
+  takeoverCost,
+} from './game/shares';
 import { applySave, deserialize, serialize } from './game/persist';
 import { renderFinance } from './ui/finance';
 import { renderCompetitors } from './ui/competitors';
@@ -114,6 +124,8 @@ let boughtTimer: ReturnType<typeof setTimeout> | null = null;
 /** Win tracking: once the player has had rivals, being the last airline wins. */
 let everHadRivals = false;
 let winShown = false;
+/** Defeat tracking: the game-over screen shows once when a raider takes you over. */
+let defeatShown = false;
 
 /** Rights we've already announced — anything new triggers the slot-granted popup. */
 let knownRights = new Set(pl().rights);
@@ -1202,6 +1214,14 @@ competitorsEl.addEventListener('click', (e) => {
     render();
     return;
   }
+  // Defensive buyback: claw your own shares back from a controlling raider at the
+  // control price (only as many as cash on hand covers).
+  if (act === 'defend') {
+    const { count } = affordableForce(game, pl(), pl(), 10);
+    if (count > 0) forceBuy(game, pl(), pl(), count);
+    render();
+    return;
+  }
   // Click anywhere else on a rival's card: jump to the map at their home.
   const cardEl = (e.target as HTMLElement).closest('[data-act="show-airline"]') as HTMLElement | null;
   if (!cardEl) return;
@@ -1638,7 +1658,9 @@ function afterStateSwap() {
   justBoughtType = null;
   everHadRivals = false;
   winShown = false;
+  defeatShown = false;
   document.getElementById('win-screen')!.classList.add('hidden');
+  document.getElementById('defeat-screen')!.classList.add('hidden');
 }
 
 const homeSelectEl = document.getElementById('home-select')!;
@@ -1674,6 +1696,8 @@ function startGameAt(homeId: string) {
   homeSelectEl.classList.add('hidden');
   sidebar.classList.remove('hidden');
   Object.assign(game, newGame(homeId));
+  delete game.raid; // newGame has no raid/defeat; Object.assign won't clear stale ones
+  delete game.defeat;
   addAiAirlines(game, chosenAiCount);
   if (chosenAiCount > 0) {
     pl().log.unshift(
@@ -1995,6 +2019,34 @@ document.getElementById('win-keep')!.addEventListener('click', () => {
 });
 document.getElementById('win-quit')!.addEventListener('click', () => window.close());
 
+// ---- Defeat ----------------------------------------------------------------
+
+const defeatScreenEl = document.getElementById('defeat-screen')!;
+const defeatSubEl = document.getElementById('defeat-sub')!;
+
+/** Show the game-over screen once, the first frame after the player is acquired. */
+function checkDefeat() {
+  if (game.defeat && !defeatShown) {
+    defeatShown = true;
+    showDefeat();
+  }
+}
+
+function showDefeat() {
+  setPlaying(false);
+  const raider = game.airlines.find((a) => a.id === game.defeat!.raiderId);
+  defeatSubEl.textContent =
+    `${dateStr()} — ${raider?.name ?? 'A rival'} bought a controlling stake in ` +
+    `${pl().name} and you failed to win it back in time. The crown has changed hands.`;
+  defeatScreenEl.classList.remove('hidden');
+}
+
+document.getElementById('defeat-quit')!.addEventListener('click', () => window.close());
+document.getElementById('defeat-restart')!.addEventListener('click', () => {
+  defeatScreenEl.classList.add('hidden');
+  resetGame();
+});
+
 function frame(ts: number) {
   const dt = lastTs ? ts - lastTs : 0;
   lastTs = ts;
@@ -2008,9 +2060,11 @@ function frame(ts: number) {
       runAI(game);
       sidebarDirty = true;
       if (game.day % 7 === 0) {
+        raidPlayer(game); // rivals hunt a dominant player; may end the game
         logWeekly();
         recordFinanceSnapshot(game, pl());
       }
+      if (game.defeat) break; // game over — stop advancing
     }
     if (pl().badges.length > badgesBefore) renderLog(); // surface freshly-earned badges
     if (sidebarDirty) {
@@ -2020,6 +2074,7 @@ function frame(ts: number) {
     updateAnimations(dt);
   }
   checkWin();
+  checkDefeat();
   renderHud();
   if (sidebarDirty && !sidebar.contains(document.activeElement)) renderSidebar();
   if (sidebarDirty && currentView === 'finance') renderFinance(game, financeEl);

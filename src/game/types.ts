@@ -149,6 +149,17 @@ export interface Airline {
   shares?: Record<string, number>;
 }
 
+/** An active hostile raid on the player: a rival has crossed control and the
+ *  player has until `deadlineDay` to claw the stake back below 50% or lose. */
+export interface Raid {
+  /** The controlling rival's airline id. */
+  raiderId: string;
+  /** Day the rival first crossed control and the window opened. */
+  sinceDay: number;
+  /** Day the player loses if the rival still controls them. */
+  deadlineDay: number;
+}
+
 export interface GameState {
   /** Simulated days elapsed since the start date. */
   day: number;
@@ -160,4 +171,8 @@ export interface GameState {
   aircraftTypes: AircraftType[];
   /** All carriers. The player is always airlines[0]. */
   airlines: Airline[];
+  /** A rival's open hostile takeover of the player (defense window running). */
+  raid?: Raid;
+  /** Set once the player has been acquired — the game is over. */
+  defeat?: { raiderId: string; day: number };
 }
