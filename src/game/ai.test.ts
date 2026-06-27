@@ -35,6 +35,19 @@ function run(g: GameState, days: number): void {
   }
 }
 
+/**
+ * Like `run`, but yields to the event loop every `chunk` days. A multi-year sim
+ * is otherwise one uninterrupted synchronous block, which starves vitest's
+ * worker-RPC heartbeat and fails the run with "Timeout calling onTaskUpdate" on
+ * slow CI runners. Only the long-run sim is heavy enough to need this.
+ */
+async function runYielding(g: GameState, days: number, chunk = 30): Promise<void> {
+  for (let done = 0; done < days; done += chunk) {
+    run(g, Math.min(chunk, days - done));
+    await new Promise((r) => setTimeout(r));
+  }
+}
+
 describe('addAiAirlines', () => {
   it('creates the requested number of AIs after the player', () => {
     const g = gameWith(4);
@@ -179,9 +192,9 @@ describe('determinism', () => {
 // own via `npm run test:slow` (RUN_SLOW_TESTS=1), which CI runs as a separate
 // isolated job. See .github/workflows/ci.yml.
 describe.runIf(process.env.RUN_SLOW_TESTS)('long-run invariants (headless sim)', () => {
-  it('ten years at max AIs: finances stay finite and the world stays sane', () => {
+  it('ten years at max AIs: finances stay finite and the world stays sane', async () => {
     const g = gameWith(MAX_AI_AIRLINES, 3);
-    run(g, 365 * 10);
+    await runYielding(g, 365 * 10);
     for (const al of g.airlines) {
       expect(Number.isFinite(al.cash), `${al.name} cash`).toBe(true);
       expect(Number.isFinite(al.debt), `${al.name} debt`).toBe(true);
