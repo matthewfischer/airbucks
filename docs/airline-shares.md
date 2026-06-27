@@ -2,9 +2,14 @@
 
 Status: BUILT and merged to main (phases 1–5, 2026-06-26). RRT-inspired. Full
 model (all decisions resolved). Phase 5 — "uneasy lies the crown": once the
-player passes `DOMINANCE_THRESHOLD` (45% of industry equity) the strongest rival
-hostile-accumulates the player's stock (`raidPlayer` in `ai.ts`, driven weekly
-from the main loop, never from `runAI`/sims); crossing 50% opens a
+player passes `DOMINANCE_THRESHOLD` (45% of industry equity AND is strictly the
+biggest carrier) a rival hostile-accumulates the player's stock — but through the
+**same scored decision pass** as routes/planes/rival-takeovers (`playerRaidAction`
+in `ai.ts`), so a rival raids only when seizing your network beats growing its
+own; an early nibble is valued at a fraction of the prize, not a full merger. The
+mechanic is gated on `g.humanControlled` (the app sets it) so headless sims and
+engine tests never fire it. The weekly `raidPlayer` clock just resolves an open
+window (defended / expired / raider gone); crossing 50% opens a
 `DEFENSE_WINDOW_DAYS` (120) grace period; let it expire still controlled and
 `g.defeat` is set → game-over screen. Defense is `forceBuy(player, player, …)` —
 clawing shares back from the raider at the control price. Holding a majority is

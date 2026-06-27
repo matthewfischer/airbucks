@@ -151,9 +151,19 @@ export function playerEquityShare(g: GameState): number {
   return total > 0 ? mine / total : 0;
 }
 
-/** True once the player towers over the field enough to become a raid target. */
-export const isPlayerDominant = (g: GameState): boolean =>
-  g.airlines.length > 1 && playerEquityShare(g) >= DOMINANCE_THRESHOLD;
+/** True once the player towers over the field enough to become a raid target:
+ *  most of the market (≥ threshold) AND strictly the single biggest carrier. The
+ *  strict-largest test means an inert/equal airline (e.g. a headless sim's unused
+ *  player slot) never qualifies — only a player that has genuinely pulled ahead. */
+export function isPlayerDominant(g: GameState): boolean {
+  if (g.airlines.length < 2) return false;
+  if (playerEquityShare(g) < DOMINANCE_THRESHOLD) return false;
+  const mine = Math.max(0, equity(g, g.airlines[0]));
+  for (let i = 1; i < g.airlines.length; i++) {
+    if (Math.max(0, equity(g, g.airlines[i])) >= mine) return false;
+  }
+  return true;
+}
 
 // ---- Price with impact ------------------------------------------------------
 

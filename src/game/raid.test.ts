@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { newGame } from './engine';
-import { addAiAirlines, DEFENSE_WINDOW_DAYS, raidPlayer } from './ai';
+import { advanceDay, evaluateNetwork, newGame } from './engine';
+import {
+  addAiAirlines,
+  DEFENSE_WINDOW_DAYS,
+  PERSONALITIES,
+  playerRaidAction,
+  raidPlayer,
+  runAI,
+} from './ai';
 import { serialize, deserialize, applySave } from './persist';
 import {
   DOMINANCE_THRESHOLD,
@@ -12,9 +19,13 @@ import {
   sharesOwned,
 } from './shares';
 
+const P = PERSONALITIES[0];
+const BIG = 1e15; // an appetite that never gates affordability in a unit test
+
 /** A fresh game with `n` AI rivals, RNG fixed for determinism. */
 function game(n = 1) {
   const g = newGame('crw', 1);
+  g.humanControlled = true; // engage the player-raid mechanic (the app sets this)
   addAiAirlines(g, n);
   return g;
 }
@@ -34,46 +45,103 @@ describe('player dominance', () => {
     expect(isPlayerDominant(g)).toBe(false);
   });
 
-  it('a lone player (no rivals) is never dominant for raid purposes', () => {
-    const g = newGame('crw', 1); // no AIs added
+  it('requires being strictly the biggest — a tie is not dominance', () => {
+    const g = game(1);
+    g.airlines[0].cash = 1_000_000_000;
+    g.airlines[1].cash = 1_000_000_000; // 50% share, but tied → not dominant
+    expect(playerEquityShare(g)).toBeGreaterThan(DOMINANCE_THRESHOLD);
     expect(isPlayerDominant(g)).toBe(false);
   });
+
+  it('is dominant once strictly ahead and most of the market', () => {
+    const g = game(1);
+    g.airlines[0].cash = 1_100_000_000;
+    g.airlines[1].cash = 1_000_000_000;
+    expect(isPlayerDominant(g)).toBe(true);
+  });
+
+  it('a lone player (no rivals) is never dominant', () => {
+    expect(isPlayerDominant(newGame('crw', 1))).toBe(false);
+  });
 });
 
-describe('raidPlayer — no trigger', () => {
-  it('does nothing while the player is not dominant', () => {
+describe('playerRaidAction — a scored candidate, not an auto-drain', () => {
+  it('offers no raid while the player is not dominant', () => {
     const g = game(3);
     for (const al of g.airlines) al.cash = 10_000_000;
-    raidPlayer(g);
-    expect(g.raid).toBeUndefined();
-    expect(sharesOwned(g.airlines[0], g.airlines[1].id)).toBe(0);
+    expect(playerRaidAction(g, g.airlines[1], P, BIG)).toBeNull();
   });
 
-  it('never raids in a headless sim (player slot is AI-controlled)', () => {
+  it('offers no raid in a headless sim (player slot is AI-controlled)', () => {
     const g = game(1);
-    g.airlines[0].ai = { personality: 'balanced', nextDecisionDay: 0 };
-    g.airlines[0].cash = 1_000_000_000;
-    raidPlayer(g);
-    expect(g.raid).toBeUndefined();
+    g.airlines[0].ai = { personality: P.id, nextDecisionDay: 0 };
+    g.airlines[0].cash = 1_100_000_000;
+    expect(playerRaidAction(g, g.airlines[1], P, BIG)).toBeNull();
+  });
+
+  it('offers no raid the broke rival cannot finance', () => {
+    const g = game(1);
+    g.airlines[0].cash = 1_100_000_000;
+    g.airlines[1].cash = 0; // no cash and (appetite 0) no borrowing room
+    expect(playerRaidAction(g, g.airlines[1], P, 0)).toBeNull();
+  });
+
+  it('values an early nibble far below a near-complete takeover (vs. organic growth)', () => {
+    // Build the player a real, revenue-earning network by running it as an AI
+    // for a year, then hand it back to the human and make it dominant.
+    const g = game(1);
+    const me = g.airlines[0];
+    const raider = g.airlines[1];
+    me.ai = { personality: P.id, nextDecisionDay: 0 };
+    for (let d = 0; d < 365; d++) {
+      advanceDay(g);
+      runAI(g);
+    }
+    delete me.ai;
+    me.cash = 10_000_000_000; // strictly the biggest
+    raider.cash = 5_000_000_000; // funded enough to bid
+    const reach = evaluateNetwork(g, me).revenue;
+    expect(reach).toBeGreaterThan(0);
+    expect(isPlayerDominant(g)).toBe(true);
+
+    me.shares = { [me.id]: 100 }; // raider holds nothing yet
+    const early = playerRaidAction(g, raider, P, BIG)!;
+    me.shares = { [me.id]: 55, [raider.id]: 45 }; // one block from control
+    const late = playerRaidAction(g, raider, P, BIG)!;
+
+    expect(early).not.toBeNull();
+    expect(late.score).toBeGreaterThan(early.score); // commitment ramps toward control
+    expect(early.score).toBeLessThan(reach); // a nibble is not valued as the whole merger
   });
 });
 
-describe('raidPlayer — accumulation and control', () => {
-  it('a dominant player gets raided until a rival crosses control', () => {
+describe('playerRaidAction — accumulation and control', () => {
+  it('accumulates the player stock and opens a defense window on crossing control', () => {
     const g = game(1);
-    g.airlines[0].cash = 1_000_000_000;
-    g.airlines[1].cash = 1_000_000_000; // equal → player at 50% ≥ threshold
+    g.airlines[0].cash = 4_000_000_000; // strictly the biggest
+    g.airlines[1].cash = 3_000_000_000; // funded enough to fight to control
+    const raider = g.airlines[1];
     expect(isPlayerDominant(g)).toBe(true);
 
     let opened = false;
-    for (let week = 0; week < 60 && !opened; week++) {
-      raidPlayer(g);
+    for (let i = 0; i < 60 && !opened; i++) {
+      const act = playerRaidAction(g, raider, P, BIG);
+      if (!act) break;
+      act.run();
       opened = g.raid !== undefined;
     }
     expect(opened).toBe(true);
-    expect(g.raid!.raiderId).toBe(g.airlines[1].id);
-    expect(hasControl(g.airlines[0], g.airlines[1].id)).toBe(true);
+    expect(g.raid!.raiderId).toBe(raider.id);
+    expect(hasControl(g.airlines[0], raider.id)).toBe(true);
     expect(g.raid!.deadlineDay).toBe(g.raid!.sinceDay + DEFENSE_WINDOW_DAYS);
+  });
+
+  it('stops offering raids once the rival already controls the player', () => {
+    const g = game(1);
+    const raider = g.airlines[1];
+    g.airlines[0].cash = 2_000_000_000;
+    g.airlines[0].shares = { [g.airlines[0].id]: 40, [raider.id]: 60 };
+    expect(playerRaidAction(g, raider, P, BIG)).toBeNull();
   });
 });
 
@@ -154,10 +222,8 @@ describe('persistence', () => {
     const g = game(1);
     g.raid = { raiderId: g.airlines[1].id, sinceDay: 5, deadlineDay: 125 };
     g.defeat = { raiderId: g.airlines[1].id, day: 130 };
-    const back = newGame('crw', 1);
-    addAiAirlines(back, 1);
-    const data = deserialize(serialize(g))!;
-    applySave(back, data);
+    const back = game(1);
+    applySave(back, deserialize(serialize(g))!);
     expect(back.raid).toEqual(g.raid);
     expect(back.defeat).toEqual(g.defeat);
   });
@@ -165,8 +231,7 @@ describe('persistence', () => {
   it('drops a raid whose raider no longer exists on load', () => {
     const g = game(1);
     g.raid = { raiderId: 'ghost', sinceDay: 5, deadlineDay: 125 };
-    const back = newGame('crw', 1);
-    addAiAirlines(back, 1);
+    const back = game(1);
     applySave(back, deserialize(serialize(g))!);
     expect(back.raid).toBeUndefined();
   });

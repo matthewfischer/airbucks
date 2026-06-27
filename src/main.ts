@@ -85,6 +85,7 @@ import { renderCompetitors } from './ui/competitors';
 import { renderAwards } from './ui/awards';
 
 const game: GameState = newGame('crw');
+game.humanControlled = true; // the app drives airlines[0] — enables the player-raid mechanic
 /** The player's airline (always airlines[0]); resolved per call since loads/resets swap state. */
 const pl = () => player(game);
 (window as unknown as { game: GameState }).game = game;
@@ -1644,6 +1645,7 @@ const SAVE_KEY = 'airbucks-save';
 
 /** Shared cleanup after the game state is swapped out (reset or load). */
 function afterStateSwap() {
+  game.humanControlled = true; // persists nothing — the app always drives airlines[0]
   selected = [];
   anim.clear();
   setPlaying(false);

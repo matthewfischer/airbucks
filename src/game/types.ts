@@ -171,6 +171,10 @@ export interface GameState {
   aircraftTypes: AircraftType[];
   /** All carriers. The player is always airlines[0]. */
   airlines: Airline[];
+  /** True when airlines[0] is a real human (the app), not an inert sim/test slot.
+   *  Gates the player-raid mechanic so headless sims and engine tests never fire
+   *  it. Set by the app, never by newGame. */
+  humanControlled?: boolean;
   /** A rival's open hostile takeover of the player (defense window running). */
   raid?: Raid;
   /** Set once the player has been acquired — the game is over. */
