@@ -60,7 +60,6 @@ import {
   upgradeRoute,
   upgradeRouteQuote,
   weeklyTotals,
-  weekNumber,
   currentYear,
   priceLevel,
   START_EPOCH,
@@ -2072,17 +2071,6 @@ document.getElementById('speeds')!.addEventListener('click', (e) => {
     .forEach((b) => b.classList.toggle('active', b === btn));
 });
 
-function logWeekly() {
-  const w = weeklyTotals(game, pl());
-  const netInterest = w.interestEarned - w.interest; // +earned, −paid
-  pl().log.unshift(
-    `Week ${weekNumber(game) - 1}: ${Math.round(w.pax).toLocaleString()} pax · ` +
-      `rev ${money(w.revenue)} · cost ${money(w.cost)} · ` +
-      `int ${netInterest >= 0 ? '+' : ''}${money(netInterest)} · net ${w.net >= 0 ? '+' : ''}${money(w.net)}.`,
-  );
-  renderLog();
-}
-
 // ---- Victory ---------------------------------------------------------------
 
 const winScreenEl = document.getElementById('win-screen')!;
@@ -2182,7 +2170,6 @@ function frame(ts: number) {
       sidebarDirty = true;
       if (game.day % 7 === 0) {
         raidPlayer(game); // rivals hunt a dominant player; may end the game
-        logWeekly();
         if (!spectating()) recordFinanceSnapshot(game, me()); // runAI records the AI-run player itself
       }
       if (game.defeat) break; // game over — stop advancing
