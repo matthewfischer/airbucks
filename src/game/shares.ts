@@ -72,20 +72,49 @@ export function franchiseValue(g: GameState, al: Airline): number {
   return Math.round(weekly * priceLevel(g) * 52 * FRANCHISE_FACTOR);
 }
 
+/** Tangible + full franchise value, with NO portfolio term — the basis for
+ *  pricing a *holding* in this airline, kept portfolio-free so cross-holdings
+ *  can't value themselves in a loop. */
+const baseBookValue = (g: GameState, al: Airline): number =>
+  equity(g, al) + franchiseValue(g, al);
+
+/** Tangible + discounted franchise, portfolio-free (see `baseBookValue`). */
+const basePublicValue = (g: GameState, al: Airline): number =>
+  equity(g, al) + franchiseValue(g, al) * PUBLIC_FRACTION;
+
 /**
- * Full intrinsic value: tangible net worth (the assets a buyer inherits) plus
- * the whole franchise value of the network's addressable market. What a control
- * acquirer pays — the basis for takeover pricing.
+ * Market value of the stakes `al` holds in *other* airlines — a balance-sheet
+ * asset like cash or fleet, not franchise. Each stake is valued at the held
+ * airline's base (portfolio-free) public per-share price — a marketable-minority
+ * basis that also breaks the cross-holding recursion (A owns B owns A). Treasury
+ * (self-held) shares are not a holding. Usually 0: no stakes, no work.
+ */
+export function portfolioValue(g: GameState, al: Airline): number {
+  let total = 0;
+  for (const x of g.airlines) {
+    if (x === al) continue;
+    const n = sharesOwned(x, al.id);
+    if (n > 0) total += (n * basePublicValue(g, x)) / TOTAL_SHARES;
+  }
+  return Math.round(total);
+}
+
+/**
+ * Full intrinsic value: tangible net worth (the assets a buyer inherits), the
+ * whole franchise value of the network's addressable market, and the market
+ * value of any stakes it holds in other airlines. What a control acquirer pays —
+ * the basis for takeover pricing.
  */
 export function bookValue(g: GameState, al: Airline): number {
-  const value = equity(g, al) + franchiseValue(g, al);
+  const value = baseBookValue(g, al) + portfolioValue(g, al);
   return Math.max(Math.round(MIN_VALUATION * eraScale(g)), Math.round(value));
 }
 
-/** Public-market value: tangible net worth plus a discounted slice of franchise.
- *  The basis for issuing, open-market float, buy-back, and selling. */
+/** Public-market value: tangible net worth, a discounted slice of franchise, and
+ *  the full value of its share portfolio. The basis for issuing, open-market
+ *  float, buy-back, and selling. */
 export function publicValue(g: GameState, al: Airline): number {
-  const value = equity(g, al) + franchiseValue(g, al) * PUBLIC_FRACTION;
+  const value = basePublicValue(g, al) + portfolioValue(g, al);
   return Math.max(Math.round(MIN_VALUATION * eraScale(g)), Math.round(value));
 }
 

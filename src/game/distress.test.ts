@@ -125,6 +125,51 @@ describe('acquire', () => {
     expect(buyer.routes.some((r) => r.id === 'route-99')).toBe(true);
     expect(player(g).log[0]).toMatch(/acquired/i);
   });
+
+  it('reclaims a target stake in the buyer as treasury, not an orphan', () => {
+    const buyer = player(g); // 'player'
+    const target = aiAirline('ai-2', 'sea');
+    target.cash = 0;
+    target.forSale = { listedDay: 0, deadlineDay: 60, price: 100_000 };
+    buyer.cash = 10_000_000;
+    buyer.shares = { player: 78, 'ai-2': 22 }; // the target owns 22% of the buyer
+
+    acquire(g, buyer, target);
+
+    expect(buyer.shares['ai-2']).toBeUndefined(); // no ghost owner left behind
+    expect(buyer.shares.player).toBe(100); // the 22% folds back into the buyer's own hands
+  });
+
+  it('passes a target stake in a third airline to the buyer', () => {
+    const buyer = aiAirline('ai-1', 'bna');
+    buyer.cash = 10_000_000;
+    const target = aiAirline('ai-2', 'sea');
+    target.cash = 0;
+    target.forSale = { listedDay: 0, deadlineDay: 60, price: 100_000 };
+    const third = aiAirline('ai-3', 'pdx');
+    third.shares = { 'ai-3': 70, 'ai-2': 30 }; // target holds 30% of the third airline
+
+    acquire(g, buyer, target);
+
+    expect(third.shares['ai-2']).toBeUndefined();
+    expect(third.shares['ai-1']).toBe(30); // the buyer inherits the stake
+    expect(third.shares['ai-3']).toBe(70);
+  });
+});
+
+describe('liquidation reverts holdings to the issuer', () => {
+  it('returns a bankrupt holder’s stake to the issuing airline’s treasury', () => {
+    const issuer = aiAirline('ai-1', 'bna');
+    issuer.shares = { 'ai-1': 65, 'ai-2': 35 }; // ai-2 holds 35% of ai-1
+    const failing = aiAirline('ai-2', 'sea');
+    failing.forSale = { listedDay: g.day, deadlineDay: g.day + 60, price: 100_000 };
+
+    advanceWeeksTo(70); // unsold → liquidated
+
+    expect(g.airlines).not.toContain(failing);
+    expect(issuer.shares['ai-2']).toBeUndefined();
+    expect(issuer.shares['ai-1']).toBe(100); // reclaimed to the issuer's own treasury
+  });
 });
 
 describe('buying a healthy airline (not distressed)', () => {

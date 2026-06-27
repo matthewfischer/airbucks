@@ -11,6 +11,7 @@ import {
   issueShares,
   largestRivalStake,
   ownership,
+  portfolioValue,
   publicFloat,
   publicValue,
   retainedShares,
@@ -79,6 +80,54 @@ describe('bookValue', () => {
     big.rights = ['atl', 'jfk', 'bna', 'den', 'clt'];
     g.airlines.push(small, big);
     expect(bookValue(g, big)).toBeGreaterThan(bookValue(g, small)); // same equity, more market
+  });
+});
+
+describe('portfolioValue (stakes are balance-sheet assets)', () => {
+  it('is zero with no cross-holdings', () => {
+    const g = newGame('crw', 1);
+    const a = newAirline('a', 'A', '#fff', 'clt');
+    a.rights = ['clt'];
+    g.airlines.push(a);
+    expect(portfolioValue(g, a)).toBe(0);
+  });
+
+  it('values a stake at the issuer’s public per-share price', () => {
+    const g = newGame('crw', 1);
+    const holder = newAirline('h', 'H', '#fff', 'clt');
+    holder.rights = ['clt'];
+    const issuer = newAirline('i', 'I', '#000', 'atl');
+    issuer.rights = ['atl', 'jfk', 'bna', 'den'];
+    g.airlines.push(holder, issuer);
+    issuer.shares = { i: 70, h: 30 }; // holder owns 30% of the issuer
+    // Issuer holds nothing itself, so its public value is its base value.
+    expect(portfolioValue(g, holder)).toBeCloseTo(publicValue(g, issuer) * 0.3, -3);
+  });
+
+  it('lifts the holder’s book value (and so its takeover price)', () => {
+    const g = newGame('crw', 1);
+    const holder = newAirline('h', 'H', '#fff', 'clt');
+    holder.rights = ['clt'];
+    holder.cash = 5_000_000;
+    const issuer = newAirline('i', 'I', '#000', 'atl');
+    issuer.rights = ['atl', 'jfk', 'bna', 'den'];
+    g.airlines.push(holder, issuer);
+    const before = bookValue(g, holder);
+    issuer.shares = { i: 70, h: 30 };
+    expect(bookValue(g, holder)).toBeGreaterThan(before);
+  });
+
+  it('does not recurse on a mutual cross-holding', () => {
+    const g = newGame('crw', 1);
+    const a = newAirline('a', 'A', '#fff', 'clt');
+    a.rights = ['clt', 'atl'];
+    const b = newAirline('b', 'B', '#000', 'atl');
+    b.rights = ['atl', 'jfk'];
+    g.airlines.push(a, b);
+    a.shares = { a: 80, b: 20 }; // b owns 20% of a
+    b.shares = { b: 80, a: 20 }; // a owns 20% of b
+    expect(Number.isFinite(bookValue(g, a))).toBe(true);
+    expect(Number.isFinite(bookValue(g, b))).toBe(true);
   });
 });
 

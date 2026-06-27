@@ -70,8 +70,23 @@ export const isForSale = (al: Airline): boolean => al.forSale !== undefined;
 export const forSaleAirlines = (g: GameState): Airline[] =>
   g.airlines.filter((al) => al.ai && al.forSale);
 
-/** Remove an airline from the game. Never removes the player (index 0). */
-function removeAirline(g: GameState, al: Airline): void {
+/**
+ * Remove an airline from the game, resolving its share portfolio so nothing is
+ * orphaned. The stakes it held in other airlines pass to `heir` (an acquirer
+ * inherits them — a stake it held in the heir itself becomes the heir's
+ * treasury), or, with no heir (liquidation), revert to each issuer's own
+ * treasury. Stakes held *in* the leaving airline simply vanish with it.
+ * Never removes the player (index 0).
+ */
+function removeAirline(g: GameState, al: Airline, heir?: Airline): void {
+  for (const other of g.airlines) {
+    if (other === al || !other.shares) continue;
+    const held = other.shares[al.id];
+    if (!held) continue;
+    const beneficiary = heir ? heir.id : other.id;
+    other.shares[beneficiary] = (other.shares[beneficiary] ?? 0) + held;
+    delete other.shares[al.id];
+  }
   const i = g.airlines.indexOf(al);
   if (i > 0) g.airlines.splice(i, 1);
 }
@@ -113,7 +128,7 @@ export function mergeInto(g: GameState, buyer: Airline, target: Airline): void {
   }
   buyer.negotiations = [...pending.values()];
   buyer.lastAcquireDay = g.day; // start the integration cooldown before the next deal
-  removeAirline(g, target);
+  removeAirline(g, target, buyer); // buyer inherits target's stakes (incl. any in itself)
 }
 
 /**
