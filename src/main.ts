@@ -69,10 +69,8 @@ import { distanceKm } from './game/geo';
 import { addAiAirlines, MAX_AI_AIRLINES, raidPlayer, runAI } from './game/ai';
 import { acquire, buyoutPrice } from './game/distress';
 import {
-  affordableForce,
   buyBack,
   buyShares,
-  forceBuy,
   issueShares,
   sellShares,
   takeover,
@@ -1195,6 +1193,7 @@ competitorsEl.addEventListener('click', (e) => {
       sellShares(game, pl(), target, 10);
     } else {
       const cost = takeoverCost(game, pl(), target);
+      if (!Number.isFinite(cost)) return; // float can't deliver control
       if (!confirm(`Take over ${target.name} for about ${money(cost)}? You'll reach control and absorb it.`)) return;
       if (pl().cash < cost) return;
       takeover(game, pl(), target);
@@ -1211,14 +1210,6 @@ competitorsEl.addEventListener('click', (e) => {
   }
   if (act === 'buy-back') {
     buyBack(game, pl(), 10);
-    render();
-    return;
-  }
-  // Defensive buyback: claw your own shares back from a controlling raider at the
-  // control price (only as many as cash on hand covers).
-  if (act === 'defend') {
-    const { count } = affordableForce(game, pl(), pl(), 10);
-    if (count > 0) forceBuy(game, pl(), pl(), count);
     render();
     return;
   }

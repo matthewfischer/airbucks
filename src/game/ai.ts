@@ -4,11 +4,13 @@ import type { NetworkResult } from './engine';
 import { acquire, buyoutPrice, updateDistress } from './distress';
 import {
   canAcquire,
+  canReachControl,
   CONTROL_SHARES,
   costToAccumulate,
-  forceBuy,
+  buyShares,
   hasControl,
   isPlayerDominant,
+  publicFloat,
   sharesOwned,
   takeover,
   takeoverCost,
@@ -868,8 +870,11 @@ export function acquisitionActions(g: GameState, al: Airline, p: Personality): A
       });
     } else {
       if (!cooled) continue; // healthy takeover waits out the integration cooldown
-      // Healthy: hostile takeover via the share market — expensive by design.
+      // Healthy: hostile takeover via the share market — expensive by design, and
+      // only possible if the target floated enough to deliver control. A founder
+      // that kept its majority is un-takeoverable via shares (skip it).
       const cost = takeoverCost(g, al, target);
+      if (!Number.isFinite(cost)) continue;
       const borrowNeed = Math.max(0, cost - al.cash);
       if (al.debt + target.debt + borrowNeed > appetite) continue;
       if (spendable(g, al, p) < cost) continue;
@@ -1045,10 +1050,14 @@ export function playerRaidAction(
   if (!g.humanControlled || player.ai || g.defeat || !isPlayerDominant(g)) return null;
   const owned = sharesOwned(player, al.id);
   if (owned >= CONTROL_SHARES) return null; // already in control — the window runs
-  // Largest block (up to RAID_BLOCK, never overshooting control) it can finance.
-  let block = Math.min(RAID_BLOCK, CONTROL_SHARES - owned);
+  // Only raidable if the player floated enough for this raider to reach control;
+  // a player who kept its majority can't be raided (the loss is self-inflicted).
+  if (!canReachControl(player, al)) return null;
+  // Largest block (up to RAID_BLOCK, never overshooting control or the float) it
+  // can finance.
+  let block = Math.min(RAID_BLOCK, CONTROL_SHARES - owned, publicFloat(player));
   while (block > 0) {
-    const cost = costToAccumulate(g, player, owned, block, true);
+    const cost = costToAccumulate(g, player, owned, block);
     const borrowNeed = Math.max(0, cost - al.cash);
     if (al.debt + borrowNeed <= appetite && spendable(g, al, p) >= cost) break;
     block--;
@@ -1059,14 +1068,14 @@ export function playerRaidAction(
   return { score: reach * progress, run: () => runRaidBlock(g, al, p, block) };
 }
 
-/** Execute a raid block: finance it, force-buy the shares, and surface the
- *  warning / control-seized news (opening the defense window on crossing 50%). */
+/** Execute a raid block: finance it, buy the shares off the float, and surface
+ *  the warning / control-seized news (opening the defense window on crossing 50%). */
 function runRaidBlock(g: GameState, al: Airline, p: Personality, block: number): void {
   const player = g.airlines[0];
   const before = sharesOwned(player, al.id);
-  const cost = costToAccumulate(g, player, before, block, true);
+  const cost = costToAccumulate(g, player, before, block);
   if (!coverCost(g, al, p, cost)) return;
-  forceBuy(g, al, player, block);
+  buyShares(g, al, player, block);
   const after = sharesOwned(player, al.id);
   if (after >= CONTROL_SHARES && !g.raid) {
     g.raid = { raiderId: al.id, sinceDay: g.day, deadlineDay: g.day + DEFENSE_WINDOW_DAYS };

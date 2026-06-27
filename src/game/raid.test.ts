@@ -11,12 +11,9 @@ import {
 import { serialize, deserialize, applySave } from './persist';
 import {
   DOMINANCE_THRESHOLD,
-  forceBuy,
   hasControl,
   isPlayerDominant,
   playerEquityShare,
-  affordableForce,
-  sharesOwned,
 } from './shares';
 
 const P = PERSONALITIES[0];
@@ -104,14 +101,34 @@ describe('playerRaidAction — a scored candidate, not an auto-drain', () => {
     expect(reach).toBeGreaterThan(0);
     expect(isPlayerDominant(g)).toBe(true);
 
-    me.shares = { [me.id]: 100 }; // raider holds nothing yet
+    me.shares = { [me.id]: 49, public: 51 }; // floated a majority; raider holds nothing yet
     const early = playerRaidAction(g, raider, P, BIG)!;
-    me.shares = { [me.id]: 55, [raider.id]: 45 }; // one block from control
+    me.shares = { [me.id]: 49, [raider.id]: 45, public: 6 }; // one block from control
     const late = playerRaidAction(g, raider, P, BIG)!;
 
     expect(early).not.toBeNull();
     expect(late.score).toBeGreaterThan(early.score); // commitment ramps toward control
     expect(early.score).toBeLessThan(reach); // a nibble is not valued as the whole merger
+  });
+});
+
+describe('playerRaidAction — the float gate', () => {
+  it('offers no raid against a player who kept its majority (floated <50%)', () => {
+    const g = game(1);
+    g.airlines[0].cash = 1_100_000_000; // dominant (strictly the biggest)
+    g.airlines[1].cash = 900_000_000;
+    g.airlines[0].shares = { [g.airlines[0].id]: 70, public: 30 }; // floated only 30%
+    expect(isPlayerDominant(g)).toBe(true);
+    expect(playerRaidAction(g, g.airlines[1], P, BIG)).toBeNull();
+  });
+
+  it('offers a raid once the player has floated a majority', () => {
+    const g = game(1);
+    g.airlines[0].cash = 1_100_000_000;
+    g.airlines[1].cash = 900_000_000;
+    g.airlines[0].shares = { [g.airlines[0].id]: 49, public: 51 }; // floated a majority
+    expect(isPlayerDominant(g)).toBe(true);
+    expect(playerRaidAction(g, g.airlines[1], P, BIG)).not.toBeNull();
   });
 });
 
@@ -121,6 +138,7 @@ describe('playerRaidAction — accumulation and control', () => {
     g.airlines[0].cash = 4_000_000_000; // strictly the biggest
     g.airlines[1].cash = 3_000_000_000; // funded enough to fight to control
     const raider = g.airlines[1];
+    g.airlines[0].shares = { [g.airlines[0].id]: 49, public: 51 }; // floated a majority to raid
     expect(isPlayerDominant(g)).toBe(true);
 
     let opened = false;
@@ -197,23 +215,19 @@ describe('raidPlayer — defense window resolution', () => {
   });
 });
 
-describe('defensive buyback (forceBuy)', () => {
-  it('claws shares back from a controlling raider, breaking control', () => {
+describe('defense — buying float back before the raider corners it', () => {
+  it('a float buy-back below the control line stalls the raid (no action offered)', () => {
     const g = game(1);
     const me = g.airlines[0];
-    me.shares = { [me.id]: 40, [g.airlines[1].id]: 60 };
-    me.cash = 10_000_000_000;
-    forceBuy(g, me, me, 15);
-    expect(sharesOwned(me, g.airlines[1].id)).toBeLessThanOrEqual(45);
-    expect(hasControl(me, g.airlines[1].id)).toBe(false);
-  });
-
-  it('affordableForce yields nothing when the defender is broke', () => {
-    const g = game(1);
-    const me = g.airlines[0];
-    me.shares = { [me.id]: 40, [g.airlines[1].id]: 60 };
-    me.cash = 0;
-    expect(affordableForce(g, me, me, 10).count).toBe(0);
+    const raider = g.airlines[1];
+    me.cash = 1_100_000_000;
+    raider.cash = 900_000_000;
+    // Raider already holds 45; only 6 of float remain — exactly enough for control.
+    me.shares = { [me.id]: 49, [raider.id]: 45, public: 6 };
+    expect(playerRaidAction(g, raider, P, BIG)).not.toBeNull();
+    // The player buys that float back, so the raider can no longer reach control.
+    me.shares = { [me.id]: 55, [raider.id]: 45 };
+    expect(playerRaidAction(g, raider, P, BIG)).toBeNull();
   });
 });
 

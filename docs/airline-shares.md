@@ -1,19 +1,28 @@
 # Airline Shares — acquisition via a stock market (design)
 
 Status: BUILT and merged to main (phases 1–5, 2026-06-26). RRT-inspired. Full
-model (all decisions resolved). Phase 5 — "uneasy lies the crown": once the
-player passes `DOMINANCE_THRESHOLD` (45% of industry equity AND is strictly the
-biggest carrier) a rival hostile-accumulates the player's stock — but through the
-**same scored decision pass** as routes/planes/rival-takeovers (`playerRaidAction`
-in `ai.ts`), so a rival raids only when seizing your network beats growing its
-own; an early nibble is valued at a fraction of the prize, not a full merger. The
+model (all decisions resolved). **Float-only rework (2026-06-27):** forced
+tenders are gone in both directions — *only floated shares ever change hands.*
+You are exposed exactly to the extent you floated, and not one share more. A
+founder that keeps its majority is un-takeoverable via shares (distress/fire-sale
+is the only path for those); takeover/raid is reachable only when the target's
+public float ≥ the shares needed for control. Everything prices off the single
+public per-share price (no separate control price, no squeeze-out premium).
+
+Phase 5 — "uneasy lies the crown": once the player passes `DOMINANCE_THRESHOLD`
+(45% of industry equity AND is strictly the biggest carrier) a rival
+hostile-accumulates the player's *float* — but through the **same scored decision
+pass** as routes/planes/rival-takeovers (`playerRaidAction` in `ai.ts`), so a
+rival raids only when seizing your network beats growing its own; an early nibble
+is valued at a fraction of the prize, not a full merger. It only fires if you
+floated >50% of yourself (a 16-city player who floated 20% is unraidable). The
 mechanic is gated on `g.humanControlled` (the app sets it) so headless sims and
 engine tests never fire it. The weekly `raidPlayer` clock just resolves an open
 window (defended / expired / raider gone); crossing 50% opens a
 `DEFENSE_WINDOW_DAYS` (120) grace period; let it expire still controlled and
-`g.defeat` is set → game-over screen. Defense is `forceBuy(player, player, …)` —
-clawing shares back from the raider at the control price. Holding a majority is
-NOT a shield: force-tender is always possible at a (steep, rising) price.
+`g.defeat` is set → game-over screen. Defense is racing to **buy your float back**
+(`buyBack`) before the raider corners it — there is no clawing shares out of a
+holder.
 
 ## Why
 
@@ -46,14 +55,16 @@ penalty (rejected — see [[acquisition-design]]).
   price** (price impact: each block bought lifts the price; selling lowers it).
   Retained shares can't be nibbled passively.
 - **Buy back:** repurchase float with cash to re-secure your majority (defense).
-- **Hostile takeover:** a deliberate, *expensive* bid that **can** reach retained
-  shares at a steep **control premium**. On the open market your retained shares
-  are untouchable, but a determined raider can always force a tender **at a
-  price** — so takeover is *always possible but expensive* (honors the earlier
-  never-stuck rule; you can never be permanently blocked by a refusenik).
-- **Control at >50% → squeeze-out:** force-buy the remaining minority at market +
-  a premium and absorb the airline, reusing today's `acquire()` merge (networks,
-  rights, fleet, debt, inherited slot apps).
+- **Hostile takeover:** buy the **float** up to a controlling stake at the rising
+  marginal price (the impact curve carries a surcharge on the shares past 50%).
+  Retained shares are never touched — so a takeover is possible **only if the
+  target floated enough** to deliver control. A healthy private airline that kept
+  its majority is un-takeoverable this way (its only exit is distress/fire-sale).
+  This reverses the earlier "force-tender always possible" rule, which is dropped.
+- **Control at >50% → squeeze-out:** cash out the remaining minority at the
+  **public price** (no premium) and absorb the airline, reusing today's
+  `acquire()` merge (networks, rights, fleet, debt, inherited slot apps).
+  Other-airline minority holders are paid; founder/public remnants dissolve.
 
 ## AI behavior (from day one)
 
@@ -69,9 +80,11 @@ launch hostile bids on rivals. They raid the **player** only once the player is
   (you're most of the market). Threshold tunable.
 - **Loss condition (NEW — reverses today's player-exempt-from-failure design):**
   if a rival crosses ~50% of the player, fire **warnings + a defense grace
-  period** (buy back float / outbid). Fail to defend within the window → you are
-  acquired = **game over**. Directly punishes winning early and coasting; the
-  endgame becomes a takeover war, not a one-sided shopping spree.
+  period** (buy your float back before the raider corners it). Fail to defend
+  within the window → you are acquired = **game over**. Purely self-inflicted:
+  it can only happen if *you* floated >50% of yourself. Directly punishes winning
+  early and coasting; the endgame becomes a takeover war, not a one-sided
+  shopping spree.
 - Self-balancing: the raid threat only exists *while rivals survive*, so the
   late-game roll-up is contested — the strongest rival can bid for you back.
 
@@ -87,9 +100,9 @@ launch hostile bids on rivals. They raid the **player** only once the player is
 
 ## Tuning knobs (settle during build + sim)
 
-Price-impact curve steepness; control premium size; squeeze-out premium; growth
-multiple curve + cap (e.g. flat→~2×, ≥100%/yr growth→~15×); dominance threshold
-(~45%); defense-window length; block size (10%?).
+Price-impact curve steepness; control surcharge size (the >50% premium in the
+impact curve); dominance threshold (~45%); defense-window length; block size
+(10%?).
 
 ## State / persistence
 
@@ -98,11 +111,11 @@ Price-impact state is derived from the cap table (float size), not stored.
 
 ## Validation
 
-Sim across seeds: a year-3/4 player *cannot* corner the board (early rivals are
-100%-held → full hostile bid on a high growth-aware V is unaffordable); a rich
-player/AI can still take over later; AI-vs-AI stake-building and consolidation
-occur; a dominant player gets raided and must defend; nobody is permanently
-un-buyable (hostile bid always possible at a price).
+Sim across seeds: a year-3/4 player *cannot* corner the board (rivals are
+100%-held → no float to buy, un-takeoverable via shares); AIs fund via debt and
+stay private, so share takeovers are rare and no raids fire in headless sims; a
+distressed rival is still buyable via fire-sale; a player who over-floats can be
+raided and must defend by buying float back.
 
 ## Out of scope
 
