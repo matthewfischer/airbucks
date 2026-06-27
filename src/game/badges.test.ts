@@ -39,9 +39,11 @@ describe('continent classification', () => {
 });
 
 describe('checkBadges', () => {
-  it('a fresh airline has earned nothing', () => {
+  it('a fresh airline has earned nothing but the CRW home badge', () => {
+    // The player is homed at Charleston, WV, so Country Roads — "reach CRW" —
+    // is held from day one. Nothing else is earned yet.
     checkBadges(g, al);
-    expect(al.badges).toEqual([]);
+    expect(al.badges.map((b) => b.id)).toEqual(['country-roads']);
   });
 
   it('awards an exploration badge the day a continent is reached, and records the day', () => {
