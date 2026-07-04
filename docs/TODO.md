@@ -38,6 +38,11 @@ failures, which are rare by design in v1.
   per-airline isolation in `competition()` is load-bearing; this is a real
   change to demand allocation, and it helps whoever has the better network
   (possibly the player), so it's not a fix for early-win balance.
+  **DESIGNED (2026-07-04) — full spec + decisions in `docs/interline.md`.**
+  Model = alliances (a solo airline is an alliance of one); generalize
+  `competition`/`evaluateNetwork` to an alliance *group*. D1 pool/truce,
+  D2 0.75× interline haircut, D3 ≤3 members, D4 one-time setup fee, D5 AIs
+  accept + form AI–AI. Not built; see the phased build plan in the doc.
 - [x] **Merged `ai-players` → main** (2026-06-13). v1 AI is feature-complete:
       engine, sim, setup, distress chain, full visibility, competitor net-worth.
 
