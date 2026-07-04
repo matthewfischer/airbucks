@@ -22,9 +22,17 @@ failures, which are rare by design in v1.
   - [x] For-sale listing + inline buy of a distressed rival (Competitors tab)
   - [x] News events for rival moves in your network (route opens / slot wins,
         gated to cities you hold; distress & acquisitions also log)
-- [ ] **v2 demand-splitting** (own feature, not a consolidation hack):
-  competition-aware `evaluateNetwork` so overlapping networks pressure
-  each other. This is what makes consolidation real.
+- [x] **v2 demand-splitting** — DONE (already shipped; verified 2026-07-04).
+  `evaluateNetwork` applies `competitiveShare(own, rival)` per O&D pair,
+  weighted by capacity×appeal (fare/speed/connections). Probe: identical
+  duopoly on one pair splits 50/50. The old "slots-only" note was stale.
+- [ ] **Recession / demand downturns** — DESIGNED (2026-07-04), spec in
+  `docs/recessions.md`. The structural fix for the overexpander that runs at
+  ~$0 cash but never fails (no downturn to trigger the distress chain).
+  `demandLevel(g)` multiplied into `marketCalc`'s pool; historical `[year,
+  level]` anchors like `FED_FUNDS_ANCHORS` (deterministic, global,
+  aviation-weighted depths); telegraphed news lookahead; cautious AIs hunker
+  (caution = 1 − debtAppetite). Not built; phased plan in the doc.
 - [ ] **Balance**: study sim runs (`npm run sim -- 8 30 <seed>`, now fast
   after the evaluateNetwork perf fix); tune personalities, default count (4).
 - [ ] **Interline / code-sharing — the "KC→Bucharest problem"** (tabled
