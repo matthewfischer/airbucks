@@ -11,7 +11,6 @@ import {
   borrow,
   buyPlane,
   cashInterestWeekly,
-  acceptAlliance,
   closeRoute,
   creditLimit,
   declineAlliance,
@@ -69,7 +68,14 @@ import {
   START_EPOCH,
 } from './game/engine';
 import { distanceKm } from './game/geo';
-import { addAiAirlines, makeAiControlled, MAX_AI_AIRLINES, raidPlayer, runAI } from './game/ai';
+import {
+  acceptAllianceFinanced,
+  addAiAirlines,
+  makeAiControlled,
+  MAX_AI_AIRLINES,
+  raidPlayer,
+  runAI,
+} from './game/ai';
 import { acquire, buyoutPrice } from './game/distress';
 import {
   affordableForce,
@@ -1254,8 +1260,12 @@ competitorsEl.addEventListener('click', (e) => {
     const target = findTarget();
     if (!target || target === pl()) return;
     if (act === 'propose-alliance') proposeAlliance(game, pl(), target);
-    else if (act === 'accept-alliance') acceptAlliance(game, target, pl());
-    else if (act === 'decline-alliance') declineAlliance(game, target, pl());
+    else if (act === 'accept-alliance') {
+      // Finances the AI proposer's half (you pay cash); surfaces any reason it
+      // can't be done instead of failing silently.
+      const err = acceptAllianceFinanced(game, target, pl());
+      if (err) flash(err);
+    } else if (act === 'decline-alliance') declineAlliance(game, target, pl());
     else declineAlliance(game, pl(), target); // cancel your own outgoing offer
     render();
     return;
@@ -1518,6 +1528,9 @@ function sortedRoutes(net: ReturnType<typeof evaluateNetwork>): Route[] {
 /** Clickable sort headers for the Routes card. */
 function routeSortBar(): string {
   const labels: Record<RouteSortKey, string> = { name: 'Name', profit: 'Profit', load: 'Load' };
+  // "Created" reverts to the natural order routes were opened in (key === null).
+  const createdActive = routeSort.key === null;
+  const createdBtn = `<button class="sort-btn${createdActive ? ' active' : ''}" data-act="sort-routes" data-key="created" title="Original order, oldest first">Created</button>`;
   const btns = (['name', 'profit', 'load'] as RouteSortKey[])
     .map((k) => {
       const active = routeSort.key === k;
@@ -1525,7 +1538,7 @@ function routeSortBar(): string {
       return `<button class="sort-btn${active ? ' active' : ''}" data-act="sort-routes" data-key="${k}">${labels[k]}${arrow}</button>`;
     })
     .join('');
-  return `<div class="route-sort tiny muted">Sort: ${btns}</div>`;
+  return `<div class="route-sort tiny muted">Sort: ${createdBtn}${btns}</div>`;
 }
 
 /** What's flying a route: "DC-4" · "DC-4 ×2" · "DC-4, Viscount 800". */
@@ -1652,12 +1665,15 @@ sidebar.addEventListener('click', (e) => {
       break;
     }
     case 'sort-routes': {
-      const key = btn.dataset.key as RouteSortKey;
-      if (routeSort.key === key) {
+      const key = btn.dataset.key!;
+      if (key === 'created') {
+        // Revert to the original creation order (unsorted).
+        routeSort = { key: null, dir: 'desc' };
+      } else if (routeSort.key === key) {
         routeSort.dir = routeSort.dir === 'asc' ? 'desc' : 'asc';
       } else {
         // Sensible default direction per key: A→Z for names, biggest-first for numbers.
-        routeSort = { key, dir: key === 'name' ? 'asc' : 'desc' };
+        routeSort = { key: key as RouteSortKey, dir: key === 'name' ? 'asc' : 'desc' };
       }
       renderSidebar();
       break;

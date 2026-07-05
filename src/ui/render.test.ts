@@ -159,4 +159,17 @@ describe('renderCompetitors', () => {
     expect(el.innerHTML).toContain('decline-alliance');
     expect(el.innerHTML).toContain('proposed an alliance');
   });
+
+  it('replaces Accept with a reason once the incoming offer has gone illegal', () => {
+    addAiAirlines(g, 1);
+    const rival = g.airlines[1];
+    player(g).alliance = 'yours'; // you and the rival are now in different blocs
+    rival.alliance = 'star';
+    g.allianceOffers = [{ from: rival.id, to: player(g).id, day: g.day }];
+    const el = stubEl();
+    renderCompetitors(g, el);
+    expect(el.innerHTML).not.toContain('accept-alliance'); // no dead Accept button
+    expect(el.innerHTML).toContain('Dismiss');
+    expect(el.innerHTML).toMatch(/already/i); // shows the reason
+  });
 });

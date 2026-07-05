@@ -475,18 +475,20 @@ const groupKey = (al: Airline): string => al.alliance ?? al.id;
 /** Max carriers in one alliance (D3): small blocs, no board-wide super-network. */
 export const ALLIANCE_MAX = 3;
 
-// One-time setup fee per route in the combined network (D4). Allying is a
+// One-time integration cost per route in the combined network (D4). Allying is a
 // deliberate investment scaled to how much network you're plugging together —
-// no standing weekly fee.
+// no standing weekly fee. The two carriers split this 50/50, so each pays
+// `allianceSetupFee` (half the total): a big bloc's fee stays affordable, and
+// the smaller joiner still pays a fair equal share.
 const ALLIANCE_SETUP_PER_ROUTE = 250_000;
 
-/** The one-time fee each side pays to form/join, scaled to the combined
- *  network's route count and the current price level (D4). */
+/** The one-time fee EACH side pays to form/join — half the combined network's
+ *  integration cost (routes × rate × price level), split 50/50 (D4). */
 export function allianceSetupFee(g: GameState, a: Airline, b: Airline): number {
   const members = new Set([...allianceGroup(g, a), ...allianceGroup(g, b)]);
   let routes = 0;
   for (const al of members) routes += al.routes.length;
-  return Math.round(routes * ALLIANCE_SETUP_PER_ROUTE * priceLevel(g));
+  return Math.round((routes * ALLIANCE_SETUP_PER_ROUTE * priceLevel(g)) / 2);
 }
 
 /** Members the two carriers' blocs would form if they allied (self included). */
@@ -494,8 +496,9 @@ function mergedMembers(g: GameState, a: Airline, b: Airline): Set<Airline> {
   return new Set([...allianceGroup(g, a), ...allianceGroup(g, b)]);
 }
 
-/** Why `from` cannot ally with `to` right now, or null if the offer is legal. */
-function allianceBlock(g: GameState, from: Airline, to: Airline): string | null {
+/** Why `from` cannot ally with `to` right now (a player-facing reason), or null
+ *  if the tie-up is legal. Exposed so the UI can label a dead Accept button. */
+export function allianceBlock(g: GameState, from: Airline, to: Airline): string | null {
   if (from === to) return 'An airline cannot ally with itself.';
   if (from.alliance && from.alliance === to.alliance) return 'Already in the same alliance.';
   if (from.alliance && to.alliance) return 'Both carriers are already in alliances.';

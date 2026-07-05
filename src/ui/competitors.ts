@@ -1,6 +1,7 @@
 import type { Airline, GameState } from '../game/types';
 import {
   airportById,
+  allianceBlock,
   allianceGroup,
   allianceProposable,
   allianceSetupFee,
@@ -226,12 +227,18 @@ function allianceCardBlock(g: GameState, al: Airline): string {
   const offers = g.allianceOffers ?? [];
   const incoming = offers.some((o) => o.from === al.id && o.to === you.id);
   if (incoming) {
+    // A proposal can go stale after it's made — the rival joins another bloc, a
+    // bloc fills up. Reflect that now instead of showing a dead Accept button.
+    const dead = allianceBlock(g, al, you);
+    if (dead)
+      return `<div class="comp-ally-line"><span class="muted">🤝 ${dead}</span>
+        <button class="comp-share-btn" data-act="decline-alliance" data-airline="${al.id}">Dismiss</button></div>`;
     const fee = allianceSetupFee(g, al, you);
-    const afford = you.cash >= fee;
+    const afford = you.cash >= fee; // you pay cash; the rival borrows its half if needed
     return `<div class="comp-ally-line">🤝 ${al.name} proposed an alliance</div>
       <div class="comp-share-row">
-        <button class="comp-share-btn ${afford ? 'primary' : ''}" data-act="accept-alliance" data-airline="${al.id}" ${afford ? '' : 'disabled'} title="Setup fee ${money(fee)} each">
-          Accept · ${money(fee)}</button>
+        <button class="comp-share-btn ${afford ? 'primary' : ''}" data-act="accept-alliance" data-airline="${al.id}" ${afford ? '' : 'disabled'} title="Your half of the setup fee: ${money(fee)}">
+          ${afford ? `Accept · ${money(fee)}` : `Need ${money(fee)}`}</button>
         <button class="comp-share-btn" data-act="decline-alliance" data-airline="${al.id}">Decline</button>
       </div>`;
   }

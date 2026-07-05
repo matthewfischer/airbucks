@@ -14,10 +14,16 @@ import {
   newGame,
   openRoute,
   player,
+  priceLevel,
   proposeAlliance,
 } from './engine';
 import { acquire } from './distress';
-import { allianceActions, PERSONALITIES, respondToAllianceOffers } from './ai';
+import {
+  acceptAllianceFinanced,
+  allianceActions,
+  PERSONALITIES,
+  respondToAllianceOffers,
+} from './ai';
 import { deserialize, serialize } from './persist';
 import type { Airline, GameState } from './types';
 
@@ -276,6 +282,60 @@ describe('AI alliance behavior (D5)', () => {
     fly(b, CORRIDOR.hub, CORRIDOR.east); // b: DEN–JFK
     allianceActions(g, a, HUB).forEach((act) => act.run());
     expect((g.allianceOffers ?? []).some((o) => o.from === a.id && o.to === b.id)).toBe(true);
+  });
+
+  it('drops an offer to you once the proposer allies elsewhere, with a note', () => {
+    const you = player(g);
+    const ally = aiCarrier('ally', 'sfo');
+    you.alliance = ally.alliance = 'yours'; // you already have a bloc (room for one more)
+    const ai = aiCarrier('ai', CORRIDOR.east);
+    fly(ai, CORRIDOR.hub, CORRIDOR.east);
+    proposeAlliance(g, ai, you); // legal now — you have room
+    expect(g.allianceOffers).toHaveLength(1);
+
+    const other = aiCarrier('other', 'ord');
+    ai.alliance = other.alliance = 'star'; // ai allies elsewhere → both now allied
+    respondToAllianceOffers(g);
+    expect(g.allianceOffers ?? []).toHaveLength(0); // dead offer cleared
+    expect(you.log.some((l) => /lapsed/.test(l))).toBe(true);
+  });
+});
+
+describe('alliance setup fee', () => {
+  it('splits the integration cost 50/50 — each pays half the combined total', () => {
+    const a = player(g);
+    const b = carrier('b', 'jfk');
+    fly(a, CORRIDOR.west, CORRIDOR.hub); // 1 route
+    fly(b, 'jfk', 'ord'); // 1 route
+    // 2 combined routes × $250k/route × price level, split in half.
+    const expected = Math.round((2 * 250_000 * priceLevel(g)) / 2);
+    expect(allianceSetupFee(g, a, b)).toBe(expected);
+  });
+
+  it('finances a cash-short AI proposer with a loan so the tie-up still forms', () => {
+    const you = player(g);
+    const ai = aiCarrier('ai', CORRIDOR.east);
+    fly(you, CORRIDOR.west, CORRIDOR.hub);
+    fly(ai, CORRIDOR.hub, CORRIDOR.east);
+    proposeAlliance(g, ai, you); // ai → you
+    ai.cash = 0; // no cash, but it has credit headroom
+
+    const err = acceptAllianceFinanced(g, ai, you);
+    expect(err).toBeNull();
+    expect(you.alliance).toBe(ai.alliance);
+    expect(ai.debt).toBeGreaterThan(0); // it borrowed its half
+  });
+
+  it('reports a reason instead of silently failing on an illegal accept', () => {
+    const you = player(g);
+    const ai = aiCarrier('ai', CORRIDOR.east);
+    fly(ai, CORRIDOR.hub, CORRIDOR.east);
+    proposeAlliance(g, ai, you);
+    you.alliance = carrier('ally', 'sfo').alliance = 'yours';
+    ai.alliance = carrier('pal', 'ord').alliance = 'star'; // both now allied → illegal
+    const err = acceptAllianceFinanced(g, ai, you);
+    expect(err).toMatch(/already/i);
+    expect(g.allianceOffers ?? []).toHaveLength(0); // the dead offer is dropped
   });
 });
 

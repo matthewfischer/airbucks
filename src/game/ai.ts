@@ -16,6 +16,7 @@ import {
 import {
   acceptAlliance,
   airportById,
+  allianceBlock,
   allianceGroup,
   allianceProposable,
   allianceSetupFee,
@@ -35,6 +36,7 @@ import {
   rivalWeight,
   gateFee,
   isNegotiating,
+  money,
   newAirline,
   openRoute,
   pairDemand,
@@ -1061,32 +1063,69 @@ export function allianceActions(g: GameState, al: Airline, p: Personality): Acti
   return actions;
 }
 
+/** The personality an AI decides with (falling back to the first defined one). */
+const personaOf = (al: Airline): Personality =>
+  personalityById.get(al.ai?.personality ?? '') ?? PERSONALITIES[0];
+
 /**
- * Answer every standing alliance offer aimed at an AI — accept it if pooling
- * grows the AI's network and the setup fee is affordable, otherwise decline it.
- * Runs each day (not gated by the slow decision cadence) so a player's proposal
- * gets a prompt, visible yes/no instead of sitting unanswered. Offers aimed at
- * the player are left for the player to decide in the UI.
+ * Accept a from → to proposal, financing each AI party's half of the setup fee
+ * with a loan first (within its debt appetite); the human player pays cash. A
+ * proposal that's since gone illegal is dropped and its reason returned. Returns
+ * a player-facing message on failure, or null once the tie-up is formed.
+ */
+export function acceptAllianceFinanced(g: GameState, from: Airline, to: Airline): string | null {
+  const has = (g.allianceOffers ?? []).some((o) => o.from === from.id && o.to === to.id);
+  if (!has) return 'That proposal is no longer available.';
+  const reason = allianceBlock(g, from, to); // a side allied elsewhere, bloc full, etc.
+  if (reason) {
+    declineAlliance(g, from, to); // drop the dead offer
+    return reason;
+  }
+  const fee = allianceSetupFee(g, from, to);
+  // Each side must be able to cover its half — an AI may borrow within its
+  // appetite, the human pays cash on hand.
+  for (const al of [from, to]) {
+    const covered = al.ai ? spendable(g, al, personaOf(al)) >= fee : al.cash >= fee;
+    if (!covered) return `${al.name} can't cover the ${money(fee)} buy-in.`;
+  }
+  for (const al of [from, to]) if (al.ai) coverCost(g, al, personaOf(al), fee); // draw the loans
+  return acceptAlliance(g, from, to); // logs "You formed an alliance…" when you're a party
+}
+
+/**
+ * Housekeep standing alliance offers each day (not gated by the slow decision
+ * cadence, so responses are prompt):
+ *  - Any offer that's gone illegal — a side joined another bloc, a bloc filled,
+ *    a carrier is failing — is dropped, so a dead "Accept" button clears itself.
+ *  - A legal offer aimed at an AI is accepted when pooling grows its network and
+ *    it's financeable, otherwise declined.
+ *  - A legal offer aimed at the player is left for the player to decide in the UI.
  */
 export function respondToAllianceOffers(g: GameState): void {
   const you = g.airlines[0];
   for (const o of [...(g.allianceOffers ?? [])]) {
     const to = g.airlines.find((a) => a.id === o.to);
     const from = g.airlines.find((a) => a.id === o.from);
-    if (!to?.ai || !from) continue; // the player decides its own offers; skip stale
-    const notify = from === you; // tell the player when it was their proposal
+    if (!to || !from) continue; // vanished carrier — sanitizeAlliances clears it
 
-    // A now-illegal offer (bloc full, already allied, one side failing) is declined.
-    const canAlly =
-      !to.forSale && equity(g, to) > 0 && allianceProposable(g, from, to);
-    const fee = allianceSetupFee(g, from, to);
-    const p = personalityById.get(to.ai.personality) ?? PERSONALITIES[0];
-    const affordable =
-      spendable(g, to, p) >= fee && from.cash >= fee; // both sides must cover the fee
-    const worthwhile = canAlly && affordable && allianceGain(g, to, from) > 0;
+    // Drop an offer that can no longer be honored, whichever side broke it.
+    if (!allianceProposable(g, from, to) || to.forSale || equity(g, to) <= 0) {
+      declineAlliance(g, from, to);
+      if (from === you) playerNews(g, `🤝 ${to.name} can no longer take up your alliance offer.`);
+      else if (to === you) playerNews(g, `🤝 ${from.name}'s alliance offer to you has lapsed.`);
+      continue;
+    }
 
-    if (worthwhile && coverCost(g, to, p, fee)) {
-      acceptAlliance(g, from, to); // logs "You formed an alliance…" when you're a party
+    if (!to.ai) continue; // a still-legal offer to the player waits for the player
+
+    // AI recipient: accept when pooling grows its network, else decline.
+    const notify = from === you;
+    if (allianceGain(g, to, from) > 0) {
+      const err = acceptAllianceFinanced(g, from, to);
+      if (err) {
+        declineAlliance(g, from, to); // couldn't finance it — don't retry daily
+        if (notify) playerNews(g, `✋ ${to.name} declined your alliance proposal.`);
+      }
     } else {
       declineAlliance(g, from, to);
       if (notify) playerNews(g, `✋ ${to.name} declined your alliance proposal.`);
