@@ -1,5 +1,14 @@
 import type { Airline, GameState } from '../game/types';
-import { airportById, equity, money, player, weeklyTotals } from '../game/engine';
+import {
+  airportById,
+  allianceGroup,
+  allianceProposable,
+  allianceSetupFee,
+  equity,
+  money,
+  player,
+  weeklyTotals,
+} from '../game/engine';
 import { buyoutPrice } from '../game/distress';
 import {
   acquireCooldownLeft,
@@ -195,6 +204,52 @@ function selfShareBlock(g: GameState): string {
   </div>`;
 }
 
+/** The "Your alliance" strip above the grid: members + a Leave button. Empty
+ *  unless you're in a bloc. */
+function allianceStrip(g: GameState): string {
+  const you = player(g);
+  const members = allianceGroup(g, you);
+  if (members.length <= 1) return '';
+  const partners = members.filter((m) => m !== you).map((m) => m.name).join(' · ');
+  return `<div class="alliance-strip">
+    <span class="alliance-tag">🤝 Your alliance</span>
+    <span class="alliance-members">You · ${partners}</span>
+    <button class="comp-share-btn" data-act="leave-alliance" title="Leave — a two-carrier bloc dissolves">Leave</button>
+  </div>`;
+}
+
+/** Per-rival alliance control: propose / accept / decline / pending / membership. */
+function allianceCardBlock(g: GameState, al: Airline): string {
+  const you = player(g);
+  if (al.alliance && al.alliance === you.alliance)
+    return `<div class="comp-ally-line good">🤝 Your ally</div>`;
+  const offers = g.allianceOffers ?? [];
+  const incoming = offers.some((o) => o.from === al.id && o.to === you.id);
+  if (incoming) {
+    const fee = allianceSetupFee(g, al, you);
+    const afford = you.cash >= fee;
+    return `<div class="comp-ally-line">🤝 ${al.name} proposed an alliance</div>
+      <div class="comp-share-row">
+        <button class="comp-share-btn ${afford ? 'primary' : ''}" data-act="accept-alliance" data-airline="${al.id}" ${afford ? '' : 'disabled'} title="Setup fee ${money(fee)} each">
+          Accept · ${money(fee)}</button>
+        <button class="comp-share-btn" data-act="decline-alliance" data-airline="${al.id}">Decline</button>
+      </div>`;
+  }
+  const outgoing = offers.some((o) => o.from === you.id && o.to === al.id);
+  if (outgoing)
+    return `<div class="comp-ally-line"><span class="muted">🤝 Proposal pending</span>
+      <button class="comp-share-btn" data-act="cancel-alliance" data-airline="${al.id}">Cancel</button></div>`;
+  if (allianceProposable(g, you, al)) {
+    const fee = allianceSetupFee(g, you, al);
+    const afford = you.cash >= fee;
+    return `<button class="comp-share-btn" data-act="propose-alliance" data-airline="${al.id}" ${afford ? '' : 'disabled'} title="One-time setup fee ${money(fee)} each">
+      🤝 Propose alliance · ${money(fee)}</button>`;
+  }
+  if (al.alliance)
+    return `<div class="comp-ally-line"><span class="muted">🤝 In another alliance</span></div>`;
+  return '';
+}
+
 function card(g: GameState, al: Airline, rank: number, you = false, watching = false): string {
   const home = airportById(g, al.homeId);
   const cls = (you ? ' you' : al.forSale ? ' for-sale' : '') + (watching ? ' watching' : '');
@@ -205,6 +260,9 @@ function card(g: GameState, al: Airline, rank: number, you = false, watching = f
     : al.forSale ? '<span class="comp-flag">⚠ FOR SALE</span>' : '';
   const rankCls = rank === 1 ? ' first' : '';
   const action = you ? selfShareBlock(g) : al.forSale ? fireSaleBlock(g, al) : shareBlock(g, al);
+  // Alliance control on a healthy rival — not for your own card (the strip) or a
+  // failing carrier (nothing to ally with).
+  const ally = you || al.forSale ? '' : allianceCardBlock(g, al);
   return `<div class="comp-card${cls}" data-act="show-airline" data-airline="${al.id}" title="Show ${home.city} on the map">
     <div class="comp-head">
       <span class="comp-rank${rankCls}">${ordinal(rank)}</span>
@@ -221,6 +279,7 @@ function card(g: GameState, al: Airline, rank: number, you = false, watching = f
     }</div>
     ${standingsBlock(g, al, you)}
     ${action}
+    ${ally}
   </div>`;
 }
 
@@ -252,5 +311,7 @@ export function renderCompetitors(g: GameState, el: HTMLElement, watchedId?: str
     .map((al, i) => card(g, al, i + 1, al === you, spectating && al.id === watchedId))
     .join('');
 
-  el.innerHTML = `${head}<div class="comp-grid">${cards}</div>`;
+  // In a watch-only sim you have no alliance verbs — hide the strip.
+  const strip = spectating ? '' : allianceStrip(g);
+  el.innerHTML = `${head}${strip}<div class="comp-grid">${cards}</div>`;
 }

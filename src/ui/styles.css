@@ -563,6 +563,33 @@ body.spectating #competitors button {
 }
 .comp-share-fill { height: 100%; background: var(--accent); }
 
+/* Alliance controls: a strip above the grid + a line/button per rival card. */
+.alliance-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 13px;
+}
+.alliance-tag { font-weight: 600; }
+.alliance-members { color: var(--muted); }
+.alliance-strip .comp-share-btn { flex: 0 0 auto; margin-left: auto; }
+.comp-ally-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.comp-ally-line.good { color: var(--good); }
+.comp-card > .comp-share-btn[data-act="propose-alliance"] { margin-top: 6px; width: 100%; }
+
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

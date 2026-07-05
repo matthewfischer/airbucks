@@ -130,4 +130,33 @@ describe('renderCompetitors', () => {
     expect(el.innerHTML).toContain('Struggling');
     expect(el.innerHTML).toContain('losing money');
   });
+
+  it('offers a Propose alliance button on an unallied rival', () => {
+    addAiAirlines(g, 1);
+    const el = stubEl();
+    renderCompetitors(g, el);
+    expect(el.innerHTML).toContain('propose-alliance');
+    expect(el.innerHTML).toContain('Propose alliance');
+    expect(el.innerHTML).not.toContain('alliance-strip'); // not allied yet
+  });
+
+  it('shows your bloc strip + a Your ally tag once allied', () => {
+    addAiAirlines(g, 1);
+    player(g).alliance = g.airlines[1].alliance = 'star';
+    const el = stubEl();
+    renderCompetitors(g, el);
+    expect(el.innerHTML).toContain('alliance-strip');
+    expect(el.innerHTML).toContain('leave-alliance');
+    expect(el.innerHTML).toContain('Your ally');
+  });
+
+  it('surfaces an incoming proposal with Accept / Decline', () => {
+    addAiAirlines(g, 1);
+    g.allianceOffers = [{ from: g.airlines[1].id, to: player(g).id, day: g.day }];
+    const el = stubEl();
+    renderCompetitors(g, el);
+    expect(el.innerHTML).toContain('accept-alliance');
+    expect(el.innerHTML).toContain('decline-alliance');
+    expect(el.innerHTML).toContain('proposed an alliance');
+  });
 });

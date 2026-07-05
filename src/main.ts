@@ -11,11 +11,15 @@ import {
   borrow,
   buyPlane,
   cashInterestWeekly,
+  acceptAlliance,
   closeRoute,
   creditLimit,
+  declineAlliance,
   depositRate,
   distanceFactor,
   evaluateNetwork,
+  leaveAlliance,
+  proposeAlliance,
   evaluateRoute,
   holdsRights,
   interestRate,
@@ -1232,6 +1236,27 @@ competitorsEl.addEventListener('click', (e) => {
       takeover(game, pl(), target);
       knownRights = new Set(me().rights);
     }
+    render();
+    return;
+  }
+  // Alliance moves. Propose/accept/decline/cancel target a rival; leave is self.
+  if (act === 'leave-alliance') {
+    leaveAlliance(game, pl());
+    render();
+    return;
+  }
+  if (
+    act === 'propose-alliance' ||
+    act === 'accept-alliance' ||
+    act === 'decline-alliance' ||
+    act === 'cancel-alliance'
+  ) {
+    const target = findTarget();
+    if (!target || target === pl()) return;
+    if (act === 'propose-alliance') proposeAlliance(game, pl(), target);
+    else if (act === 'accept-alliance') acceptAlliance(game, target, pl());
+    else if (act === 'decline-alliance') declineAlliance(game, target, pl());
+    else declineAlliance(game, pl(), target); // cancel your own outgoing offer
     render();
     return;
   }

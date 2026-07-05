@@ -501,6 +501,10 @@ function allianceBlock(g: GameState, from: Airline, to: Airline): string | null 
   return null;
 }
 
+/** Whether from could legally propose an alliance to to right now (UI gate). */
+export const allianceProposable = (g: GameState, from: Airline, to: Airline): boolean =>
+  allianceBlock(g, from, to) === null;
+
 /** Propose an alliance from → to. Records a pending offer; charges nothing yet. */
 export function proposeAlliance(g: GameState, from: Airline, to: Airline): string | null {
   const blocked = allianceBlock(g, from, to);
@@ -530,6 +534,9 @@ export function acceptAlliance(g: GameState, from: Airline, to: Airline): string
   from.alliance = id;
   to.alliance = id;
   offers.splice(idx, 1);
+  const you = g.airlines[0];
+  if (from === you || to === you)
+    playerNews(g, `🤝 You formed an alliance with ${(from === you ? to : from).name}.`);
   return null;
 }
 
@@ -547,6 +554,7 @@ export function leaveAlliance(g: GameState, al: Airline): void {
   sanitizeAlliances(g);
   if (g.allianceOffers)
     g.allianceOffers = g.allianceOffers.filter((o) => o.from !== al.id && o.to !== al.id);
+  if (al === g.airlines[0]) playerNews(g, `👋 You left your alliance.`);
 }
 
 /** Repair alliance state after roster changes (a merge, a load): drop offers
