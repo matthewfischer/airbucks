@@ -26,6 +26,7 @@ import {
   currentYear,
   closeRoute,
   creditLimit,
+  demandLevel,
   depositRate,
   distanceFactor,
   equity,
@@ -1037,6 +1038,70 @@ describe('historical fed funds rate', () => {
     expect(volckerDeposit).toBeGreaterThan(zirpDeposit);
     expect(volckerDeposit).toBeCloseTo(0.14, 5); // 16% − 2% spread
     expect(zirpDeposit).toBe(0); // floored at zero when fed funds < spread
+  });
+});
+
+describe('demand cycle (recessions)', () => {
+  const dayForYear = (year: number) => Math.round((year - 1950) * 365.25);
+
+  it('sits at 1.0 in calm years', () => {
+    g.day = dayForYear(1965); // no scheduled downturn
+    expect(demandLevel(g)).toBeCloseTo(1, 5);
+    g.day = dayForYear(2014);
+    expect(demandLevel(g)).toBeCloseTo(1, 5);
+  });
+
+  it('hits the historical troughs in downturn years', () => {
+    g.day = dayForYear(2020); // COVID
+    expect(currentYear(g)).toBe(2020);
+    expect(demandLevel(g)).toBeCloseTo(0.52, 5);
+
+    g.day = dayForYear(2009); // Great Recession
+    expect(demandLevel(g)).toBeCloseTo(0.68, 5);
+
+    g.day = dayForYear(1974); // oil embargo
+    expect(demandLevel(g)).toBeCloseTo(0.76, 5);
+  });
+
+  it('interpolates the recovery between trough and shoulder', () => {
+    g.day = dayForYear(2021); // halfway from 2020 (0.52) to 2022 (1.0)
+    expect(demandLevel(g)).toBeCloseTo(0.76, 5);
+  });
+
+  it('clamps flat before the first and after the last anchor', () => {
+    g.day = 0; // 1950
+    expect(demandLevel(g)).toBeCloseTo(1, 5);
+    g.day = dayForYear(2040);
+    expect(demandLevel(g)).toBeCloseTo(1, 5);
+  });
+
+  it('shrinks a demand-limited market pool proportionally', () => {
+    const route = addRoute(['clt', 'dca'], 'e195e2');
+    setFareFactor(al, route.id, 2.5); // dear fares -> demand-limited, below capacity
+    g.day = dayForYear(2019); // normal demand, same era as 2020
+    const calm = evaluateRoute(g, al, route);
+    g.day = dayForYear(2020); // COVID trough (0.52), one year on
+    const bust = evaluateRoute(g, al, route);
+    // Same era (speed/price), only the pool changed: pax track demandLevel.
+    expect(bust.passengers / calm.passengers).toBeCloseTo(0.52, 1);
+  });
+
+  it('telegraphs a warning ~6 months before a downturn, once', () => {
+    const fresh = newGame('crw');
+    fresh.day = dayForYear(2019) - 1; // just before the COVID run-up window
+    const warnings = () =>
+      player(fresh).log.filter((l) => l.includes('downturn ahead')).length;
+    for (let i = 0; i < 400; i++) advanceDay(fresh); // through mid-2020
+    expect(warnings()).toBe(1);
+  });
+
+  it('telegraphs a recovery once, after the trough lifts', () => {
+    const fresh = newGame('crw');
+    fresh.day = dayForYear(2020); // in the COVID trough
+    const recoveries = () =>
+      player(fresh).log.filter((l) => l.includes('recovering')).length;
+    for (let i = 0; i < 365 * 3; i++) advanceDay(fresh); // out to 2023
+    expect(recoveries()).toBe(1);
   });
 });
 

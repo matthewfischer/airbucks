@@ -444,7 +444,7 @@ function marketCalc(
   const appeal = CONNECTION_PENALTY ** path.connections * demandMult;
   return {
     path,
-    demand: pairDemand(A, B) * distanceFactor(directDist) * appeal,
+    demand: pairDemand(A, B) * distanceFactor(directDist) * appeal * demandLevel(g),
     weight: bottleneckSeats * appeal,
     fare: referenceFare(directDist) * fareFactor * priceLevel(g),
   };
@@ -693,8 +693,28 @@ export function planeResaleValue(g: GameState, plane: Plane): number {
 export const START_YEAR = 1950;
 export const START_EPOCH = Date.UTC(START_YEAR, 0, 1);
 
-export const currentYear = (g: GameState): number =>
-  new Date(START_EPOCH + g.day * 86_400_000).getUTCFullYear();
+/** Calendar year of a given game-day (day 0 = START_YEAR). */
+export const yearAtDay = (day: number): number =>
+  new Date(START_EPOCH + day * 86_400_000).getUTCFullYear();
+
+export const currentYear = (g: GameState): number => yearAtDay(g.day);
+
+/** Linear interpolation over sparse [x, y] anchors (x strictly increasing),
+ *  clamped flat outside the ends. The shared shape behind the historical
+ *  fed-funds, and demand-cycle curves. */
+function interpAnchors(anchors: ReadonlyArray<readonly [number, number]>, x: number): number {
+  if (x <= anchors[0][0]) return anchors[0][1];
+  const last = anchors[anchors.length - 1];
+  if (x >= last[0]) return last[1];
+  for (let i = 1; i < anchors.length; i++) {
+    if (x <= anchors[i][0]) {
+      const [x0, y0] = anchors[i - 1];
+      const [x1, y1] = anchors[i];
+      return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
+    }
+  }
+  return last[1]; // unreachable
+}
 
 // Fees and credit are quoted in modern dollars; earlier eras scale them down
 // by ~3.8%/yr inflation (≈16x from 1950 to 2025). Aircraft prices don't scale:
@@ -741,18 +761,63 @@ const FED_FUNDS_ANCHORS: ReadonlyArray<readonly [number, number]> = [
 
 /** The era's macro interest rate (annual), interpolated from history. */
 export function fedFundsRate(g: GameState): number {
-  const year = currentYear(g);
-  const a = FED_FUNDS_ANCHORS;
-  if (year <= a[0][0]) return a[0][1];
-  if (year >= a[a.length - 1][0]) return a[a.length - 1][1];
-  for (let i = 1; i < a.length; i++) {
-    if (year <= a[i][0]) {
-      const [y0, r0] = a[i - 1];
-      const [y1, r1] = a[i];
-      return r0 + ((r1 - r0) * (year - y0)) / (y1 - y0);
-    }
-  }
-  return a[a.length - 1][1]; // unreachable
+  return interpAnchors(FED_FUNDS_ANCHORS, currentYear(g));
+}
+
+// Demand cycle: aviation-weighted historical downturns as sparse [year, level]
+// anchors (level 1.0 = normal), linearly interpolated and clamped like the
+// fed-funds curve — deterministic from the calendar, no persisted state. Each
+// real recession gets a trough scaled to its aviation severity, shaped by 1.0
+// shoulders: 2001 (9/11) and 2020 (COVID) bite hardest, 1973–75 and 1981–82
+// carry the oil shocks, the late-'50s dips stay mild. Multiplied into the
+// market pool (see marketCalc), so every carrier's traffic shrinks together.
+const DEMAND_ANCHORS: ReadonlyArray<readonly [number, number]> = [
+  [1950, 1.0],
+  [1956, 1.0], [1958, 0.86], [1959, 1.0], // 1957–58, sharp/brief
+  [1961, 0.92], [1963, 1.0], // 1960–61, mild
+  [1969, 1.0], [1970, 0.86], [1972, 1.0], // 1969–70, moderate
+  [1974, 0.76], [1976, 1.0], // 1973–75 oil embargo, long
+  [1979, 1.0], [1980, 0.88], [1981, 0.97], [1982, 0.74], [1984, 1.0], // 1980 + Volcker double-dip
+  [1990, 1.0], [1991, 0.85], [1993, 1.0], // 1990–91 + Gulf War oil
+  [2000, 1.0], [2001, 0.78], [2003, 1.0], // dot-com + 9/11 air-travel collapse
+  [2007, 1.0], [2009, 0.68], [2011, 1.0], // Great Recession, deep/long
+  [2019, 1.0], [2020, 0.52], [2022, 1.0], // COVID, catastrophic but brief
+  [2025, 1.0],
+];
+
+/** Global demand multiplier for the current era (1.0 normal, dips in a known
+ *  historical downturn). Scales the market pool, not competitive share. */
+export function demandLevel(g: GameState): number {
+  return interpAnchors(DEMAND_ANCHORS, currentYear(g));
+}
+
+const demandLevelAtDay = (day: number): number =>
+  interpAnchors(DEMAND_ANCHORS, yearAtDay(day));
+
+// A downturn is a stretch where demand sits below this; the telegraph warns
+// ahead of one (the schedule is known) and notes the recovery when it lifts.
+const DOWNTURN_LEVEL = 0.9;
+const DOWNTURN_LOOKAHEAD_DAYS = 182; // ~6 months' warning
+
+/** Demand is currently in a real downturn (below the threshold). */
+const inDownturn = (day: number): boolean => demandLevelAtDay(day) < DOWNTURN_LEVEL;
+
+/** Not yet in a downturn, but one begins within the lookahead window. */
+const downturnAhead = (day: number): boolean =>
+  demandLevelAtDay(day) >= DOWNTURN_LEVEL &&
+  demandLevelAtDay(day + DOWNTURN_LOOKAHEAD_DAYS) < DOWNTURN_LEVEL;
+
+/** A downturn window for AI caution: active, or within its run-up. */
+export const inDownturnWindow = (g: GameState): boolean =>
+  inDownturn(g.day) || downturnAhead(g.day);
+
+/** Emit the player's downturn warning / recovery news at the day's transitions.
+ *  Deterministic from the calendar, so it fires once per crossing. */
+function telegraphDemand(g: GameState): void {
+  if (downturnAhead(g.day) && !downturnAhead(g.day - 1))
+    playerNews(g, '📉 Economic clouds gathering — analysts warn of a downturn ahead.');
+  if (!inDownturn(g.day) && inDownturn(g.day - 1))
+    playerNews(g, '📈 The economy is recovering — air-travel demand is rebounding.');
 }
 
 /** First year a type can no longer be bought; Infinity if still in production. */
@@ -1160,6 +1225,7 @@ export function advanceDay(g: GameState): void {
   const yearBefore = currentYear(g);
   g.day += 1;
   const year = currentYear(g);
+  telegraphDemand(g); // warn ahead of / note recovery from a scheduled downturn
   for (let i = 0; i < g.airlines.length; i++) {
     const al = g.airlines[i];
     al.cash += totals[i].net / 7;
