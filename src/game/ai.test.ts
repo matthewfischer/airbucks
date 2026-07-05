@@ -14,6 +14,7 @@ import {
   airportById,
   airportSlotsTotal,
   airportSlotsUsed,
+  ALLIANCE_MAX,
   equity,
   newAirline,
   newGame,
@@ -220,6 +221,19 @@ describe.runIf(process.env.RUN_SLOW_TESTS)('long-run invariants (headless sim)',
     const survivors = g.airlines.slice(1);
     expect(survivors.length).toBeGreaterThanOrEqual(1);
     expect(survivors.some((al) => equity(g, al) > 0)).toBe(true);
+    // Alliances stay well-formed: no bloc over the cap, none left a lone member,
+    // and every pending offer references a live carrier. A well-behaved brake,
+    // not a board-wide super-network.
+    const blocs = new Map<string, number>();
+    for (const al of g.airlines)
+      if (al.alliance) blocs.set(al.alliance, (blocs.get(al.alliance) ?? 0) + 1);
+    for (const [id, n] of blocs) {
+      expect(n, `bloc ${id}`).toBeGreaterThanOrEqual(2);
+      expect(n, `bloc ${id}`).toBeLessThanOrEqual(ALLIANCE_MAX);
+    }
+    const liveIds = new Set(g.airlines.map((a) => a.id));
+    for (const o of g.allianceOffers ?? [])
+      expect(liveIds.has(o.from) && liveIds.has(o.to), 'offer refs live carriers').toBe(true);
     // Slow on purpose: a full 8-rival field rolling each other up via hostile
     // takeovers builds huge merged networks, so the per-day sim is heavy.
   }, 600_000);

@@ -17,8 +17,11 @@ import {
   proposeAlliance,
 } from './engine';
 import { acquire } from './distress';
+import { allianceActions, PERSONALITIES } from './ai';
 import { deserialize, serialize } from './persist';
 import type { Airline, GameState } from './types';
+
+const HUB = PERSONALITIES.find((p) => p.id === 'hub-builder')!;
 
 // A two-leg corridor LAX — DEN — JFK: roughly collinear, so DEN is a valid
 // connecting hub for the LAX↔JFK through market.
@@ -39,6 +42,13 @@ function carrier(id: string, homeId: string): Airline {
   al.rights = AIRPORTS.map((a) => a.id);
   al.cash = 1_000_000_000;
   g.airlines.push(al);
+  return al;
+}
+
+/** Add an AI-controlled carrier (rights everywhere, working balance). */
+function aiCarrier(id: string, homeId: string): Airline {
+  const al = carrier(id, homeId);
+  al.ai = { personality: 'hub-builder', nextDecisionDay: 0 };
   return al;
 }
 
@@ -229,6 +239,40 @@ describe('alliance formation', () => {
     a.cash = 10_000_000_000;
     acquire(g, a, b);
     expect(a.alliance).toBeUndefined();
+  });
+});
+
+describe('AI alliance behavior (D5)', () => {
+  it('accepts a player proposal that grows its network', () => {
+    const you = player(g);
+    const ai = aiCarrier('ai', CORRIDOR.east);
+    fly(you, CORRIDOR.west, CORRIDOR.hub); // you: LAX–DEN
+    fly(ai, CORRIDOR.hub, CORRIDOR.east); // ai: DEN–JFK, sharing DEN
+    proposeAlliance(g, you, ai);
+
+    const acts = allianceActions(g, ai, HUB);
+    expect(acts.length).toBeGreaterThan(0);
+    acts.forEach((a) => a.run()); // accept forms the bloc; any propose then no-ops
+    expect(ai.alliance).toBeDefined();
+    expect(you.alliance).toBe(ai.alliance);
+  });
+
+  it('proposes to a complementary partner both would gain from', () => {
+    const a = aiCarrier('a', CORRIDOR.west);
+    const b = aiCarrier('b', CORRIDOR.east);
+    fly(a, CORRIDOR.west, CORRIDOR.hub); // a: LAX–DEN
+    fly(b, CORRIDOR.hub, CORRIDOR.east); // b: DEN–JFK
+    allianceActions(g, a, HUB).forEach((act) => act.run());
+    expect((g.allianceOffers ?? []).some((o) => o.from === a.id && o.to === b.id)).toBe(true);
+  });
+
+  it('does not ally with a disjoint network (no shared hub, no gain)', () => {
+    const you = player(g);
+    const ai = aiCarrier('ai', 'ord');
+    fly(you, CORRIDOR.west, CORRIDOR.hub); // LAX–DEN
+    fly(ai, 'ord', 'atl'); // no shared airport with you
+    proposeAlliance(g, you, ai);
+    expect(allianceActions(g, ai, HUB)).toHaveLength(0);
   });
 });
 

@@ -14,7 +14,11 @@ import {
   takeoverCost,
 } from './shares';
 import {
+  acceptAlliance,
   airportById,
+  allianceGroup,
+  allianceProposable,
+  allianceSetupFee,
   assignPlane,
   availableTypes,
   baselineSpeed,
@@ -36,6 +40,7 @@ import {
   planesOnRoute,
   playerNews,
   priceLevel,
+  proposeAlliance,
   rand,
   recordFinanceSnapshot,
   referenceFare,
@@ -977,6 +982,96 @@ export function acquisitionActions(g: GameState, al: Airline, p: Personality): A
   return actions;
 }
 
+// ---- Alliances (D5) ---------------------------------------------------------
+
+// A proposal only pays off once the partner accepts (a pass later), so its score
+// is discounted vs. an immediate accept of a standing offer.
+const ALLIANCE_PROPOSE_DISCOUNT = 0.5;
+
+/** Airports an airline's routes touch — a shared one is a candidate interline
+ *  hand-off hub, so it's the cheap prefilter before the costly gain eval. */
+function touchedAirports(al: Airline): Set<string> {
+  const s = new Set<string>();
+  for (const r of al.routes) for (const id of r.stops) s.add(id);
+  return s;
+}
+
+const sharesAirport = (a: Airline, b: Airline): boolean => {
+  const bs = touchedAirports(b);
+  for (const id of touchedAirports(a)) if (bs.has(id)) return true;
+  return false;
+};
+
+/** Recurring weekly-profit gain to `al` if it pooled networks with `partner`'s
+ *  bloc — the interline through-markets it would newly capture, net of any pooled
+ *  redundancy. Simulated by temporarily allying the two blocs and re-evaluating
+ *  al's own slice. */
+function allianceGain(g: GameState, al: Airline, partner: Airline): number {
+  const members = [...new Set([...allianceGroup(g, al), ...allianceGroup(g, partner)])];
+  const before = evaluateNetwork(g, al).profit;
+  const saved = members.map((m) => m.alliance);
+  for (const m of members) m.alliance = '__probe__';
+  const after = evaluateNetwork(g, al).profit;
+  members.forEach((m, i) => (m.alliance = saved[i]));
+  return after - before;
+}
+
+/**
+ * Alliance candidates (D5): accept a standing proposal that grows the network,
+ * and propose to a complementary partner where both blocs would gain. Both are
+ * scored on the recurring weekly-profit change — the same scale as organic
+ * route/capacity moves — so an AI allies only when it's a competitive use of the
+ * pass, not reflexively. Only solvent carriers ally, and only when the one-time
+ * setup fee is affordable.
+ */
+export function allianceActions(g: GameState, al: Airline, p: Personality): Action[] {
+  const actions: Action[] = [];
+  if (al.forSale || equity(g, al) <= 0) return actions;
+
+  // 1) Accept a pending proposal aimed at us that grows the network.
+  for (const o of g.allianceOffers ?? []) {
+    if (o.to !== al.id) continue;
+    const proposer = g.airlines.find((x) => x.id === o.from);
+    if (!proposer || !allianceProposable(g, proposer, al)) continue; // stale / now illegal
+    const fee = allianceSetupFee(g, proposer, al);
+    if (spendable(g, al, p) < fee) continue;
+    const gain = allianceGain(g, al, proposer);
+    if (gain <= 0) continue;
+    actions.push({
+      score: gain,
+      run: () => {
+        if (coverCost(g, al, p, fee)) acceptAlliance(g, proposer, al);
+      },
+    });
+  }
+
+  // 2) Propose to a complementary partner (an AI or the player) both would gain
+  //    from. The scored pass fires at most one action, so at most one offer.
+  for (const partner of g.airlines) {
+    if (partner === al || partner.forSale || equity(g, partner) <= 0) continue;
+    if (partner !== g.airlines[0] && !partner.ai) continue;
+    if (!allianceProposable(g, al, partner) || !sharesAirport(al, partner)) continue;
+    const pending = (g.allianceOffers ?? []).some(
+      (o) =>
+        (o.from === al.id && o.to === partner.id) ||
+        (o.from === partner.id && o.to === al.id),
+    );
+    if (pending) continue;
+    const fee = allianceSetupFee(g, al, partner);
+    if (spendable(g, al, p) < fee) continue;
+    // Both networks must genuinely gain — a one-sided pooling isn't a partnership.
+    const myGain = allianceGain(g, al, partner);
+    if (myGain <= 0 || allianceGain(g, partner, al) <= 0) continue;
+    actions.push({
+      score: myGain * ALLIANCE_PROPOSE_DISCOUNT,
+      run: () => {
+        proposeAlliance(g, al, partner);
+      },
+    });
+  }
+  return actions;
+}
+
 /** Candidate: a debt-shy airline pays its loan down when cash allows. */
 export function repayActions(g: GameState, al: Airline, p: Personality): Action[] {
   if (al.debt <= 0 || al.cash <= 0) return [];
@@ -1063,6 +1158,7 @@ function decide(g: GameState, al: Airline, basePersonality: Personality): void {
     ];
     actions = [
       ...acquisitionActions(g, al, p),
+      ...allianceActions(g, al, p),
       ...growth,
       ...reallocateActions(g, al, p, net, base, candidates),
       ...repayActions(g, al, p),

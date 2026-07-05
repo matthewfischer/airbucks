@@ -463,7 +463,10 @@ function marketCalc(
  *  lets the whole eval run group-vs-group with no special-casing. */
 export function allianceGroup(g: GameState, al: Airline): Airline[] {
   if (!al.alliance) return [al];
-  return g.airlines.filter((x) => x.alliance === al.alliance);
+  // Always lead with al itself — it may be a detached what-if clone that shares
+  // an id with a live member but isn't in g.airlines — then add its co-members.
+  const others = g.airlines.filter((x) => x.id !== al.id && x.alliance === al.alliance);
+  return [al, ...others];
 }
 
 /** Competition partition key: the alliance id, or the airline's own id if solo. */
@@ -533,10 +536,23 @@ export function acceptAlliance(g: GameState, from: Airline, to: Airline): string
   const id = from.alliance ?? to.alliance ?? makeId(g, 'alliance');
   from.alliance = id;
   to.alliance = id;
-  offers.splice(idx, 1);
+  // Drop this offer and any reciprocal one between the same two carriers.
+  g.allianceOffers = offers.filter(
+    (o) =>
+      !((o.from === from.id && o.to === to.id) || (o.from === to.id && o.to === from.id)),
+  );
+  if (!g.allianceOffers.length) g.allianceOffers = undefined;
   const you = g.airlines[0];
-  if (from === you || to === you)
+  if (from === you || to === you) {
     playerNews(g, `🤝 You formed an alliance with ${(from === you ? to : from).name}.`);
+  } else {
+    // A rival–rival tie-up: surface it only when it reaches into your network.
+    const youHold = new Set(you?.rights ?? []);
+    const touches = [from, to].some((c) =>
+      c.routes.some((r) => r.stops.some((s) => youHold.has(s))),
+    );
+    if (touches) playerNews(g, `🤝 ${from.name} and ${to.name} formed an alliance.`);
+  }
   return null;
 }
 
