@@ -29,7 +29,9 @@ describe('continent classification', () => {
     expect(continentOf('gru')).toBe('South America');
     expect(continentOf('syd')).toBe('Oceania');
     expect(continentOf('crw')).toBe('North America'); // home
-    expect(continentOf('kef')).toBe('North America'); // an Atlantic refuel bridge
+    expect(continentOf('kef')).toBe('North America'); // a mid-Atlantic refuel bridge
+    expect(continentOf('snn')).toBe('Europe'); // Shannon is in Ireland — Europe
+    expect(continentOf('pdl')).toBe('Europe'); // Azores are Portugal — Europe
   });
 
   it('every badge has a unique id', () => {
@@ -127,6 +129,12 @@ describe('checkBadges', () => {
     al.routes.push({ id: 'r2', stops: ['lax', 'nrt'], fareFactor: 1 });
     checkBadges(g, al);
     expect(has('transpacific')).toBe(true);
+  });
+
+  it('does not treat an intra-Europe hop to Shannon as transatlantic', () => {
+    al.routes = [{ id: 'r1', stops: ['gla', 'snn'], fareFactor: 1 }]; // both Europe
+    checkBadges(g, al);
+    expect(has('transatlantic')).toBe(false);
   });
 
   it('Supersonic needs a supersonic airliner; Full Spectrum needs all three classes', () => {

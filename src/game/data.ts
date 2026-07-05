@@ -285,13 +285,15 @@ export const AIRPORTS: Airport[] = [
 
 // Overseas markets by continent (the Middle East is folded into Asia). Anything
 // not listed — the home network, Canada, Mexico, Central America, the Caribbean,
-// and the ocean refuel bridges — counts as North America for badge purposes.
+// and the western Atlantic refuel bridges (Gander, Goose Bay, Nuuk) — counts as
+// North America. Bridges on European soil (Shannon, Azores) sit in Europe, where
+// they belong, so an intra-Europe hop to them isn't a fake transatlantic.
 export const CONTINENT_AIRPORTS: Record<Exclude<Continent, 'North America'>, string[]> = {
   Europe: ['lhr', 'cdg', 'ams', 'fra', 'mad', 'bcn', 'fco', 'muc', 'zrh', 'cph',
     'osl', 'arn', 'waw', 'ath', 'dub', 'lis', 'svo', 'ist', 'gla', 'bru', 'mrs',
     'mxp', 'nap', 'ber', 'vie', 'prg', 'bud', 'otp', 'msq', 'kbp', 'led', 'fao',
     'bio', 'tls', 'nte', 'haj', 'nue', 'gdn', 'krk', 'blq', 'skg', 'bgo', 'got',
-    'tll', 'rix'],
+    'tll', 'rix', 'snn', 'pdl'],
   Asia: ['dxb', 'doh', 'tlv', 'ruh', 'thr', 'del', 'bom', 'bkk', 'sin', 'kul',
     'cgk', 'hkg', 'pek', 'pvg', 'icn', 'nrt', 'mnl', 'tpe', 'blr', 'ccu', 'maa',
     'hyd', 'amd', 'cok', 'can', 'ctu', 'xiy', 'kmg', 'csx'],
