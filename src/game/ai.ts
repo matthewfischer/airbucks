@@ -19,6 +19,7 @@ import {
   allianceGroup,
   allianceProposable,
   allianceSetupFee,
+  declineAlliance,
   assignPlane,
   availableTypes,
   baselineSpeed,
@@ -1028,25 +1029,13 @@ export function allianceActions(g: GameState, al: Airline, p: Personality): Acti
   const actions: Action[] = [];
   if (al.forSale || equity(g, al) <= 0) return actions;
 
-  // 1) Accept a pending proposal aimed at us that grows the network.
-  for (const o of g.allianceOffers ?? []) {
-    if (o.to !== al.id) continue;
-    const proposer = g.airlines.find((x) => x.id === o.from);
-    if (!proposer || !allianceProposable(g, proposer, al)) continue; // stale / now illegal
-    const fee = allianceSetupFee(g, proposer, al);
-    if (spendable(g, al, p) < fee) continue;
-    const gain = allianceGain(g, al, proposer);
-    if (gain <= 0) continue;
-    actions.push({
-      score: gain,
-      run: () => {
-        if (coverCost(g, al, p, fee)) acceptAlliance(g, proposer, al);
-      },
-    });
-  }
+  // Standing offers aimed at us are answered promptly and directly (see
+  // respondToAllianceOffers), not scored against route-building here — otherwise
+  // a proposal would sit unanswered forever while organic moves always outscore
+  // it. This pass only *initiates* proposals.
 
-  // 2) Propose to a complementary partner (an AI or the player) both would gain
-  //    from. The scored pass fires at most one action, so at most one offer.
+  // Propose to a complementary partner (an AI or the player) both would gain
+  // from. The scored pass fires at most one action, so at most one offer.
   for (const partner of g.airlines) {
     if (partner === al || partner.forSale || equity(g, partner) <= 0) continue;
     if (partner !== g.airlines[0] && !partner.ai) continue;
@@ -1070,6 +1059,39 @@ export function allianceActions(g: GameState, al: Airline, p: Personality): Acti
     });
   }
   return actions;
+}
+
+/**
+ * Answer every standing alliance offer aimed at an AI — accept it if pooling
+ * grows the AI's network and the setup fee is affordable, otherwise decline it.
+ * Runs each day (not gated by the slow decision cadence) so a player's proposal
+ * gets a prompt, visible yes/no instead of sitting unanswered. Offers aimed at
+ * the player are left for the player to decide in the UI.
+ */
+export function respondToAllianceOffers(g: GameState): void {
+  const you = g.airlines[0];
+  for (const o of [...(g.allianceOffers ?? [])]) {
+    const to = g.airlines.find((a) => a.id === o.to);
+    const from = g.airlines.find((a) => a.id === o.from);
+    if (!to?.ai || !from) continue; // the player decides its own offers; skip stale
+    const notify = from === you; // tell the player when it was their proposal
+
+    // A now-illegal offer (bloc full, already allied, one side failing) is declined.
+    const canAlly =
+      !to.forSale && equity(g, to) > 0 && allianceProposable(g, from, to);
+    const fee = allianceSetupFee(g, from, to);
+    const p = personalityById.get(to.ai.personality) ?? PERSONALITIES[0];
+    const affordable =
+      spendable(g, to, p) >= fee && from.cash >= fee; // both sides must cover the fee
+    const worthwhile = canAlly && affordable && allianceGain(g, to, from) > 0;
+
+    if (worthwhile && coverCost(g, to, p, fee)) {
+      acceptAlliance(g, from, to); // logs "You formed an alliance…" when you're a party
+    } else {
+      declineAlliance(g, from, to);
+      if (notify) playerNews(g, `✋ ${to.name} declined your alliance proposal.`);
+    }
+  }
 }
 
 /** Candidate: a debt-shy airline pays its loan down when cash allows. */
@@ -1193,6 +1215,7 @@ function decide(g: GameState, al: Airline, basePersonality: Personality): void {
  */
 export function runAI(g: GameState): void {
   updateDistress(g); // list the failing, liquidate the unsold (self-gates weekly)
+  respondToAllianceOffers(g); // answer standing proposals promptly, every day
   // Snapshot: an acquisition or liquidation can remove an airline mid-pass.
   for (const al of [...g.airlines]) {
     if (!al.ai || !g.airlines.includes(al)) continue; // gone this tick — skip

@@ -17,7 +17,7 @@ import {
   proposeAlliance,
 } from './engine';
 import { acquire } from './distress';
-import { allianceActions, PERSONALITIES } from './ai';
+import { allianceActions, PERSONALITIES, respondToAllianceOffers } from './ai';
 import { deserialize, serialize } from './persist';
 import type { Airline, GameState } from './types';
 
@@ -243,18 +243,30 @@ describe('alliance formation', () => {
 });
 
 describe('AI alliance behavior (D5)', () => {
-  it('accepts a player proposal that grows its network', () => {
+  it('promptly accepts a player proposal that grows its network', () => {
     const you = player(g);
     const ai = aiCarrier('ai', CORRIDOR.east);
     fly(you, CORRIDOR.west, CORRIDOR.hub); // you: LAX–DEN
     fly(ai, CORRIDOR.hub, CORRIDOR.east); // ai: DEN–JFK, sharing DEN
     proposeAlliance(g, you, ai);
 
-    const acts = allianceActions(g, ai, HUB);
-    expect(acts.length).toBeGreaterThan(0);
-    acts.forEach((a) => a.run()); // accept forms the bloc; any propose then no-ops
+    respondToAllianceOffers(g); // the daily responder, not the slow scored pass
     expect(ai.alliance).toBeDefined();
     expect(you.alliance).toBe(ai.alliance);
+    expect(g.allianceOffers ?? []).toHaveLength(0);
+  });
+
+  it('promptly declines a proposal it gains nothing from, and tells the player', () => {
+    const you = player(g);
+    const ai = aiCarrier('ai', 'ord');
+    fly(you, CORRIDOR.west, CORRIDOR.hub); // LAX–DEN
+    fly(ai, 'ord', 'atl'); // disjoint — no shared hub, no through-market
+    proposeAlliance(g, you, ai);
+
+    respondToAllianceOffers(g);
+    expect(ai.alliance).toBeUndefined();
+    expect(g.allianceOffers ?? []).toHaveLength(0); // answered, not left hanging
+    expect(you.log.some((l) => /declined your alliance/.test(l))).toBe(true);
   });
 
   it('proposes to a complementary partner both would gain from', () => {
@@ -264,15 +276,6 @@ describe('AI alliance behavior (D5)', () => {
     fly(b, CORRIDOR.hub, CORRIDOR.east); // b: DEN–JFK
     allianceActions(g, a, HUB).forEach((act) => act.run());
     expect((g.allianceOffers ?? []).some((o) => o.from === a.id && o.to === b.id)).toBe(true);
-  });
-
-  it('does not ally with a disjoint network (no shared hub, no gain)', () => {
-    const you = player(g);
-    const ai = aiCarrier('ai', 'ord');
-    fly(you, CORRIDOR.west, CORRIDOR.hub); // LAX–DEN
-    fly(ai, 'ord', 'atl'); // no shared airport with you
-    proposeAlliance(g, you, ai);
-    expect(allianceActions(g, ai, HUB)).toHaveLength(0);
   });
 });
 
