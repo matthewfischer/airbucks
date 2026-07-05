@@ -1250,9 +1250,17 @@ export function advanceDay(g: GameState): void {
         }
         grantRights(al, n.airportId);
         al.log.unshift(`Slot at ${a.code} (${a.city}) is open — you're now flying there.`);
-        // A rival landing a slot at a city you also hold is worth a heads-up.
-        if (!isPlayer && g.airlines[0].rights.includes(n.airportId))
-          playerNews(g, `✈ ${al.name} won a slot at ${a.code} (${a.city}) — a rival in your market.`);
+        // A rival landing a slot at a city you also hold is worth a heads-up —
+        // with how tight the gate is getting, so you can grab a slot before
+        // it's gone (or know you've been locked out).
+        if (!isPlayer && g.airlines[0].rights.includes(n.airportId)) {
+          const left = airportSlotsTotal(a) - airportSlotsUsed(g, n.airportId);
+          const tail =
+            left <= 0
+              ? `took the last slot — ${a.code} is now full.`
+              : `won a slot at ${a.code} (${a.city}) — ${left} slot${left !== 1 ? 's' : ''} left.`;
+          playerNews(g, `✈ ${al.name} ${tail}`);
+        }
       }
       if (cleared.length)
         al.negotiations = al.negotiations.filter((n) => g.day < n.opensDay);

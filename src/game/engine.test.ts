@@ -1569,14 +1569,25 @@ describe('multiple airlines', () => {
     expect(rival.cash).not.toBe(rivalCash);
   });
 
-  it('news: a rival winning a slot in a city you hold notifies the player', () => {
-    al.rights = ['crw', 'gso']; // you already serve GSO
+  it('news: a rival winning a slot in a city you hold reports the slots left', () => {
+    al.rights = ['crw', 'clt']; // you serve CLT (size 5 -> 5 slots)
+    const rival = newAirline('ai-1', 'Rival Air', '#f5a623', 'bna');
+    rival.ai = { personality: 'cheapskate', nextDecisionDay: 1e9 };
+    g.airlines.push(rival);
+    rival.negotiations.push({ airportId: 'clt', opensDay: g.day + 1, fee: 0 });
+    advanceDay(g);
+    // You + the rival hold 2 of CLT's 5 slots, so 3 remain.
+    expect(al.log[0]).toMatch(/Rival Air won a slot at CLT.*3 slots left/i);
+  });
+
+  it('news: a rival taking the last slot warns you the gate is now full', () => {
+    al.rights = ['crw', 'gso']; // GSO is size 2 -> only 2 slots, you hold one
     const rival = newAirline('ai-1', 'Rival Air', '#f5a623', 'bna');
     rival.ai = { personality: 'cheapskate', nextDecisionDay: 1e9 };
     g.airlines.push(rival);
     rival.negotiations.push({ airportId: 'gso', opensDay: g.day + 1, fee: 0 });
     advanceDay(g);
-    expect(al.log[0]).toMatch(/Rival Air won a slot at GSO/i);
+    expect(al.log[0]).toMatch(/took the last slot.*GSO is now full/i);
   });
 
   it('news: a rival slot in a city you do NOT hold stays quiet', () => {
