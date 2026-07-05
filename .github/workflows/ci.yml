@@ -28,8 +28,29 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test
-        run: npm test
+      - name: Test (with coverage)
+        run: |
+          set -o pipefail
+          npm run test:coverage 2>&1 | tee coverage-out.txt
+
+      # The coverage table lands on the run's summary page; the full HTML
+      # report is downloadable as an artifact.
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo '### Coverage'
+            echo '```'
+            sed -n '/% Coverage report/,$p' coverage-out.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
 
       - name: Build
         run: npm run build
