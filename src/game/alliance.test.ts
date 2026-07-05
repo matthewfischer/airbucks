@@ -101,6 +101,50 @@ describe('interline capture', () => {
   });
 });
 
+describe('interline yield haircut (D2)', () => {
+  it('a through itinerary earns 75% of the single-carrier fare', () => {
+    // Player flies the whole LAX–DEN–JFK corridor solo (its own connection).
+    const solo = player(g);
+    fly(solo, CORRIDOR.west, CORRIDOR.hub);
+    fly(solo, CORRIDOR.hub, CORRIDOR.east);
+    const soloThroughRev = evaluateNetwork(g, solo).revenue;
+
+    // Fresh game: the same two legs, but split across two allied carriers.
+    g = newGame('lax');
+    g.day = 365 * 75 + 19;
+    const a = carrier('a', CORRIDOR.west);
+    const b = carrier('b', CORRIDOR.east);
+    fly(a, CORRIDOR.west, CORRIDOR.hub);
+    fly(b, CORRIDOR.hub, CORRIDOR.east);
+    a.alliance = b.alliance = 'star';
+    const interlineRev = evaluateNetwork(g, a).revenue + evaluateNetwork(g, b).revenue;
+
+    // Same seats and demand, but the interline pair leaks yield vs. the solo net.
+    expect(interlineRev).toBeLessThan(soloThroughRev);
+    expect(interlineRev).toBeGreaterThan(soloThroughRev * 0.6);
+  });
+
+  it('a single shared pair both allies fly keeps full fare (no haircut)', () => {
+    const a = player(g);
+    const b = carrier('b', CORRIDOR.hub);
+    const soloRev = (() => {
+      fly(a, CORRIDOR.west, CORRIDOR.hub);
+      return evaluateNetwork(g, a).revenue;
+    })();
+    // b joins the exact same pair; they ally. Combined capacity, still one leg —
+    // so the itinerary is single-carrier-coverable and keeps full fare.
+    fly(b, CORRIDOR.west, CORRIDOR.hub);
+    a.alliance = b.alliance = 'star';
+    const netA = evaluateNetwork(g, a);
+    const netB = evaluateNetwork(g, b);
+    // No connecting pax at all on a one-leg market — nothing to haircut.
+    expect(netA.connectingPassengers).toBe(0);
+    expect(netB.connectingPassengers).toBe(0);
+    // Splitting one pair's fixed demand across two carriers doesn't grow revenue.
+    expect(netA.revenue + netB.revenue).toBeLessThanOrEqual(soloRev * 1.01);
+  });
+});
+
 describe('alliance formation', () => {
   it('propose then accept forms one bloc and charges both the setup fee', () => {
     const a = player(g);

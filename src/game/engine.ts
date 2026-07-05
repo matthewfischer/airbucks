@@ -638,6 +638,33 @@ export function rivalWeight(g: GameState, al: Airline, aId: string, bId: string)
 export const competitiveShare = (own: number, rival: number): number =>
   own + rival > 0 ? own / (own + rival) : 1;
 
+/** Yield kept on a multi-carrier interline itinerary (D2): real interline fares
+ *  leak vs. a single carrier's end-to-end fare. */
+const INTERLINE_YIELD = 0.75;
+
+/** True when the itinerary is a genuine interline hand-off — no single carrier
+ *  flies every leg. A one-leg pair (even one two allies both fly) is never
+ *  interline: some carrier covers the whole trip, so it keeps full fare. */
+function isInterline(
+  path: NetPath,
+  legs: Map<string, LegInfo>,
+  routeOwner: Map<string, string>,
+): boolean {
+  let common: Set<string> | null = null;
+  for (const key of path.legKeys) {
+    const owners = new Set<string>();
+    for (const rid of legs.get(key)!.routeCap.keys())
+      owners.add(routeOwner.get(rid)!);
+    if (common === null) {
+      common = owners;
+    } else {
+      for (const c of [...common]) if (!owners.has(c)) common.delete(c);
+    }
+    if (common.size === 0) return true; // no carrier spans every leg so far
+  }
+  return false;
+}
+
 /**
  * Evaluate `al` as a network: pool the flying of its whole alliance group (just
  * itself if unallied) into legs, route every O&D market over the best path the
@@ -702,7 +729,10 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
       const mc = marketCalc(g, legBuild, A, B, baseline);
       if (!mc) continue;
       const share = competitiveShare(mc.weight, rivalWeight(g, al, A.id, B.id));
-      markets.push({ path: mc.path, demand: mc.demand * share, fare: mc.fare });
+      // D2: a genuine interline itinerary (no single carrier flies every leg)
+      // leaks yield — earn INTERLINE_YIELD of the single-carrier fare.
+      const fare = isInterline(mc.path, legs, routeOwner) ? mc.fare * INTERLINE_YIELD : mc.fare;
+      markets.push({ path: mc.path, demand: mc.demand * share, fare });
     }
   }
 
