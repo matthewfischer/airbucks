@@ -85,17 +85,27 @@ export function renderFinance(g: GameState, el: HTMLElement): void {
     { label: 'Load factor', color: ACCENT_2, values: h.map((s) => s.loadFactor ?? 0) },
   ], pct, true);
 
-  // Effective annual rates the airline actually paid/earned each week, recovered
-  // from the stored interest figures (0 in weeks with no debt / no cash).
+  // Prevailing annual rates at each snapshot. New snapshots store the rate
+  // directly (meaningful even with no loan / no cash); older saves fall back to
+  // recovering it from the interest paid, which reads 0 in weeks with no debt.
   const annual = (weekly: number, principal: number): number =>
     principal > 0 ? (weekly * 365) / 7 / principal : 0;
   const rates = chartCard('Interest rates (annualized)', days, [
-    { label: 'Loan rate', color: BAD, values: h.map((s) => annual(s.interest, s.debt)) },
-    { label: 'Deposit rate', color: GOOD, values: h.map((s) => annual(s.interestEarned, Math.max(0, s.cash))) },
-  ], rate, true);
+    { label: 'Loan rate', color: BAD, values: h.map((s) => s.loanRate ?? annual(s.interest, s.debt)) },
+    { label: 'Deposit rate', color: GOOD, values: h.map((s) => s.depositRate ?? annual(s.interestEarned, Math.max(0, s.cash))) },
+  ], rate, false);
+
+  // Alliance dividend: revenue from interline itineraries the alliance jointly
+  // carries. Only shown once there's an alliance in play or any interline earned.
+  const showAlliance = al.alliance != null || h.some((s) => (s.interlineRevenue ?? 0) > 0);
+  const alliance = showAlliance
+    ? chartCard('Alliance revenue (interline, weekly)', days, [
+        { label: 'Interline revenue', color: ACCENT_2, values: h.map((s) => s.interlineRevenue ?? 0) },
+      ], money, true)
+    : '';
 
   el.innerHTML = `<h2 class="fin-title">Finance</h2>${kpis}
-    <div class="chart-grid">${cashDebt}${revCost}${margins}${traffic}${load}${rates}${netWorth}</div>`;
+    <div class="chart-grid">${cashDebt}${revCost}${alliance}${margins}${traffic}${load}${rates}${netWorth}</div>`;
 }
 
 function kpi(label: string, value: string, cls = '', sub = ''): string {

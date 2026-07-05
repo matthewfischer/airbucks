@@ -293,6 +293,10 @@ export interface RouteSummary {
 /** Airline-wide weekly economics, with a per-route breakdown. */
 export interface NetworkResult {
   revenue: number;
+  /** Portion of `revenue` earned on interline itineraries — through-markets the
+   *  alliance jointly carries that this airline couldn't serve end-to-end alone.
+   *  0 for a solo carrier. */
+  interlineRevenue: number;
   /** Flying cost + upkeep of assigned planes (idle upkeep handled separately). */
   cost: number;
   profit: number;
@@ -742,6 +746,7 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
     path: NetPath;
     demand: number;
     fare: number;
+    interline: boolean;
   }
   const markets: Mkt[] = [];
   const baseline = baselineSpeed(g);
@@ -758,8 +763,9 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
       const share = competitiveShare(mc.weight, rivalWeight(g, al, A.id, B.id));
       // D2: a genuine interline itinerary (no single carrier flies every leg)
       // leaks yield — earn INTERLINE_YIELD of the single-carrier fare.
-      const fare = isInterline(mc.path, legs, routeOwner) ? mc.fare * INTERLINE_YIELD : mc.fare;
-      markets.push({ path: mc.path, demand: mc.demand * share, fare });
+      const interline = isInterline(mc.path, legs, routeOwner);
+      const fare = interline ? mc.fare * INTERLINE_YIELD : mc.fare;
+      markets.push({ path: mc.path, demand: mc.demand * share, fare, interline });
     }
   }
 
@@ -776,6 +782,8 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
   // al's slice: passengers on any market whose path uses one of al's legs.
   let passengers = 0;
   let connectingPassengers = 0;
+  // Revenue al earns specifically on interline itineraries (its alliance dividend).
+  let interlineRevenue = 0;
   for (const m of markets) {
     let avail = Infinity;
     for (const key of m.path.legKeys) avail = Math.min(avail, remaining.get(key)!);
@@ -801,7 +809,9 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
       for (const [rid, rcap] of li.routeCap) {
         const share = rcap / li.capacity;
         const rs = summaries.get(rid)!;
-        rs.revenue += carried * legFareShare * share;
+        const rev = carried * legFareShare * share;
+        rs.revenue += rev;
+        if (m.interline && routeOwner.get(rid) === al.id) interlineRevenue += rev;
       }
     }
   }
@@ -862,6 +872,7 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
 
   return {
     revenue,
+    interlineRevenue,
     cost: totalCost,
     profit: revenue - totalCost,
     passengers,
@@ -1379,6 +1390,8 @@ export function setFareFactor(al: Airline, routeId: string, factor: number): voi
 
 export interface WeeklyTotals {
   revenue: number;
+  /** Slice of `revenue` from interline itineraries (alliance dividend). */
+  interlineRevenue: number;
   cost: number;
   pax: number;
   /** System load factor this week: seats filled ÷ seats offered (0..1). */
@@ -1415,6 +1428,7 @@ export function weeklyTotals(g: GameState, al: Airline): WeeklyTotals {
   const interestEarned = cashInterestWeekly(g, al);
   return {
     revenue: net.revenue,
+    interlineRevenue: net.interlineRevenue,
     cost,
     pax: net.passengers,
     loadFactor: net.loadFactor,
@@ -1645,9 +1659,12 @@ export function recordFinanceSnapshot(g: GameState, al: Airline): void {
     debt: al.debt,
     fleetValue: fleetValue(g, al),
     revenue: w.revenue,
+    interlineRevenue: w.interlineRevenue,
     cost: w.cost,
     interest: w.interest,
     interestEarned: w.interestEarned,
+    loanRate: interestRate(g, al),
+    depositRate: depositRate(g),
     net: w.net,
     pax: w.pax,
     loadFactor: w.loadFactor,

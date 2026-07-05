@@ -62,9 +62,17 @@ export interface FinanceSnapshot {
   fleetValue: number;
   /** Weekly run-rate figures captured at this point. */
   revenue: number;
+  /** Slice of `revenue` earned on interline itineraries (alliance dividend).
+   *  Optional for back-compat with saves recorded before alliances shipped. */
+  interlineRevenue?: number;
   cost: number;
   interest: number;
   interestEarned: number;
+  /** Prevailing annual loan rate at snapshot time — the rate on debt, always
+   *  meaningful even with no loan outstanding. Optional for older saves. */
+  loanRate?: number;
+  /** Prevailing annual deposit rate at snapshot time. Optional for older saves. */
+  depositRate?: number;
   net: number;
   pax: number;
   /** System load factor: seats filled ÷ seats offered (0..1). */

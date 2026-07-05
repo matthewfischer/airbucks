@@ -115,6 +115,23 @@ describe('interline capture', () => {
     expect(netA.routes.size).toBe(1);
     expect(netB.routes.size).toBe(1);
   });
+
+  it('reports interline revenue only for the through flow, and none when solo', () => {
+    const a = player(g);
+    const b = carrier('b', CORRIDOR.east);
+    fly(a, CORRIDOR.west, CORRIDOR.hub); // A: LAX–DEN
+    fly(b, CORRIDOR.hub, CORRIDOR.east); // B: DEN–JFK
+
+    // Solo: no partner, so nothing is interline.
+    expect(evaluateNetwork(g, a).interlineRevenue).toBe(0);
+
+    a.alliance = b.alliance = 'star';
+    const netA = evaluateNetwork(g, a);
+    // The LAX↔JFK hand-off is interline: A earns some, but not all its revenue
+    // that way (its LAX–DEN local market is still single-carrier).
+    expect(netA.interlineRevenue).toBeGreaterThan(0);
+    expect(netA.interlineRevenue).toBeLessThan(netA.revenue);
+  });
 });
 
 describe('interline yield haircut (D2)', () => {
