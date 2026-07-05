@@ -1,9 +1,12 @@
 # AI Players (Computer Opponents) — Design
 
-Status: agreed design. (2026-06-11)
-Progress: the state refactor below landed 2026-06-12 (`Airline` extracted,
-player = `airlines[0]`, engine takes `(g, airline)`, seeded RNG via `rand(g)`,
-save format v6). AI behavior itself is not built yet.
+Status: built (designed 2026-06-11, feature-complete on main since 2026-06-13).
+Everything below is shipped: the state refactor (`Airline` extracted, player =
+`airlines[0]`, engine takes `(g, airline)`, seeded RNG), AI behavior, the
+distress/acquisition/bankruptcy chain, and full visibility. Later additions the
+AIs participate in: demand-splitting competition, share-market raids
+(`airline-shares.md`), alliances (`interline.md`), and recession hunkering
+(`recessions.md`).
 
 ## Overview
 
@@ -65,15 +68,18 @@ global: airports, aircraft types, day/era, price level, rates. Engine
 functions take `(g, airline)` instead of `g`. This refactor is the bulk of
 the work.
 
-## Competition (v1)
+## Competition
 
-AIs compete for **slots only**. They consume the existing per-airport slot
-pool (`AIRPORT_SLOTS`), so claiming cities first matters and the world fills
-up over decades.
+Two layers, both shipped:
 
-Deferred to v2: demand-splitting when two airlines fly the same city pair
-(requires making `evaluateNetwork` competition-aware), and aircraft-supply
-scarcity.
+- **Slots** (v1): AIs consume the per-airport slot pool (`AIRPORT_SLOTS`), so
+  claiming cities first matters and the world fills up over decades.
+- **Demand-splitting** (v2): `evaluateNetwork` applies
+  `competitiveShare(own, rival)` per O&D pair, weighted by capacity × appeal
+  (fare/speed/connections) — overlapping networks now hurt each other.
+  Allied airlines pool instead of split (`interline.md`).
+
+Still deferred: aircraft-supply scarcity.
 
 ## AI behavior
 
@@ -114,9 +120,9 @@ These chain: failing → for sale → liquidated if unbought.
   liquidates and its slots return to the pool.
 - AI-to-AI acquisitions are in from v1 — decades-long consolidation
   (8 airlines becoming 3) fits the all-day pacing.
-- A healthy airline can be bought outright at its market price: net worth +
-  slot-portfolio replacement cost + goodwill, marked up by a control premium
-  (its owners aren't selling at book). The buyer inherits cash, assumes debt.
+- Healthy airlines change hands through the share market — accumulation,
+  forced tenders, all-or-nothing buyouts. Superseded by `airline-shares.md`
+  (rework 2026-07-05).
 
 ## Visibility
 

@@ -28,9 +28,16 @@ For every airport pair (A, B) the airline connects (directly or with up to
 ```
 demand = pairDemand(A, B)                 # A.size × B.size × 90
        × distanceFactor(directDist)       # short markets bigger, sqrt falloff
+       × demandLevel(g)                   # recession multiplier, see docs/recessions.md
        × CONNECTION_PENALTY ^ connections # 0.6 per stop
        × demandMult                       # fare elasticity, below
 ```
+
+When a rival (outside your alliance) also connects the pair, you get only a
+share of that demand: `competitiveShare(own, rival)`, weighted by each side's
+capacity × appeal (fare/speed/connections). Allied networks pool as one group
+and split the joint take with a 0.75× haircut on interline itineraries — see
+`docs/interline.md`.
 
 `connections` counts legs minus one — a through passenger on a single
 multi-stop route (GSO→CMH on GSO–CRW–CMH) **is** a connecting passenger.

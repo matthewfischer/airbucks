@@ -1,7 +1,8 @@
 # Recessions / demand downturns — design
 
-> **Status: designed, not built.** Decisions locked. TODO — build per the plan
-> below.
+> **Status: built (2026-07-05).** All three phases shipped: `demandLevel` +
+> pool hook, real anchors + telegraph news, AI hunker. The plan below stands as
+> the as-built record.
 
 ## Why
 
