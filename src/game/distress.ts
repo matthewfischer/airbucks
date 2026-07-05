@@ -7,6 +7,7 @@ import {
   money,
   playerNews,
   rightsFee,
+  sanitizeAlliances,
   weeklyTotals,
 } from './engine';
 
@@ -129,6 +130,9 @@ export function mergeInto(g: GameState, buyer: Airline, target: Airline): void {
   buyer.negotiations = [...pending.values()];
   buyer.lastAcquireDay = g.day; // start the integration cooldown before the next deal
   removeAirline(g, target, buyer); // buyer inherits target's stakes (incl. any in itself)
+  // The two networks are one carrier now — drop stale offers and any bloc the
+  // merge left with a single member (incl. a buyer+target two-carrier alliance).
+  sanitizeAlliances(g);
 }
 
 /**

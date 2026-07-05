@@ -1,6 +1,7 @@
 import type {
   AiState,
   Airline,
+  AllianceOffer,
   EarnedBadge,
   FinanceSnapshot,
   ForSale,
@@ -12,11 +13,11 @@ import type {
 } from './types';
 import { LEGACY_TYPE_IDS } from './data';
 import { BADGE_IDS } from './badges';
-import { reseedIds } from './engine';
+import { reseedIds, sanitizeAlliances } from './engine';
 import { PUBLIC, TOTAL_SHARES } from './shares';
 
 /** Bump when the save shape changes incompatibly. */
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 
 /** One airline's persisted slice. */
 export interface SavedAirline {
@@ -43,6 +44,8 @@ export interface SavedAirline {
   lastAcquireDay?: number;
   /** Cap table (ownerId → shares of 100). Absent ⇒ 100% self-held. */
   shares?: Record<string, number>;
+  /** Alliance id, or absent if unallied. */
+  alliance?: string;
 }
 
 /** The persisted slice of a game — only the dynamic fields, not static data. */
@@ -54,6 +57,7 @@ export interface SaveData {
   airlines: SavedAirline[];
   raid?: Raid;
   defeat?: { raiderId: string; day: number };
+  allianceOffers?: AllianceOffer[];
 }
 
 const saveAirline = (al: Airline): SavedAirline => ({
@@ -77,6 +81,7 @@ const saveAirline = (al: Airline): SavedAirline => ({
   ...(al.acquisitions !== undefined ? { acquisitions: al.acquisitions } : {}),
   ...(al.lastAcquireDay !== undefined ? { lastAcquireDay: al.lastAcquireDay } : {}),
   ...(al.shares ? { shares: al.shares } : {}),
+  ...(al.alliance ? { alliance: al.alliance } : {}),
 });
 
 const parseAi = (d: unknown): AiState | undefined => {
@@ -142,6 +147,7 @@ export function serialize(g: GameState): string {
     airlines: g.airlines.map(saveAirline),
     ...(g.raid ? { raid: g.raid } : {}),
     ...(g.defeat ? { defeat: g.defeat } : {}),
+    ...(g.allianceOffers?.length ? { allianceOffers: g.allianceOffers } : {}),
   };
   return JSON.stringify(data);
 }
@@ -165,6 +171,7 @@ function parseAirline(d: unknown): SavedAirline | null {
   const acquisitions = optNum(s.acquisitions);
   const lastAcquireDay = optNum(s.lastAcquireDay);
   const shares = parseShares(s.shares);
+  const alliance = typeof s.alliance === 'string' ? s.alliance : undefined;
   return {
     id: typeof s.id === 'string' ? s.id : 'player',
     name: typeof s.name === 'string' ? s.name : 'Air Bucks',
@@ -186,8 +193,18 @@ function parseAirline(d: unknown): SavedAirline | null {
     ...(acquisitions !== undefined ? { acquisitions } : {}),
     ...(lastAcquireDay !== undefined ? { lastAcquireDay } : {}),
     ...(shares ? { shares } : {}),
+    ...(alliance ? { alliance } : {}),
   };
 }
+
+/** Parse a pending alliance offer (airline ids validated later against survivors). */
+const parseOffer = (d: unknown): AllianceOffer | undefined => {
+  if (typeof d !== 'object' || d === null) return undefined;
+  const s = d as Record<string, unknown>;
+  if (typeof s.from !== 'string' || typeof s.to !== 'string' || typeof s.day !== 'number')
+    return undefined;
+  return { from: s.from, to: s.to, day: s.day };
+};
 
 /** Parse and validate a save string. Returns null on anything malformed/incompatible. */
 export function deserialize(json: string): SaveData | null {
@@ -217,6 +234,13 @@ export function deserialize(json: string): SaveData | null {
     airlines,
     ...(parseRaid(s.raid) ? { raid: parseRaid(s.raid) } : {}),
     ...(parseDefeat(s.defeat) ? { defeat: parseDefeat(s.defeat) } : {}),
+    ...(Array.isArray(s.allianceOffers)
+      ? {
+          allianceOffers: s.allianceOffers
+            .map(parseOffer)
+            .filter((o): o is AllianceOffer => o !== undefined),
+        }
+      : {}),
   };
 }
 
@@ -274,6 +298,7 @@ function applyAirline(
     ...(data.acquisitions !== undefined ? { acquisitions: data.acquisitions } : {}),
     ...(data.lastAcquireDay !== undefined ? { lastAcquireDay: data.lastAcquireDay } : {}),
     ...(data.shares ? { shares: data.shares } : {}),
+    ...(data.alliance ? { alliance: data.alliance } : {}),
   };
 }
 
@@ -312,5 +337,7 @@ export function applySave(g: GameState, data: SaveData): void {
   const ids = new Set(g.airlines.map((a) => a.id));
   g.raid = data.raid && ids.has(data.raid.raiderId) ? data.raid : undefined;
   g.defeat = data.defeat && ids.has(data.defeat.raiderId) ? data.defeat : undefined;
+  g.allianceOffers = data.allianceOffers?.length ? data.allianceOffers : undefined;
+  sanitizeAlliances(g); // drop stale offers + dissolve any single-member bloc
   reseedIds(g);
 }

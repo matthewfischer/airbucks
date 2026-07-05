@@ -469,6 +469,101 @@ export function allianceGroup(g: GameState, al: Airline): Airline[] {
 /** Competition partition key: the alliance id, or the airline's own id if solo. */
 const groupKey = (al: Airline): string => al.alliance ?? al.id;
 
+/** Max carriers in one alliance (D3): small blocs, no board-wide super-network. */
+export const ALLIANCE_MAX = 3;
+
+// One-time setup fee per route in the combined network (D4). Allying is a
+// deliberate investment scaled to how much network you're plugging together —
+// no standing weekly fee.
+const ALLIANCE_SETUP_PER_ROUTE = 250_000;
+
+/** The one-time fee each side pays to form/join, scaled to the combined
+ *  network's route count and the current price level (D4). */
+export function allianceSetupFee(g: GameState, a: Airline, b: Airline): number {
+  const members = new Set([...allianceGroup(g, a), ...allianceGroup(g, b)]);
+  let routes = 0;
+  for (const al of members) routes += al.routes.length;
+  return Math.round(routes * ALLIANCE_SETUP_PER_ROUTE * priceLevel(g));
+}
+
+/** Members the two carriers' blocs would form if they allied (self included). */
+function mergedMembers(g: GameState, a: Airline, b: Airline): Set<Airline> {
+  return new Set([...allianceGroup(g, a), ...allianceGroup(g, b)]);
+}
+
+/** Why `from` cannot ally with `to` right now, or null if the offer is legal. */
+function allianceBlock(g: GameState, from: Airline, to: Airline): string | null {
+  if (from === to) return 'An airline cannot ally with itself.';
+  if (from.alliance && from.alliance === to.alliance) return 'Already in the same alliance.';
+  if (from.alliance && to.alliance) return 'Both carriers are already in alliances.';
+  if (mergedMembers(g, from, to).size > ALLIANCE_MAX)
+    return `An alliance can hold at most ${ALLIANCE_MAX} carriers.`;
+  return null;
+}
+
+/** Propose an alliance from → to. Records a pending offer; charges nothing yet. */
+export function proposeAlliance(g: GameState, from: Airline, to: Airline): string | null {
+  const blocked = allianceBlock(g, from, to);
+  if (blocked) return blocked;
+  const offers = (g.allianceOffers ??= []);
+  if (offers.some((o) => o.from === from.id && o.to === to.id)) return 'Offer already pending.';
+  offers.push({ from: from.id, to: to.id, day: g.day });
+  return null;
+}
+
+/** Accept a pending from → to proposal: both pay the setup fee and join one
+ *  bloc (a new id, or the existing one when a solo joins an alliance). */
+export function acceptAlliance(g: GameState, from: Airline, to: Airline): string | null {
+  const offers = g.allianceOffers ?? [];
+  const idx = offers.findIndex((o) => o.from === from.id && o.to === to.id);
+  if (idx < 0) return 'No such proposal.';
+  const blocked = allianceBlock(g, from, to);
+  if (blocked) {
+    offers.splice(idx, 1); // a since-invalidated offer: drop it
+    return blocked;
+  }
+  const fee = allianceSetupFee(g, from, to);
+  if (from.cash < fee || to.cash < fee) return `Both carriers need ${money(fee)} to ally.`;
+  from.cash -= fee;
+  to.cash -= fee;
+  const id = from.alliance ?? to.alliance ?? makeId(g, 'alliance');
+  from.alliance = id;
+  to.alliance = id;
+  offers.splice(idx, 1);
+  return null;
+}
+
+/** Decline (or rescind) a pending from → to proposal. */
+export function declineAlliance(g: GameState, from: Airline, to: Airline): void {
+  if (!g.allianceOffers) return;
+  g.allianceOffers = g.allianceOffers.filter((o) => !(o.from === from.id && o.to === to.id));
+}
+
+/** Leave the current alliance. A bloc that drops to one carrier dissolves (an
+ *  alliance of one is just unallied); pending offers involving al are cleared. */
+export function leaveAlliance(g: GameState, al: Airline): void {
+  if (!al.alliance) return;
+  al.alliance = undefined;
+  sanitizeAlliances(g);
+  if (g.allianceOffers)
+    g.allianceOffers = g.allianceOffers.filter((o) => o.from !== al.id && o.to !== al.id);
+}
+
+/** Repair alliance state after roster changes (a merge, a load): drop offers
+ *  referencing vanished carriers and dissolve any bloc with fewer than 2 members. */
+export function sanitizeAlliances(g: GameState): void {
+  const ids = new Set(g.airlines.map((a) => a.id));
+  if (g.allianceOffers) {
+    const kept = g.allianceOffers.filter((o) => ids.has(o.from) && ids.has(o.to));
+    g.allianceOffers = kept.length ? kept : undefined;
+  }
+  const counts = new Map<string, number>();
+  for (const al of g.airlines)
+    if (al.alliance) counts.set(al.alliance, (counts.get(al.alliance) ?? 0) + 1);
+  for (const al of g.airlines)
+    if (al.alliance && (counts.get(al.alliance) ?? 0) < 2) al.alliance = undefined;
+}
+
 /** Every airport-pair a group serves, keyed canonically, with the group's
  *  competition weight on that market. The raw material for the rivalry split. */
 function groupOffers(g: GameState, group: Airline[]): Map<string, number> {

@@ -167,6 +167,16 @@ export interface Raid {
   deadlineDay: number;
 }
 
+/** A pending alliance proposal from one carrier to another (transient state). */
+export interface AllianceOffer {
+  /** Airline id that proposed. */
+  from: string;
+  /** Airline id being asked to join. */
+  to: string;
+  /** Day the offer was made. */
+  day: number;
+}
+
 export interface GameState {
   /** Simulated days elapsed since the start date. */
   day: number;
@@ -186,4 +196,6 @@ export interface GameState {
   raid?: Raid;
   /** Set once the player has been acquired — the game is over. */
   defeat?: { raiderId: string; day: number };
+  /** Pending alliance proposals awaiting an accept/decline. Transient. */
+  allianceOffers?: AllianceOffer[];
 }
