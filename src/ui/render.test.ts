@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { FinanceSnapshot, GameState } from '../game/types';
-import { addAiAirlines } from '../game/ai';
+import { addAiAirlines, makeAiControlled } from '../game/ai';
 import { buyPlane, newGame, player } from '../game/engine';
 import { renderAwards } from './awards';
 import { renderCompetitors } from './competitors';
@@ -171,5 +171,74 @@ describe('renderCompetitors', () => {
     expect(el.innerHTML).not.toContain('accept-alliance'); // no dead Accept button
     expect(el.innerHTML).toContain('Dismiss');
     expect(el.innerHTML).toMatch(/already/i); // shows the reason
+  });
+
+  it('shows Proposal pending with a Cancel on an outgoing offer', () => {
+    addAiAirlines(g, 1);
+    g.allianceOffers = [{ from: player(g).id, to: g.airlines[1].id, day: g.day }];
+    const el = stubEl();
+    renderCompetitors(g, el);
+    expect(el.innerHTML).toContain('Proposal pending');
+    expect(el.innerHTML).toContain('cancel-alliance');
+  });
+
+  it('marks a rival whose bloc is full as In another alliance', () => {
+    addAiAirlines(g, 3);
+    for (const al of g.airlines.slice(1)) al.alliance = 'star'; // full bloc of 3
+    const el = stubEl();
+    renderCompetitors(g, el);
+    expect(el.innerHTML).toContain('In another alliance');
+    expect(el.innerHTML).not.toContain('propose-alliance');
+  });
+
+  it('counts pending negotiations on a card', () => {
+    addAiAirlines(g, 1);
+    g.airlines[1].negotiations.push({ airportId: 'clt', opensDay: g.day + 30, fee: 100_000 });
+    const el = stubEl();
+    renderCompetitors(g, el);
+    expect(el.innerHTML).toContain('1 in negotiation');
+  });
+
+  it('warns about the debt you assume on a fire-sale card', () => {
+    addAiAirlines(g, 1);
+    const rival = g.airlines[1];
+    rival.debt = 5_000_000;
+    rival.forSale = { listedDay: g.day, deadlineDay: g.day + 30, price: 1_000_000 };
+    const el = stubEl();
+    renderCompetitors(g, el);
+    expect(el.innerHTML).toContain('You assume');
+  });
+
+  it('flags a raider on your own card and offers the forced buyback', () => {
+    addAiAirlines(g, 1);
+    const you = player(g);
+    const rival = g.airlines[1];
+    you.shares = { [you.id]: 60, public: 20, [rival.id]: 20 };
+    you.cash = 1_000_000_000; // can afford the premium buyback
+    const el = stubEl();
+    renderCompetitors(g, el);
+    expect(el.innerHTML).toContain('holds 20% of you');
+    expect(el.innerHTML).toContain('Buy back held');
+  });
+
+  it('disables the forced buyback when you cannot afford a single share', () => {
+    addAiAirlines(g, 1);
+    const you = player(g);
+    you.shares = { [you.id]: 60, public: 20, [g.airlines[1].id]: 20 };
+    you.cash = 0;
+    const el = stubEl();
+    renderCompetitors(g, el);
+    expect(el.innerHTML).toContain("Can't afford buyback");
+  });
+
+  it('renders watch mode: follow hint, Watching tag, no alliance verbs', () => {
+    addAiAirlines(g, 2);
+    makeAiControlled(g, player(g));
+    player(g).alliance = g.airlines[1].alliance = 'star';
+    const el = stubEl();
+    renderCompetitors(g, el, player(g).id);
+    expect(el.innerHTML).toContain('watch-only');
+    expect(el.innerHTML).toContain('Watching');
+    expect(el.innerHTML).not.toContain('alliance-strip');
   });
 });

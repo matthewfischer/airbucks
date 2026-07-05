@@ -287,3 +287,28 @@ describe('deserialize robustness', () => {
     expect(restored.airlines[0].acquisitions).toBeUndefined();
   });
 });
+
+describe('defeat record', () => {
+  it('round-trips a defeat whose raider survives the load', () => {
+    const src = playedGame();
+    src.airlines.push(newAirline('ai-1', 'Rival Air', '#ff0000', 'clt'));
+    src.defeat = { raiderId: 'ai-1', day: 100 };
+    applySave(g, deserialize(serialize(src))!);
+    expect(g.defeat).toEqual({ raiderId: 'ai-1', day: 100 });
+  });
+
+  it('drops a malformed defeat instead of carrying it through', () => {
+    const raw = JSON.parse(serialize(playedGame())) as Record<string, unknown>;
+    raw.defeat = { raiderId: 42, day: 'yesterday' }; // wrong types
+    expect(deserialize(JSON.stringify(raw))!.defeat).toBeUndefined();
+    raw.defeat = 'beaten'; // not even an object
+    expect(deserialize(JSON.stringify(raw))!.defeat).toBeUndefined();
+  });
+
+  it('drops a defeat whose raider no longer exists in the roster', () => {
+    const src = playedGame();
+    src.defeat = { raiderId: 'gone-ai', day: 100 };
+    applySave(g, deserialize(serialize(src))!);
+    expect(g.defeat).toBeUndefined();
+  });
+});
