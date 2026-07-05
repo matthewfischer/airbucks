@@ -36,19 +36,18 @@
             <button id="reset-view" title="Reset view (or double-click the map)">⤢ Reset view</button>
             <button id="toggle-competitors" class="map-toggle active" title="Show/hide competitor route networks">◔ Competitors</button>
             <div id="home-select" class="hidden">
-              <div id="ai-count-row">
-                <span class="ai-count-label">Competitors</span>
-                <div id="ai-count"></div>
-              </div>
-              <div id="float-row">
-                <span class="ai-count-label">Float</span>
-                <div id="float-pct"></div>
-                <span id="float-readout" class="float-readout"></span>
-              </div>
-              <div id="spectate-row">
-                <button id="spectate-toggle" title="Hand your airline to the AI and just watch">🤖 Watch AI play</button>
+              <div id="mode-row">
+                <button id="mode-play" class="mode-btn active">🎮 Play</button>
+                <button id="mode-watch" class="mode-btn" title="Hand your airline to the AI and just watch">🤖 Watch AI</button>
               </div>
               <div class="home-title">✈ Choose your home airport</div>
+              <div class="home-opts">
+                <span class="opt-label">Competitors</span>
+                <div id="ai-count"></div>
+                <span class="opt-label float-opt">Float</span>
+                <div id="float-pct" class="float-opt"></div>
+                <span id="float-readout" class="float-readout float-opt"></span>
+              </div>
             </div>
           </div>
           <aside id="sidebar"></aside>

@@ -1749,14 +1749,22 @@ function afterStateSwap() {
 
 const homeSelectEl = document.getElementById('home-select')!;
 const aiCountEl = document.getElementById('ai-count')!;
-const spectateBtn = document.getElementById('spectate-toggle')!;
+const modePlayBtn = document.getElementById('mode-play')!;
+const modeWatchBtn = document.getElementById('mode-watch')!;
+const homeTitleEl = homeSelectEl.querySelector('.home-title')!;
 
 /** Whether the next new game starts as a watch-only sim. Session-remembered. */
 let spectate = false;
-spectateBtn.addEventListener('click', () => {
-  spectate = !spectate;
-  spectateBtn.classList.toggle('active', spectate);
-});
+/** Reflect Play/Watch mode: swap the title and hide the player-only Float row. */
+function applySetupMode() {
+  modePlayBtn.classList.toggle('active', !spectate);
+  modeWatchBtn.classList.toggle('active', spectate);
+  homeSelectEl.classList.toggle('watch', spectate);
+  homeTitleEl.textContent = spectate ? '🤖 Click a city to start the sim' : '✈ Choose Your Home Airport to Start';
+}
+modePlayBtn.addEventListener('click', () => { spectate = false; applySetupMode(); });
+modeWatchBtn.addEventListener('click', () => { spectate = true; applySetupMode(); });
+applySetupMode();
 
 /** Competitor count for the next new game. Remembered for the session. */
 let chosenAiCount = 8;

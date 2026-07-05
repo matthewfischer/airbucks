@@ -322,23 +322,21 @@ input[type='number'] { width: 84px; }
 .win-stat-v { font-size: 14px; font-weight: 700; color: var(--ink); }
 .win-stat-v small { font-weight: 500; color: var(--muted); font-size: 11px; }
 /* Competitor-count picker on the new-game screen — same segmented style as #speeds. */
-#ai-count-row, #float-row { display: flex; align-items: center; gap: 12px; }
-.ai-count-label { font-size: 13px; color: var(--muted); min-width: 76px; }
-#ai-count, #float-pct { display: flex; gap: 2px; background: #0f1d2e; border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+/* Two-column grid so the Competitors / Float rows line up cleanly. */
+.home-opts { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px 16px; width: 100%; }
+.opt-label { font-size: 13px; color: var(--muted); white-space: nowrap; }
+#ai-count, #float-pct { display: flex; gap: 2px; background: #0f1d2e; border: 1px solid var(--border); border-radius: 8px; padding: 2px; justify-self: start; }
 #ai-count button, #float-pct button { border: none; background: transparent; padding: 5px 11px; border-radius: 6px; color: var(--muted); }
 #ai-count button.active, #float-pct button.active { background: var(--panel-2); color: var(--accent); font-weight: 700; }
-.float-readout { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.float-readout { grid-column: 2; font-size: 12px; color: var(--muted); white-space: nowrap; margin-top: -2px; }
 
-#spectate-row { display: flex; justify-content: center; }
-#spectate-toggle {
-  font-size: 13px;
-  padding: 5px 12px;
-  background: #0f1d2e;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--muted);
-}
-#spectate-toggle.active { background: var(--panel-2); color: var(--accent); border-color: var(--accent); font-weight: 700; }
+/* Segmented Play / Watch mode switch — the primary fork at the top. */
+#mode-row { display: flex; gap: 2px; width: 100%; background: #0f1d2e; border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+.mode-btn { flex: 1; border: none; background: transparent; padding: 7px 12px; border-radius: 6px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.mode-btn.active { background: var(--panel-2); color: var(--accent); font-weight: 800; }
+
+/* Float is a player-only choice — hidden while watching the AI. */
+#home-select.watch .float-opt { display: none; }
 
 /* Watch-only sim: the AI drives the player's airline. Flag it and stop the
    manual controls from looking clickable. */
@@ -351,7 +349,7 @@ body.spectating #competitors button {
   pointer-events: none;
 }
 
-/* Slim top banner for picking a home airport directly on the map. */
+/* Top banner for picking a home airport directly on the map. */
 #home-select {
   position: absolute;
   top: 16px;
@@ -361,8 +359,9 @@ body.spectating #competitors button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 12px 18px;
+  gap: 14px;
+  min-width: 340px;
+  padding: 18px 24px;
   border-radius: 12px;
   background: rgba(11, 22, 34, 0.92);
   border: 1px solid var(--border);
@@ -371,7 +370,16 @@ body.spectating #competitors button {
 }
 #home-select.hidden { display: none; }
 #sidebar.hidden { display: none; }
-.home-title { font-size: 15px; font-weight: 800; color: var(--accent); white-space: nowrap; }
+.home-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--accent);
+  white-space: nowrap;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  width: 100%;
+  text-align: center;
+}
 
 .upgrade-btn {
   font-size: 11px;
