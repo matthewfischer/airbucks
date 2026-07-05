@@ -34,11 +34,13 @@ import {
   sellSlot,
   sellRefund,
   startNegotiation,
+  DEFAULT_FLOAT,
   money,
   MAX_HOME_SIZE,
   MAX_ROUTE_LEGS,
   nearestHeldAirport,
   newGame,
+  startingCash,
   openRoute,
   pairDemand,
   planesOnRoute,
@@ -73,7 +75,6 @@ import {
   addAiAirlines,
   makeAiControlled,
   MAX_AI_AIRLINES,
-  raidPlayer,
   runAI,
 } from './game/ai';
 import { acquire, buyoutPrice } from './game/distress';
@@ -94,7 +95,7 @@ import { renderAwards } from './ui/awards';
 import { badgeById } from './game/badges';
 
 const game: GameState = newGame('crw');
-game.humanControlled = true; // the app drives airlines[0] — enables the player-raid mechanic
+game.humanControlled = true; // the app drives airlines[0] — enables rivals to target the player
 /** The canonical player airline — always airlines[0]. Game logic uses this. */
 const me = () => player(game);
 /** Whether the AI is driving the player's airline (a watch-only sim). */
@@ -1770,6 +1771,29 @@ for (let n = 0; n <= MAX_AI_AIRLINES; n++) {
   aiCountEl.appendChild(btn);
 }
 
+/** Fraction of the airline floated to the public at launch. More float dilutes
+ *  you but raises more starting cash. Remembered for the session. */
+let chosenFloat = DEFAULT_FLOAT;
+const floatPctEl = document.getElementById('float-pct')!;
+const floatReadoutEl = document.getElementById('float-readout')!;
+const FLOAT_CHOICES = [0, 0.1, 0.2, 0.3, 0.4];
+function updateFloatReadout() {
+  const founder = Math.round((1 - chosenFloat) * 100);
+  floatReadoutEl.textContent = `Founder ${founder}% · Start cash ${money(startingCash(chosenFloat))}`;
+}
+for (const f of FLOAT_CHOICES) {
+  const btn = document.createElement('button');
+  btn.textContent = `${Math.round(f * 100)}%`;
+  btn.classList.toggle('active', f === chosenFloat);
+  btn.addEventListener('click', () => {
+    chosenFloat = f;
+    floatPctEl.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === btn));
+    updateFloatReadout();
+  });
+  floatPctEl.appendChild(btn);
+}
+updateFloatReadout();
+
 /** Enter map home-selection mode: show the world and the picker banner. */
 function showHomeSelect() {
   homeSelecting = true;
@@ -1786,9 +1810,8 @@ function startGameAt(homeId: string) {
   canvas.style.cursor = '';
   homeSelectEl.classList.add('hidden');
   sidebar.classList.remove('hidden');
-  Object.assign(game, newGame(homeId));
-  delete game.raid; // newGame has no raid/defeat; Object.assign won't clear stale ones
-  delete game.defeat;
+  Object.assign(game, newGame(homeId, undefined, chosenFloat));
+  delete game.defeat; // newGame has no defeat; Object.assign won't clear a stale one
   addAiAirlines(game, chosenAiCount);
   if (spectate) makeAiControlled(game, pl()); // watch-only: AI drives airlines[0] too
   if (chosenAiCount > 0) {
@@ -2210,10 +2233,9 @@ function frame(ts: number) {
       runAI(game);
       sidebarDirty = true;
       if (game.day % 7 === 0) {
-        raidPlayer(game); // rivals hunt a dominant player; may end the game
         if (!spectating()) recordFinanceSnapshot(game, me()); // runAI records the AI-run player itself
       }
-      if (game.defeat) break; // game over — stop advancing
+      if (game.defeat) break; // game over — a rival bought us out
     }
     if (me().badges.length > badgesBefore) renderLog(); // surface freshly-earned badges
     if (sidebarDirty) {

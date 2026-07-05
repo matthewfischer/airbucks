@@ -121,13 +121,35 @@ const GATE_FEE_RATE = 0.1;
 const SELL_REFUND_RATE = 0.25;
 export const MAX_HOME_SIZE = 3;
 
-/** A fresh airline with the starting stake, holding only its home slot. */
-export function newAirline(id: string, name: string, color: string, homeId: string): Airline {
+// Share of the airline floated to the public at launch that the picker starts on.
+// Floating raises cash but dilutes the founder; 0% is a fully private bootstrap.
+export const DEFAULT_FLOAT = 0.2;
+// Owner id for freely-tradeable public float (mirrors PUBLIC in shares.ts; kept a
+// literal here to avoid an engine→shares import cycle).
+const PUBLIC_OWNER = 'public';
+
+/** Cash raised at launch as a function of the floated fraction. 0% float is the
+ *  private baseline (== STARTING_CASH); each 10% floated adds 25% more capital. */
+export const startingCash = (floatPct: number): number =>
+  Math.round(STARTING_CASH * (1 + floatPct * 2.5));
+
+/** A fresh airline with the starting stake, holding only its home slot. Floats
+ *  `floatPct` of itself to the public at launch (0 = fully founder-owned). */
+export function newAirline(
+  id: string,
+  name: string,
+  color: string,
+  homeId: string,
+  floatPct = 0,
+): Airline {
+  const cash = startingCash(floatPct);
+  const floatShares = Math.round(floatPct * 100);
   return {
     id,
     name,
     color,
-    cash: STARTING_CASH,
+    cash,
+    ...(floatShares > 0 ? { shares: { [id]: 100 - floatShares, [PUBLIC_OWNER]: floatShares } } : {}),
     debt: 0,
     homeId,
     rights: [homeId],
@@ -138,7 +160,7 @@ export function newAirline(id: string, name: string, color: string, homeId: stri
     log: ['Welcome to Air Bucks! Buy a plane, open a route, then press Play.'],
     history: [{
       day: 0,
-      cash: STARTING_CASH,
+      cash,
       debt: 0,
       fleetValue: 0,
       revenue: 0,
@@ -152,14 +174,14 @@ export function newAirline(id: string, name: string, color: string, homeId: stri
   };
 }
 
-export function newGame(homeId: string, seed?: number): GameState {
+export function newGame(homeId: string, seed?: number, floatPct = 0): GameState {
   return {
     day: 0,
     rngState: (seed ?? Math.floor(Math.random() * 2 ** 32)) >>> 0,
     nextId: 1,
     airports: AIRPORTS,
     aircraftTypes: AIRCRAFT_TYPES,
-    airlines: [newAirline('player', 'Air Bucks', '#3fd0c9', homeId)],
+    airlines: [newAirline('player', 'Air Bucks', '#3fd0c9', homeId, floatPct)],
   };
 }
 

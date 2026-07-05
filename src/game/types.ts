@@ -164,17 +164,6 @@ export interface Airline {
   alliance?: string;
 }
 
-/** An active hostile raid on the player: a rival has crossed control and the
- *  player has until `deadlineDay` to claw the stake back below 50% or lose. */
-export interface Raid {
-  /** The controlling rival's airline id. */
-  raiderId: string;
-  /** Day the rival first crossed control and the window opened. */
-  sinceDay: number;
-  /** Day the player loses if the rival still controls them. */
-  deadlineDay: number;
-}
-
 /** A pending alliance proposal from one carrier to another (transient state). */
 export interface AllianceOffer {
   /** Airline id that proposed. */
@@ -197,12 +186,10 @@ export interface GameState {
   /** All carriers. The player is always airlines[0]. */
   airlines: Airline[];
   /** True when airlines[0] is a real human (the app), not an inert sim/test slot.
-   *  Gates the player-raid mechanic so headless sims and engine tests never fire
-   *  it. Set by the app, never by newGame. */
+   *  Gates the rival-vs-player mechanic so headless sims and engine tests never
+   *  fire it. Set by the app, never by newGame. */
   humanControlled?: boolean;
-  /** A rival's open hostile takeover of the player (defense window running). */
-  raid?: Raid;
-  /** Set once the player has been acquired — the game is over. */
+  /** Set once a rival has bought control of the player — the game is over. */
   defeat?: { raiderId: string; day: number };
   /** Pending alliance proposals awaiting an accept/decline. Transient. */
   allianceOffers?: AllianceOffer[];

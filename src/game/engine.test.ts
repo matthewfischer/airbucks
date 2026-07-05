@@ -43,6 +43,8 @@ import {
   nearestHeldAirport,
   newAirline,
   newGame,
+  DEFAULT_FLOAT,
+  startingCash,
   rand,
   openRoute,
   holdsRights,
@@ -121,6 +123,35 @@ describe('newGame', () => {
     expect(player(fresh).debt).toBe(0);
     expect(player(fresh).fleet).toEqual([]);
     expect(player(fresh).routes).toEqual([]);
+  });
+
+  it('is fully founder-owned with no public float by default', () => {
+    const fresh = newGame('crw');
+    expect(player(fresh).shares).toBeUndefined();
+  });
+
+  it('floats the requested share of the airline, keeping the rest for the founder', () => {
+    const g = newGame('crw', 1, 0.2);
+    expect(player(g).shares).toEqual({ player: 80, public: 20 });
+    expect(player(g).cash).toBe(startingCash(0.2));
+    expect(player(g).history[0].cash).toBe(startingCash(0.2));
+  });
+});
+
+describe('startingCash', () => {
+  it('is the private baseline at 0% float', () => {
+    expect(startingCash(0)).toBe(STARTING_CASH);
+  });
+
+  it('raises more capital the more you float', () => {
+    expect(startingCash(0.2)).toBeGreaterThan(startingCash(0));
+    expect(startingCash(0.4)).toBeGreaterThan(startingCash(0.2));
+    expect(startingCash(0.4)).toBe(Math.round(STARTING_CASH * 2));
+  });
+
+  it('the default float lands between the extremes', () => {
+    expect(DEFAULT_FLOAT).toBeGreaterThan(0);
+    expect(startingCash(DEFAULT_FLOAT)).toBeGreaterThan(STARTING_CASH);
   });
 });
 

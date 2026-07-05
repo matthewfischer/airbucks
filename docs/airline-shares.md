@@ -1,19 +1,25 @@
 # Airline Shares — acquisition via a stock market (design)
 
 Status: BUILT and merged to main (phases 1–5, 2026-06-26). RRT-inspired. Full
-model (all decisions resolved). Phase 5 — "uneasy lies the crown": once the
-player passes `DOMINANCE_THRESHOLD` (45% of industry equity AND is strictly the
-biggest carrier) a rival hostile-accumulates the player's stock — but through the
-**same scored decision pass** as routes/planes/rival-takeovers (`playerRaidAction`
-in `ai.ts`), so a rival raids only when seizing your network beats growing its
-own; an early nibble is valued at a fraction of the prize, not a full merger. The
-mechanic is gated on `g.humanControlled` (the app sets it) so headless sims and
-engine tests never fire it. The weekly `raidPlayer` clock just resolves an open
-window (defended / expired / raider gone); crossing 50% opens a
-`DEFENSE_WINDOW_DAYS` (120) grace period; let it expire still controlled and
-`g.defeat` is set → game-over screen. Defense is `forceBuy(player, player, …)` —
-clawing shares back from the raider at the control price. Holding a majority is
-NOT a shield: force-tender is always possible at a (steep, rising) price.
+model (all decisions resolved).
+
+**Float rework (2026-07-05).** You now choose a **launch float** (0/10/20/30/40%,
+default 20%) on the home-select screen — more float dilutes you but raises more
+`startingCash` (`startingCash(floatPct)`; 0% = the private baseline). This gives a
+real public float from day one, so a rival accumulating your stock is buying
+something you genuinely don't own (you were paid at IPO), not seizing founder
+shares. Phase 5 — "uneasy lies the crown" — reworked to two scored candidates
+in `ai.ts`, both gated on `g.humanControlled` + `isPlayerDominant`:
+
+- `playerFloatBuyAction` — a rival buys a block of your **public float only**
+  (`buyShares`, capped at the float). Builds pressure + a warning; it can **never**
+  reach control this way. Founder shares are untouchable by gradual accumulation.
+- `playerBuyoutAction` — a genuine powerhouse that can finance the **entire**
+  control block at the control price in **one move** (`forceBuy` to >50%) takes you
+  over outright → `g.defeat`, game over. All-or-nothing, no gradual siege and **no
+  defense window**. Rare and decisive; the affordability gate is the "dominating"
+  test. The player can still `forceBuy` their own shares back from a rival that
+  holds a minority (the "Buy back held" tender) to head one off.
 
 ## Why
 
@@ -32,7 +38,9 @@ penalty (rejected — see [[acquisition-design]]).
 ## Core model (RRT-direction)
 
 - **Cap table** per airline (player included): 100 shares, `ownerId → count`.
-  Everyone starts owning **100% of themselves; float = 0**.
+  AI airlines start owning **100% of themselves; float = 0**. The player picks a
+  **launch float** (default 20% to the public) that seeds `{founder, public}` and
+  scales starting cash — floating more trades control for capital.
 - **Valuation V** = growth-aware: `equity + slotInvestment + growthGoodwill`,
   where `growthGoodwill = growthMultiple(target) × annualNet` and the multiple
   scales with the target's recent **revenue** growth from its `history`
@@ -64,16 +72,18 @@ launch hostile bids on rivals. They raid the **player** only once the player is
 
 ## Player as a target — "uneasy lies the crown"
 
-- **Trigger (option c):** rivals start hostile accumulation of the player only
-  once the player's equity exceeds **~45% of all airlines' combined equity**
-  (you're most of the market). Threshold tunable.
-- **Loss condition (NEW — reverses today's player-exempt-from-failure design):**
-  if a rival crosses ~50% of the player, fire **warnings + a defense grace
-  period** (buy back float / outbid). Fail to defend within the window → you are
-  acquired = **game over**. Directly punishes winning early and coasting; the
-  endgame becomes a takeover war, not a one-sided shopping spree.
-- Self-balancing: the raid threat only exists *while rivals survive*, so the
-  late-game roll-up is contested — the strongest rival can bid for you back.
+- **Trigger:** rivals start accumulating the player's stock only once the
+  player's equity exceeds **~45% of all airlines' combined equity** AND is
+  strictly the biggest carrier (`isPlayerDominant`). Threshold tunable.
+- **Gradual pressure:** a dominant player's **public float** gets bought up
+  (warning at 20% held). This never reaches control — founder shares are safe
+  from passive nibbling.
+- **Loss condition:** a rival that can afford the *whole* control block in one
+  move buys you out outright → **game over** (`g.defeat`). All-or-nothing, no
+  defense window; you defend earlier by buying floated shares back before any
+  rival grows large enough to swing the full bid.
+- Self-balancing: the threat only exists *while rivals survive* and only when one
+  grows into a genuine powerhouse, so the late-game roll-up is contested.
 
 ## Decisions locked
 
@@ -89,7 +99,8 @@ launch hostile bids on rivals. They raid the **player** only once the player is
 
 Price-impact curve steepness; control premium size; squeeze-out premium; growth
 multiple curve + cap (e.g. flat→~2×, ≥100%/yr growth→~15×); dominance threshold
-(~45%); defense-window length; block size (10%?).
+(~45%); launch-float steps + starting-cash slope; float-nibble block size; the
+float-stake warning threshold (20%).
 
 ## State / persistence
 

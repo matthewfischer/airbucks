@@ -3,15 +3,17 @@ import { distanceKm } from './geo';
 import type { NetworkResult } from './engine';
 import { acquire, buyoutPrice, updateDistress } from './distress';
 import {
+  buyShares,
   canAcquire,
   CONTROL_SHARES,
   costToAccumulate,
   forceBuy,
-  hasControl,
   isPlayerDominant,
+  publicFloat,
   sharesOwned,
   takeover,
   takeoverCost,
+  TOTAL_SHARES,
 } from './shares';
 import {
   acceptAlliance,
@@ -934,20 +936,24 @@ const DISTRESS_PREFERENCE = 1.5;
  * captured through the share market — an expensive hostile takeover priced on a
  * growth-aware valuation, so a young fast-grower can't be rolled up cheaply.
  * Only a solvent airline with the credit headroom to carry the combined debt
- * plus the financing will bid. A dominant human is raided through the same
- * scored path (see `playerRaidAction`) — capital weighed against planes/routes,
- * not an automatic drain.
+ * plus the financing will bid. A dominant human is targeted through the same
+ * scored path (see `playerBuyoutAction` / `playerFloatBuyAction`) — capital
+ * weighed against planes/routes, not an automatic drain.
  */
 export function acquisitionActions(g: GameState, al: Airline, p: Personality): Action[] {
   const actions: Action[] = [];
   if (equity(g, al) <= 0) return actions; // only solvent airlines acquire
   const appetite = p.debtAppetite * creditLimit(g, al);
   // A fire-sale is a time-limited rescue grab — allowed even mid-integration.
-  // Healthy takeovers and player raids wait out the integration cooldown.
+  // Healthy takeovers and player moves wait out the integration cooldown.
   const cooled = canAcquire(g, al);
   if (cooled) {
-    const raid = playerRaidAction(g, al, p, appetite);
-    if (raid) actions.push(raid);
+    // A dominant, well-funded rival may seize a towering player outright in one
+    // move; short of that it can only accumulate the player's public float.
+    const buyout = playerBuyoutAction(g, al, p, appetite);
+    if (buyout) actions.push(buyout);
+    const nibble = playerFloatBuyAction(g, al, p, appetite);
+    if (nibble) actions.push(nibble);
   }
   for (const target of g.airlines) {
     // Not self, not the player (airlines[0] is unremovable, even when AI-driven
@@ -1268,26 +1274,66 @@ export function runAI(g: GameState): void {
   }
 }
 
-// ---- "Uneasy lies the crown": rivals raid a dominant player ------------------
+// ---- "Uneasy lies the crown": rivals target a dominant player ---------------
 
-/** Days the player has to claw a raider back below control before losing. */
-export const DEFENSE_WINDOW_DAYS = 120;
-/** A rival stake in the player big enough to warrant an early heads-up. */
-const RAID_WARN_SHARES = 30;
-/** Shares a raider grabs in one decision pass that picks the raid. */
-const RAID_BLOCK = 8;
+/** Shares of the player's float a rival buys in one decision pass. */
+const PLAYER_FLOAT_BLOCK = 8;
+/** A rival float stake big enough to warrant an early heads-up. */
+const FLOAT_WARN_SHARES = 20;
 
 /**
- * Candidate: accumulate a block of a dominant human's stock. This goes through
- * the same scored decision pass as routes, planes, and rival takeovers — so a
- * rival raids only when seizing the player's network is a better use of capital
- * than growing its own. Scored by the player's strategic reach, scaled by how
- * far this block carries it toward control (a nibble is worth a slice of the
- * prize, not the whole merger), so early raids compete with cheap organic moves
- * and only an attractive, near-complete takeover outbids everything. Returns the
- * scored action, or null when no raid is warranted/affordable.
+ * Candidate: accumulate a block of a dominant human's *public float*. A rival can
+ * only buy what the player has floated to the market — it can never seize founder
+ * shares — so this builds pressure (and a warning) but by itself can't take
+ * control. Scored by the player's reach, scaled by the small slice this block
+ * represents, so it competes with organic growth and rarely outbids it. Null when
+ * the player is undominant, nothing is floated, or a share is unaffordable.
  */
-export function playerRaidAction(
+export function playerFloatBuyAction(
+  g: GameState,
+  al: Airline,
+  p: Personality,
+  appetite: number,
+): Action | null {
+  const player = g.airlines[0];
+  if (!g.humanControlled || player.ai || g.defeat || !isPlayerDominant(g)) return null;
+  const avail = publicFloat(player);
+  if (avail <= 0) return null; // nothing floated — no shares to buy on the open market
+  const owned = sharesOwned(player, al.id);
+  let block = Math.min(PLAYER_FLOAT_BLOCK, avail);
+  while (block > 0) {
+    const cost = costToAccumulate(g, player, owned, block, false);
+    const borrowNeed = Math.max(0, cost - al.cash);
+    if (al.debt + borrowNeed <= appetite && spendable(g, al, p) >= cost) break;
+    block--;
+  }
+  if (block <= 0) return null;
+  const reach = evaluateNetwork(g, player).revenue;
+  return { score: reach * (block / TOTAL_SHARES), run: () => runFloatBuy(g, al, p, block) };
+}
+
+/** Buy a block of the player's float, then warn once a rival's stake gets large. */
+function runFloatBuy(g: GameState, al: Airline, p: Personality, block: number): void {
+  const player = g.airlines[0];
+  const before = sharesOwned(player, al.id);
+  const cost = costToAccumulate(g, player, before, block, false);
+  if (!coverCost(g, al, p, cost)) return;
+  buyShares(g, al, player, block); // capped at the public float — never founder shares
+  const after = sharesOwned(player, al.id);
+  if (after >= FLOAT_WARN_SHARES && before < FLOAT_WARN_SHARES) {
+    playerNews(g, `⚠ ${al.name} is buying up your stock — it now holds ${after}% of you.`);
+  }
+}
+
+/**
+ * Candidate: a decisive, all-or-nothing takeover of a dominant human. Only a
+ * rival that can finance the *entire* controlling block at the control price in a
+ * single move — a genuine powerhouse — can bid. There's no gradual siege and no
+ * defense window: if it lands, the game ends at once. Scored at the player's full
+ * reach (the whole prize), so it easily outranks a mere float nibble. Null unless
+ * the player is a dominant target and the full block is affordable right now.
+ */
+export function playerBuyoutAction(
   g: GameState,
   al: Airline,
   p: Personality,
@@ -1296,65 +1342,23 @@ export function playerRaidAction(
   const player = g.airlines[0];
   if (!g.humanControlled || player.ai || g.defeat || !isPlayerDominant(g)) return null;
   const owned = sharesOwned(player, al.id);
-  if (owned >= CONTROL_SHARES) return null; // already in control — the window runs
-  // Largest block (up to RAID_BLOCK, never overshooting control) it can finance.
-  let block = Math.min(RAID_BLOCK, CONTROL_SHARES - owned);
-  while (block > 0) {
-    const cost = costToAccumulate(g, player, owned, block, true);
-    const borrowNeed = Math.max(0, cost - al.cash);
-    if (al.debt + borrowNeed <= appetite && spendable(g, al, p) >= cost) break;
-    block--;
-  }
-  if (block <= 0) return null;
+  if (owned >= CONTROL_SHARES) return null; // already controls the player
+  const need = CONTROL_SHARES - owned;
+  const cost = costToAccumulate(g, player, owned, need, true);
+  const borrowNeed = Math.max(0, cost - al.cash);
+  if (al.debt + borrowNeed > appetite || spendable(g, al, p) < cost) return null;
   const reach = evaluateNetwork(g, player).revenue;
-  const progress = Math.min(1, (owned + block) / CONTROL_SHARES);
-  return { score: reach * progress, run: () => runRaidBlock(g, al, p, block) };
+  return { score: reach, run: () => runBuyout(g, al, p, need) };
 }
 
-/** Execute a raid block: finance it, force-buy the shares, and surface the
- *  warning / control-seized news (opening the defense window on crossing 50%). */
-function runRaidBlock(g: GameState, al: Airline, p: Personality, block: number): void {
+/** Finance and execute the full control block; landing it ends the game at once. */
+function runBuyout(g: GameState, al: Airline, p: Personality, need: number): void {
   const player = g.airlines[0];
-  const before = sharesOwned(player, al.id);
-  const cost = costToAccumulate(g, player, before, block, true);
+  const cost = costToAccumulate(g, player, sharesOwned(player, al.id), need, true);
   if (!coverCost(g, al, p, cost)) return;
-  forceBuy(g, al, player, block);
-  const after = sharesOwned(player, al.id);
-  if (after >= CONTROL_SHARES && !g.raid) {
-    g.raid = { raiderId: al.id, sinceDay: g.day, deadlineDay: g.day + DEFENSE_WINDOW_DAYS };
-    const months = Math.round(DEFENSE_WINDOW_DAYS / 30);
-    playerNews(
-      g,
-      `⚠ ${al.name} seized control of ${player.name} (${after}%)! Buy back a majority within ${months} months or lose.`,
-    );
-  } else if (after >= RAID_WARN_SHARES && before < RAID_WARN_SHARES) {
-    playerNews(g, `⚠ ${al.name} is raiding your stock — it now holds ${after}% of you.`);
-  }
-}
-
-/**
- * Run the clock on an open takeover of the player. Accumulation and window
- * opening happen in the AI's scored decision pass (`playerRaidAction`); this just
- * resolves a live window: the raider departing or being clawed below control
- * lifts the siege, and the deadline passing while still controlled ends the game.
- * Driven weekly from the main loop — headless sims (no human) never call it.
- */
-export function raidPlayer(g: GameState): void {
-  if (!g.humanControlled || g.defeat || !g.raid) return;
-  const player = g.airlines[0];
-  if (player.ai) return; // no human to depose
-  const raider = g.airlines.find((a) => a.id === g.raid!.raiderId);
-  if (!raider || !raider.ai) {
-    g.raid = undefined; // raider merged away or liquidated — threat gone
-    return;
-  }
-  if (!hasControl(player, raider.id)) {
-    playerNews(g, `🛡 You fought off ${raider.name}'s takeover — ${player.name} is yours again.`);
-    g.raid = undefined;
-    return;
-  }
-  if (g.day >= g.raid.deadlineDay) {
-    g.defeat = { raiderId: raider.id, day: g.day };
-    playerNews(g, `🏴 ${raider.name} completed its takeover of ${player.name}. Game over.`);
+  forceBuy(g, al, player, need);
+  if (sharesOwned(player, al.id) >= CONTROL_SHARES && !g.defeat) {
+    g.defeat = { raiderId: al.id, day: g.day };
+    playerNews(g, `🏴 ${al.name} bought control of ${player.name} outright. Game over.`);
   }
 }
