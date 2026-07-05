@@ -1,7 +1,13 @@
 # Interline / Alliances — design
 
-> **Status: designed, not built.** All design decisions (D1–D5) locked. This is
-> a TODO — implement per the phased build plan below.
+> **Status: built (2026-07-05).** All five phases shipped (D1–D5). Engine group
+> eval, formation, the D2 yield haircut, the Competitors-tab UI, and AI
+> accept/propose all landed; the 10-year headless sweep runs green with
+> alliances active. The design decisions below are the record of *why*; the
+> phased plan at the end is done.
+>
+> Note: D3's 3-carrier cap moved earlier — it's enforced at formation (phase 2),
+> not as a separate phase-3 brake.
 
 
 ## The problem ("KC → Bucharest")
