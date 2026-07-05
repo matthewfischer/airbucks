@@ -12,7 +12,7 @@ You start a regional airline anywhere in the world. At the start of a new game y
 
 The map spans the whole world — ~230 airports across North America, Europe, Asia, Africa, South America, and Oceania, from small regional fields up to the major intercontinental gateways. Charleston, WV (CRW) is the default starting city, but you're free to begin in Appalachia, the Alps, or anywhere else.
 
-AI-controlled rivals (a configurable number) set up near you and compete for the same markets — expanding, consolidating, and, once you grow dominant, raiding your stock through the share market.
+AI-controlled rivals (a configurable number) set up near you and compete for the same markets — expanding, consolidating, and, once you grow dominant, raiding your stock through the share market. A **Watch mode** on the launch screen runs the whole thing as an AI-only sim you can observe.
 
 The game runs on a real-time clock (pause/play, 1×/2×/4× speed), modeled after Transport Tycoon. Revenue and interest accrue daily.
 
@@ -23,8 +23,15 @@ The game runs on a real-time clock (pause/play, 1×/2×/4× speed), modeled afte
 - Plane depreciation is factored into P&L.
 - Demand is realistic: small city-pairs are marginal, big city-pairs are the profit centers, and intercontinental trunk routes are the prizes.
 - **Interest rates track real history.** Borrowing and deposit rates float on the actual U.S. federal funds rate for the year you're playing — interpolated from historical anchors, so you live through the Volcker spike (~16% in 1981), the near-zero ZIRP 2010s, and the 2022–23 climb. Your loan rate is that macro floor plus a credit spread that widens with leverage.
+- **Recessions track real history too.** Demand dips on the actual downturn calendar — the oil shocks, Volcker, 9/11, 2008, COVID — telegraphed in the news a few months out. Carriers flying with no cash buffer get pushed into distress; cautious ones ride it out. ([details](docs/recessions.md))
+- **Rivals split your markets.** When another airline connects the same city pair, demand is shared by capacity and appeal (fare, speed, connections) — overlapping networks genuinely hurt each other.
 
 ![Per-route detail: load factors, connecting traffic, and fares](screenshots/routes.png)
+
+## Shares & alliances
+
+- **A share market, RRT-style.** You choose a launch float (0–40%) when founding the airline — more float means more starting cash but more takeover exposure. Rivals accumulate your public float, force tenders, and can attempt an all-or-nothing buyout; you can buy back your float, raid theirs, or take over a rival outright. Distressed airlines go up for sale at a discount. ([details](docs/airline-shares.md))
+- **Alliances.** Up to three airlines can pool their networks — a passenger rides carrier A to a hub and carrier B onward, with each earning a partial fare. Allied networks stop splitting demand against each other; AIs propose and form alliances of their own. ([details](docs/interline.md))
 
 ![Finance dashboard: cash & debt, profitability, interest rates, and net worth over time](screenshots/finance.png)
 
