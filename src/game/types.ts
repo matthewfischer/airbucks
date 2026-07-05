@@ -151,6 +151,9 @@ export interface Airline {
    *  id (retained), `'public'` (the open float), or another airline's id (a
    *  strategic stake). Absent ⇒ 100% self-held. See shares.ts. */
   shares?: Record<string, number>;
+  /** Alliance id this carrier belongs to, or absent if unallied. Members pool
+   *  their networks for demand capture (interline). See engine `allianceGroup`. */
+  alliance?: string;
 }
 
 /** An active hostile raid on the player: a rival has crossed control and the

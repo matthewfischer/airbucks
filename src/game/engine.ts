@@ -354,15 +354,23 @@ interface LegBuild {
   adj: Map<string, Set<string>>;
   routeFly: Map<string, number>;
   routeUp: Map<string, number>;
+  /** routeId → owning airline id, for per-carrier revenue/pax attribution. */
+  routeOwner: Map<string, string>;
 }
 
-/** Pool an airline's flying into legs: capacity, fare/speed sums, and per-route
- *  flying cost + upkeep. Shared by the full network eval and the offer scan. */
-function buildLegs(g: GameState, al: Airline): LegBuild {
+/** Pool a group's flying into legs: capacity, fare/speed sums, and per-route
+ *  flying cost + upkeep. The group is an alliance (or a singleton for the
+ *  unallied) — legs merge by city-pair across members, so a shared pair presents
+ *  combined capacity and each member keeps its own routeCap share. Shared by the
+ *  full network eval and the offer scan. */
+function buildLegs(g: GameState, group: Airline[]): LegBuild {
   const legs = new Map<string, LegInfo>();
   const routeFly = new Map<string, number>();
   const routeUp = new Map<string, number>();
+  const routeOwner = new Map<string, string>();
+  for (const al of group)
   for (const route of al.routes) {
+    routeOwner.set(route.id, al.id);
     const rlegs = routeLegs(g, route);
     const pathLength = rlegs.reduce((s, l) => s + l.distance, 0);
     let fly = 0;
@@ -402,7 +410,7 @@ function buildLegs(g: GameState, al: Airline): LegBuild {
     (adj.get(info.a) ?? adj.set(info.a, new Set()).get(info.a)!).add(info.b);
     (adj.get(info.b) ?? adj.set(info.b, new Set()).get(info.b)!).add(info.a);
   }
-  return { legs, adj, routeFly, routeUp };
+  return { legs, adj, routeFly, routeUp, routeOwner };
 }
 
 interface MarketCalc {
@@ -450,10 +458,21 @@ function marketCalc(
   };
 }
 
-/** Every airport-pair an airline serves, keyed canonically, with the airline's
+/** The carriers that pool their networks with `al` (its alliance), or `[al]`
+ *  alone if unallied. A solo airline is just an alliance of one — that framing
+ *  lets the whole eval run group-vs-group with no special-casing. */
+export function allianceGroup(g: GameState, al: Airline): Airline[] {
+  if (!al.alliance) return [al];
+  return g.airlines.filter((x) => x.alliance === al.alliance);
+}
+
+/** Competition partition key: the alliance id, or the airline's own id if solo. */
+const groupKey = (al: Airline): string => al.alliance ?? al.id;
+
+/** Every airport-pair a group serves, keyed canonically, with the group's
  *  competition weight on that market. The raw material for the rivalry split. */
-function airlineOffers(g: GameState, al: Airline): Map<string, number> {
-  const legBuild = buildLegs(g, al);
+function groupOffers(g: GameState, group: Airline[]): Map<string, number> {
+  const legBuild = buildLegs(g, group);
   const baseline = baselineSpeed(g);
   const served = g.airports.filter((a) => legBuild.adj.has(a.id));
   const offers = new Map<string, number>();
@@ -486,6 +505,7 @@ function compSignature(g: GameState): number {
     for (const r of al.routes)
       s += r.stops.length * 131 + Math.round(r.fareFactor * 97);
     for (const p of al.fleet) s += (p.routeId ? 17 : 3) + p.typeId.length;
+    if (al.alliance) s += al.alliance.length * 149;
   }
   return s;
 }
@@ -494,11 +514,17 @@ function competition(g: GameState): Competition {
   const sig = compSignature(g);
   const cached = compCache.get(g);
   if (cached && cached.sig === sig) return cached;
+  // Weight is pooled per alliance group, so allied carriers present a united
+  // front instead of competing. Each group is visited once (keyed by groupKey).
   const offers = new Map<string, Map<string, number>>();
   const total = new Map<string, number>();
+  const seen = new Set<string>();
   for (const al of g.airlines) {
-    const off = airlineOffers(g, al);
-    offers.set(al.id, off);
+    const key = groupKey(al);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const off = groupOffers(g, allianceGroup(g, al));
+    offers.set(key, off);
     for (const [od, w] of off) total.set(od, (total.get(od) ?? 0) + w);
   }
   const ctx: Competition = { sig, total, offers };
@@ -510,7 +536,7 @@ function competition(g: GameState): Competition {
 export function rivalWeight(g: GameState, al: Airline, aId: string, bId: string): number {
   const ctx = competition(g);
   const od = legKey(aId, bId);
-  return (ctx.total.get(od) ?? 0) - (ctx.offers.get(al.id)?.get(od) ?? 0);
+  return (ctx.total.get(od) ?? 0) - (ctx.offers.get(groupKey(al))?.get(od) ?? 0);
 }
 
 /** An airline's share of a contested market: its weight vs. the field. 1 alone. */
@@ -518,31 +544,51 @@ export const competitiveShare = (own: number, rival: number): number =>
   own + rival > 0 ? own / (own + rival) : 1;
 
 /**
- * Evaluate the whole airline as a network: pool all flying into legs, route
- * every O&D market over the best path the airline offers (nonstop or
- * connecting), and let each leg earn from every passenger flow crossing it —
+ * Evaluate `al` as a network: pool the flying of its whole alliance group (just
+ * itself if unallied) into legs, route every O&D market over the best path the
+ * group offers (nonstop or connecting, possibly handing off between partners at
+ * a shared hub), and let each leg earn from every passenger flow crossing it —
  * so feeder spokes are paid for the connecting traffic they carry. Demand on
- * each market is split with rival airlines flying the same city-pair.
+ * each market is split with rival groups flying the same city-pair.
+ *
+ * The pool is shared, but the returned totals are `al`'s own slice: revenue and
+ * cost of `al`'s routes, passengers on markets `al` helps carry, load over
+ * `al`'s seats. A partner's legs are captured in the pool (so through-markets
+ * fill) but credited to the partner, not to `al`.
  */
 export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
-  const legBuild = buildLegs(g, al);
-  const { legs, routeFly, routeUp } = legBuild;
+  const group = allianceGroup(g, al);
+  const legBuild = buildLegs(g, group);
+  const { legs, routeFly, routeUp, routeOwner } = legBuild;
+  // Summaries span every group route: a through-market's fare is attributed to
+  // whichever route flew each leg, partner routes included, so the split lands.
   const summaries = new Map<string, RouteSummary>();
-  for (const route of al.routes) {
-    summaries.set(route.id, {
-      routeId: route.id,
-      passengers: 0,
-      connectingPassengers: 0,
-      revenue: 0,
-      cost: 0,
-      profit: 0,
-      loadFactor: 0,
-      speedPremium: 1,
-    });
+  for (const member of group)
+    for (const route of member.routes) {
+      summaries.set(route.id, {
+        routeId: route.id,
+        passengers: 0,
+        connectingPassengers: 0,
+        revenue: 0,
+        cost: 0,
+        profit: 0,
+        loadFactor: 0,
+        speedPremium: 1,
+      });
+    }
+
+  // al's own seats per leg, for slicing its load factor and passengers out of the
+  // pooled result (a leg shared with a partner counts only al's routeCap share).
+  const alCapByLeg = new Map<string, number>();
+  for (const [key, li] of legs) {
+    let cap = 0;
+    for (const [rid, rcap] of li.routeCap)
+      if (routeOwner.get(rid) === al.id) cap += rcap;
+    if (cap > 0) alCapByLeg.set(key, cap);
   }
 
-  // Build every O&D market this airline can serve, splitting each market's
-  // demand with the rivals flying the same city-pair.
+  // Build every O&D market the group can serve, splitting each market's demand
+  // with the rival groups flying the same city-pair.
   interface Mkt {
     path: NetPath;
     demand: number;
@@ -550,8 +596,8 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
   }
   const markets: Mkt[] = [];
   const baseline = baselineSpeed(g);
-  // Only airports this airline actually touches can anchor a market. Filtering
-  // here (preserving g.airports order) turns an all-pairs O(airports²) scan into
+  // Only airports the group actually touches can anchor a market. Filtering here
+  // (preserving g.airports order) turns an all-pairs O(airports²) scan into
   // O(served²) — a large win once a network spans only a few dozen of the cities.
   const served = g.airports.filter((a) => legBuild.adj.has(a.id));
   for (let i = 0; i < served.length; i++) {
@@ -575,7 +621,7 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
   const legCarried = new Map<string, number>();
   const legConnecting = new Map<string, number>();
 
-  let revenue = 0;
+  // al's slice: passengers on any market whose path uses one of al's legs.
   let passengers = 0;
   let connectingPassengers = 0;
   for (const m of markets) {
@@ -583,9 +629,10 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
     for (const key of m.path.legKeys) avail = Math.min(avail, remaining.get(key)!);
     const carried = Math.min(m.demand, Math.max(0, avail));
     if (carried <= 0) continue;
-    revenue += carried * m.fare;
-    passengers += carried;
-    if (m.path.connections > 0) connectingPassengers += carried;
+    if (m.path.legKeys.some((k) => alCapByLeg.has(k))) {
+      passengers += carried;
+      if (m.path.connections > 0) connectingPassengers += carried;
+    }
     // Split the itinerary fare across legs by each leg's standalone reference
     // fare. This gives short feeder legs a fair base share (vs. distance, which
     // would hand almost the whole long-haul fare to the longest leg), so a
@@ -607,19 +654,24 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
     }
   }
 
-  // System load factor: seats sold across every leg over seats offered.
+  // System load factor over al's own seats: seats sold on al's legs (its share
+  // of a shared leg's load) over al's seats offered.
   let seatsOffered = 0;
   let seatsFilled = 0;
   for (const [k, info] of legs) {
-    seatsOffered += info.capacity;
-    seatsFilled += legCarried.get(k) ?? 0;
+    const alCap = alCapByLeg.get(k);
+    if (!alCap) continue;
+    seatsOffered += alCap;
+    seatsFilled += (legCarried.get(k) ?? 0) * (alCap / info.capacity);
   }
   const loadFactor = seatsOffered > 0 ? seatsFilled / seatsOffered : 0;
 
   // 4) Per-route cost: fly only enough circuits to cover the busiest leg's load.
   //    Passengers and connecting passengers are set from the busiest leg so they
   //    stay consistent with loadFactor and don't double-count connecting pax
-  //    across legs on multi-stop routes.
+  //    across legs on multi-stop routes. Only al's own routes are costed and
+  //    returned; partner routes were evaluated only to fill the pooled legs.
+  let revenue = 0;
   let totalCost = 0;
   for (const route of al.routes) {
     const rs = summaries.get(route.id)!;
@@ -648,8 +700,13 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
     rs.speedPremium = wDist > 0 ? speedFareMultiplier(wSpeed / wDist, baseline) : 1;
     rs.cost = maxLF * (routeFly.get(route.id) ?? 0) + (routeUp.get(route.id) ?? 0);
     rs.profit = rs.revenue - rs.cost;
+    revenue += rs.revenue;
     totalCost += rs.cost;
   }
+
+  // Return only al's own route summaries (partner routes stay in the pool).
+  const ownRoutes = new Map<string, RouteSummary>();
+  for (const route of al.routes) ownRoutes.set(route.id, summaries.get(route.id)!);
 
   return {
     revenue,
@@ -658,7 +715,7 @@ export function evaluateNetwork(g: GameState, al: Airline): NetworkResult {
     passengers,
     connectingPassengers,
     loadFactor,
-    routes: summaries,
+    routes: ownRoutes,
   };
 }
 
