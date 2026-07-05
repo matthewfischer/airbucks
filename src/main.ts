@@ -863,7 +863,10 @@ canvas.addEventListener('click', (e) => {
         drawMap();
         return;
       }
-      if (holdsRights(pl(), ap.id)) {
+      if (spectating()) {
+        // Watch-only: the AI owns the airline; never stage a route. Just show info.
+        showAirportInfo(ap, p.x, p.y);
+      } else if (holdsRights(pl(), ap.id)) {
         hideAirportPopover();
         addStop(ap.id);
       } else if (rightsAvailable(game, pl(), ap.id) || isNegotiating(pl(), ap.id)) {
