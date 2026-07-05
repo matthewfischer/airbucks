@@ -3,6 +3,7 @@ import type { Airline, GameState } from './types';
 import {
   acquisitionActions,
   addAiAirlines,
+  effectivePersonality,
   newRouteCandidates,
   PERSONALITIES,
   reallocateActions,
@@ -16,6 +17,7 @@ import {
   assignPlane,
   buyPlane,
   creditLimit,
+  demandLevel,
   equity,
   evaluateNetwork,
   newAirline,
@@ -308,5 +310,43 @@ describe('retrenchActions', () => {
     for (const a of actions) a.run();
     expect(al.routes).toHaveLength(0);
     expect(al.fleet).toHaveLength(0); // the route's plane was sold off
+  });
+});
+
+describe('effectivePersonality (downturn hunker)', () => {
+  const dayForYear = (year: number) => Math.round((year - 1950) * 365.25);
+  const OVEREXPANDER = PERSONALITIES.find((p) => p.id === 'overexpander')!;
+  const CHEAPSKATE = PERSONALITIES.find((p) => p.id === 'cheapskate')!;
+
+  it('is a no-op in calm years', () => {
+    g.day = dayForYear(1965); // no scheduled downturn
+    expect(effectivePersonality(g, CHEAPSKATE)).toEqual(CHEAPSKATE);
+    expect(effectivePersonality(g, OVEREXPANDER)).toEqual(OVEREXPANDER);
+  });
+
+  it('makes a cautious carrier hunker in a downturn window', () => {
+    g.day = dayForYear(2009); // Great Recession
+    const eff = effectivePersonality(g, CHEAPSKATE);
+    expect(eff.debtAppetite).toBeLessThan(CHEAPSKATE.debtAppetite); // borrows less
+    expect(eff.runwayWeeks).toBeGreaterThan(CHEAPSKATE.runwayWeeks); // wants more buffer
+  });
+
+  it('barely moves the overexpander — it plows straight in', () => {
+    g.day = dayForYear(2009);
+    const eff = effectivePersonality(g, OVEREXPANDER);
+    // caution ~0.05: appetite trimmed by <3%, runway raised by <6%.
+    expect(eff.debtAppetite).toBeGreaterThan(OVEREXPANDER.debtAppetite * 0.97);
+    expect(eff.runwayWeeks).toBeLessThan(OVEREXPANDER.runwayWeeks * 1.06);
+    // and the cheapskate pulls back far harder than the overexpander does.
+    const cautiousCut = CHEAPSKATE.debtAppetite - effectivePersonality(g, CHEAPSKATE).debtAppetite;
+    const recklessCut = OVEREXPANDER.debtAppetite - eff.debtAppetite;
+    expect(cautiousCut / CHEAPSKATE.debtAppetite).toBeGreaterThan(recklessCut / OVEREXPANDER.debtAppetite);
+  });
+
+  it('also hunkers during the ~6-month run-up before a downturn', () => {
+    // Mid-2007: demand is still ~1.0, but the 2009 trough is within the lookahead.
+    g.day = dayForYear(2007) + 250;
+    expect(demandLevel(g)).toBeCloseTo(1, 1); // not yet in the downturn itself
+    expect(effectivePersonality(g, CHEAPSKATE).debtAppetite).toBeLessThan(CHEAPSKATE.debtAppetite);
   });
 });

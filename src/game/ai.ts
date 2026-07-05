@@ -26,6 +26,7 @@ import {
   distanceFactor,
   equity,
   evaluateNetwork,
+  inDownturnWindow,
   rivalWeight,
   gateFee,
   isNegotiating,
@@ -260,6 +261,28 @@ export function addAiAirlines(g: GameState, count: number): void {
 export function makeAiControlled(g: GameState, al: Airline): void {
   const p = shuffle(g, PERSONALITIES)[0];
   al.ai = { personality: p.id, nextDecisionDay: g.day };
+}
+
+// ---- Downturn caution -------------------------------------------------------
+// During a known downturn (or its ~6-month run-up) cautious carriers hunker:
+// they demand more loss-runway before expanding and trim their borrowing
+// appetite, both scaled by caution = 1 − debtAppetite. The overexpander
+// (caution ~0.05) barely flinches and plows straight in — so it's the one that
+// blows up when demand craters; the cheapskate/regional build a buffer and ride
+// it out. Purely a decision-time modifier — no change to persisted AI state.
+const HUNKER_RUNWAY = 1.0; // runwayWeeks *= 1 + caution*HUNKER_RUNWAY
+const HUNKER_DEBT = 0.5; // debtAppetite *= 1 − caution*HUNKER_DEBT
+
+/** The personality as it decides today: unchanged in calm years, more cautious
+ *  inside a downturn window (scaled by how cautious it already is). */
+export function effectivePersonality(g: GameState, p: Personality): Personality {
+  if (!inDownturnWindow(g)) return p;
+  const caution = 1 - p.debtAppetite;
+  return {
+    ...p,
+    debtAppetite: p.debtAppetite * (1 - caution * HUNKER_DEBT),
+    runwayWeeks: p.runwayWeeks * (1 + caution * HUNKER_RUNWAY),
+  };
 }
 
 // ---- Decision pass ----------------------------------------------------------
@@ -1015,7 +1038,8 @@ export function retrenchActions(g: GameState, al: Airline): Action[] {
 }
 
 /** One decision pass: gather candidates, jitter their scores, run the best. */
-function decide(g: GameState, al: Airline, p: Personality): void {
+function decide(g: GameState, al: Airline, basePersonality: Personality): void {
+  const p = effectivePersonality(g, basePersonality);
   const w = weeklyTotals(g, al);
   // Expand while profitable, or while there's runway to absorb the losses;
   // otherwise switch to stopping the bleed.
