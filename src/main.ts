@@ -334,7 +334,6 @@ function frame(ts: number) {
   let sidebarDirty = false;
   if (playing) {
     dayAccumulator += (dt * speed) / DAY_MS;
-    const badgesBefore = me().badges.length;
     while (dayAccumulator >= 1) {
       dayAccumulator -= 1;
       advanceDay(game);
@@ -345,7 +344,6 @@ function frame(ts: number) {
       }
       if (game.defeat) break; // game over — a rival bought us out
     }
-    if (me().badges.length > badgesBefore) renderLog(); // surface freshly-earned badges
     if (sidebarDirty) {
       announceNewRights();
       announceDistress();
@@ -356,6 +354,7 @@ function frame(ts: number) {
   checkWin();
   checkDefeat();
   renderHud();
+  if (sidebarDirty) renderLog(); // news written during ticks (AI declines, openings, …)
   if (sidebarDirty && !sidebarEl.contains(document.activeElement)) renderSidebar();
   if (sidebarDirty && currentView === 'finance') renderFinance(game, financeEl);
   if (sidebarDirty && currentView === 'competitors') renderCompetitors(game, competitorsEl, ui.watchedId);
