@@ -34,7 +34,7 @@ jobs:
         run: npm run pack:win
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: airbucks-win-x64
           path: release/*.zip
@@ -70,7 +70,7 @@ jobs:
         run: npm run pack:mac
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: airbucks-mac-arm64
           path: release/*.zip
