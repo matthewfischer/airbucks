@@ -113,8 +113,18 @@ function removeAirline(g: GameState, al: Airline, heir?: Airline): void {
  *
  * Charges NO acquisition price — the caller has already paid (the distress
  * sticker in `acquire`, or share purchases + squeeze-out for a takeover).
+ * `price` is what the caller paid at closing, reported in the takeover event
+ * queued for the UI when the buyer is an AI.
  */
-export function mergeInto(g: GameState, buyer: Airline, target: Airline): void {
+export function mergeInto(g: GameState, buyer: Airline, target: Airline, price: number): void {
+  // Snapshot the deal for the announcement before the target is dissolved.
+  const absorbed = {
+    target: target.name,
+    debt: target.debt,
+    cities: target.rights.length,
+    planes: target.fleet.length,
+    routes: target.routes.length,
+  };
   buyer.cash += target.cash; // inherit the bank account
   buyer.debt += target.debt;
   for (const id of target.rights) if (!buyer.rights.includes(id)) buyer.rights.push(id);
@@ -133,6 +143,17 @@ export function mergeInto(g: GameState, buyer: Airline, target: Airline): void {
   // The two networks are one carrier now — drop stale offers and any bloc the
   // merge left with a single member (incl. a buyer+target two-carrier alliance).
   sanitizeAlliances(g);
+  // Queue the deal for the UI popup — AI buys only; the player's own are no news.
+  if (buyer.ai)
+    (g.takeovers ??= []).push({
+      day: g.day,
+      buyer: buyer.name,
+      price,
+      ...absorbed,
+      newCities: buyer.rights.length,
+      newPlanes: buyer.fleet.length,
+      newRoutes: buyer.routes.length,
+    });
 }
 
 /**
@@ -145,7 +166,7 @@ export function acquire(g: GameState, buyer: Airline, target: Airline): void {
   const cities = target.rights.length;
   const debtNote = target.debt > 0 ? `, assuming ${money(target.debt)} debt` : '';
   buyer.cash -= price; // pay the sticker; cash/debt inheritance handled in mergeInto
-  mergeInto(g, buyer, target);
+  mergeInto(g, buyer, target, price);
   playerNews(
     g,
     `🤝 ${buyer.name} acquired ${target.name} for ${money(price)} — ${cities} cities${debtNote}.`,

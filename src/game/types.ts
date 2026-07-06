@@ -164,6 +164,27 @@ export interface Airline {
   alliance?: string;
 }
 
+/** A completed AI acquisition, queued for the UI to announce (transient).
+ *  Snapshots names and sizes at closing — the target no longer exists after. */
+export interface TakeoverEvent {
+  day: number;
+  /** Display names, not ids — the target is gone and the buyer may go too. */
+  buyer: string;
+  target: string;
+  /** Cash the buyer paid at closing (distress sticker or minority squeeze-out). */
+  price: number;
+  /** Target debt the buyer assumed. */
+  debt: number;
+  /** The target's business absorbed: cities (rights), planes, routes. */
+  cities: number;
+  planes: number;
+  routes: number;
+  /** The buyer's totals after the merge. */
+  newCities: number;
+  newPlanes: number;
+  newRoutes: number;
+}
+
 /** A pending alliance proposal from one carrier to another (transient state). */
 export interface AllianceOffer {
   /** Airline id that proposed. */
@@ -193,4 +214,6 @@ export interface GameState {
   defeat?: { raiderId: string; day: number };
   /** Pending alliance proposals awaiting an accept/decline. Transient. */
   allianceOffers?: AllianceOffer[];
+  /** AI acquisitions not yet announced by the UI. Transient, drained each frame. */
+  takeovers?: TakeoverEvent[];
 }

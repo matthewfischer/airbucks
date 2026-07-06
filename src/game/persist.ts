@@ -320,6 +320,7 @@ export function applySave(g: GameState, data: SaveData): void {
   const ids = new Set(g.airlines.map((a) => a.id));
   g.defeat = data.defeat && ids.has(data.defeat.raiderId) ? data.defeat : undefined;
   g.allianceOffers = data.allianceOffers?.length ? data.allianceOffers : undefined;
+  g.takeovers = undefined; // unannounced popups don't survive a load
   sanitizeAlliances(g); // drop stale offers + dissolve any single-member bloc
   reseedIds(g);
 }

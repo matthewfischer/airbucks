@@ -126,6 +126,47 @@ describe('acquire', () => {
     expect(player(g).log[0]).toMatch(/acquired/i);
   });
 
+  it('queues a takeover event with the deal and the merged sizes for an AI buyer', () => {
+    const buyer = aiAirline('ai-1', 'bna');
+    buyer.cash = 10_000_000;
+    buyer.rights = ['bna', 'clt'];
+    const target = aiAirline('ai-2', 'sea');
+    target.cash = 0;
+    target.debt = 2_000_000;
+    target.rights = ['sea', 'clt', 'pdx'];
+    target.fleet = [{ id: 'plane-99', typeId: 'dc3', routeId: 'route-99', kmFlown: 500 }];
+    target.routes = [{ id: 'route-99', stops: ['sea', 'pdx'], fareFactor: 1 }];
+    target.forSale = { listedDay: 0, deadlineDay: 60, price: 500_000 };
+
+    acquire(g, buyer, target);
+
+    expect(g.takeovers).toHaveLength(1);
+    expect(g.takeovers![0]).toMatchObject({
+      buyer: buyer.name,
+      target: 'AI-2 Air',
+      price: 500_000,
+      debt: 2_000_000,
+      cities: 3, // the target's, pre-merge
+      planes: 1,
+      routes: 1,
+      newCities: 4, // buyer after the merge — CLT duplicate collapsed
+      newPlanes: 1,
+      newRoutes: 1,
+    });
+  });
+
+  it('queues no takeover event when the player is the buyer', () => {
+    const buyer = player(g);
+    buyer.cash = 10_000_000;
+    const target = aiAirline('ai-2', 'sea');
+    target.cash = 0;
+    target.forSale = { listedDay: 0, deadlineDay: 60, price: 100_000 };
+
+    acquire(g, buyer, target);
+
+    expect(g.takeovers).toBeUndefined();
+  });
+
   it('reclaims a target stake in the buyer as treasury, not an orphan', () => {
     const buyer = player(g); // 'player'
     const target = aiAirline('ai-2', 'sea');

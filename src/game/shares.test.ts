@@ -250,6 +250,26 @@ describe('share transactions', () => {
     expect(b.cash).toBeLessThan(before);
   });
 
+  it('a takeover by an AI buyer queues a takeover event with the squeeze-out paid', () => {
+    const g = newGame('crw', 1);
+    const b = newAirline('b', 'B Air', '#fff', 'atl');
+    b.ai = { personality: 'cheapskate', nextDecisionDay: 1e9 };
+    b.cash = 1_000_000_000;
+    const t = newAirline('t', 'T Air', '#f00', 'clt');
+    t.cash = 5_000_000;
+    g.airlines.push(b, t);
+
+    expect(takeover(g, b, t)).toBe(true);
+
+    expect(g.takeovers).toHaveLength(1);
+    const ev = g.takeovers![0];
+    expect(ev.buyer).toBe('B Air');
+    expect(ev.target).toBe('T Air');
+    expect(ev.price).toBeGreaterThan(0); // the minority squeeze-out actually paid
+    expect(ev.cities).toBe(1); // t held only its home
+    expect(ev.newCities).toBe(b.rights.length);
+  });
+
   it('blocks a second acquisition during the integration cooldown', () => {
     const g = newGame('crw', 1);
     const b = newAirline('b', 'B', '#fff', 'atl');

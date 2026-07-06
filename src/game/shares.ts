@@ -369,9 +369,11 @@ export function takeoverCost(g: GameState, buyer: Airline, target: Airline): num
 export function squeezeOut(g: GameState, buyer: Airline, target: Airline): boolean {
   if (!hasControl(target, buyer.id) || !canAcquire(g, buyer)) return false;
   const remaining = TOTAL_SHARES - sharesOwned(target, buyer.id);
+  let paid = 0;
   if (remaining > 0) {
     const perShare = fullSharePrice(g, target) * SQUEEZE_PREMIUM;
-    buyer.cash -= Math.round(perShare * remaining);
+    paid = Math.round(perShare * remaining);
+    buyer.cash -= paid;
     for (const [owner, n] of Object.entries(ownership(target))) {
       if (owner === buyer.id || owner === PUBLIC || owner === target.id) continue;
       const al = g.airlines.find((a) => a.id === owner);
@@ -380,7 +382,7 @@ export function squeezeOut(g: GameState, buyer: Airline, target: Airline): boole
   }
   const cities = target.rights.length;
   const debtNote = target.debt > 0 ? `, assuming ${money(target.debt)} debt` : '';
-  mergeInto(g, buyer, target);
+  mergeInto(g, buyer, target, paid);
   playerNews(g, `🤝 ${buyer.name} took over ${target.name} — ${cities} cities${debtNote}.`);
   return true;
 }

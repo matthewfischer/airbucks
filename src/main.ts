@@ -47,6 +47,7 @@ import {
   announceBadges,
   announceDistress,
   announceNewRights,
+  announceTakeovers,
   resetAnnouncements,
   syncKnownRights,
 } from './ui/popups';
@@ -347,6 +348,7 @@ function frame(ts: number) {
     if (sidebarDirty) {
       announceNewRights();
       announceDistress();
+      announceTakeovers();
       announceBadges();
     }
     updateAnimations(dt, speed);

@@ -1,14 +1,14 @@
-import type { Airline } from '../game/types';
+import type { Airline, TakeoverEvent } from '../game/types';
 import { airportById, money, nearestHeldAirport } from '../game/engine';
 import { distanceKm } from '../game/geo';
 import { badgeById } from '../game/badges';
 import { bus, game, me, spectating, ui } from './app';
 import { monthYear } from './format';
 
-// The three pause-and-announce popups (slot granted / airline in distress /
-// award earned). Each keeps a seen-set so an event only pops once, and a queue
-// so simultaneous events show one at a time: slots first, then distress, then
-// badges.
+// The pause-and-announce popups (slot granted / airline in distress / rival
+// takeover / award earned). Each keeps a seen-set or drains an event queue so
+// an event only pops once, and simultaneous events show one at a time: slots
+// first, then distress, then takeovers, then badges.
 
 // ---- "Landing rights granted" popup ----------------------------------------
 
@@ -135,7 +135,7 @@ function pumpDistress() {
     id = distressQueue.shift();
   }
   if (!id) {
-    pumpBadges(); // nothing left to list — let any queued award through
+    pumpTakeovers(); // nothing left to list — let a queued takeover through
     return;
   }
   bus.setPlaying(false);
@@ -165,6 +165,67 @@ distressEl.addEventListener('click', (e) => {
 });
 document.getElementById('distress-view')!.addEventListener('click', () => {
   hideDistress();
+  bus.setView('competitors');
+});
+
+// ---- "Rival takeover" popup -------------------------------------------------
+
+/** Takeover deals waiting behind the popup on screen. */
+const takeoverQueue: TakeoverEvent[] = [];
+
+const takeoverEl = document.getElementById('takeover')!;
+const takeoverNameEl = document.getElementById('takeover-name')!;
+const takeoverStatsEl = document.getElementById('takeover-stats')!;
+/** Whether the takeover popup is on screen. */
+let takeoverShown = false;
+
+function showTakeover(t: TakeoverEvent) {
+  takeoverShown = true;
+  takeoverNameEl.textContent = `${t.buyer} acquired ${t.target}`;
+  const debtNote = t.debt > 0 ? ` · assumes ${money(t.debt)} debt` : '';
+  takeoverStatsEl.innerHTML =
+    `Deal: ${money(t.price)}${debtNote}<br>` +
+    `Absorbed: ${t.cities} cities · ${t.planes} planes · ${t.routes} routes<br>` +
+    `${t.buyer} now: ${t.newCities} cities · ${t.newPlanes} planes · ${t.newRoutes} routes`;
+  takeoverEl.classList.remove('hidden');
+}
+
+/** Close the popup and show the next queued deal, if any. */
+function hideTakeover() {
+  takeoverShown = false;
+  takeoverEl.classList.add('hidden');
+  pumpTakeovers();
+}
+
+/** Show the next queued deal — unless a slot or distress popup is up; defer. */
+function pumpTakeovers() {
+  if (takeoverShown || slotShownId || distressShownId) return;
+  const t = takeoverQueue.shift();
+  if (!t) {
+    pumpBadges(); // nothing left to announce — let any queued award through
+    return;
+  }
+  bus.setPlaying(false);
+  showTakeover(t);
+}
+
+/** Pause and pop up a card for any AI acquisition the engine queued. */
+export function announceTakeovers() {
+  const events = game.takeovers;
+  if (!events?.length) return;
+  game.takeovers = undefined; // drained — an event announces once
+  // Watch-only: don't interrupt an unattended sim; the news feed covers it.
+  if (spectating()) return;
+  takeoverQueue.push(...events);
+  pumpTakeovers();
+}
+
+document.getElementById('takeover-later')!.addEventListener('click', hideTakeover);
+takeoverEl.addEventListener('click', (e) => {
+  if (e.target === takeoverEl) hideTakeover();
+});
+document.getElementById('takeover-view')!.addEventListener('click', () => {
+  hideTakeover();
   bus.setView('competitors');
 });
 
@@ -201,7 +262,7 @@ function hideBadgeEarned() {
 
 /** Show the next queued award — unless a slot or distress popup is up; defer. */
 function pumpBadges() {
-  if (badgeShownId || slotShownId || distressShownId) return;
+  if (badgeShownId || slotShownId || distressShownId || takeoverShown) return;
   const id = badgeQueue.shift();
   if (!id) return;
   bus.setPlaying(false);
@@ -243,6 +304,9 @@ export function resetAnnouncements() {
   distressQueue.length = 0;
   distressShownId = null;
   distressEl.classList.add('hidden');
+  takeoverQueue.length = 0;
+  takeoverShown = false;
+  takeoverEl.classList.add('hidden');
   knownBadges = new Set(me().badges.map((b) => b.id));
   badgeQueue.length = 0;
   badgeShownId = null;
