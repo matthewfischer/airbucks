@@ -37,14 +37,14 @@
     }
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^3.2.6",
+    "@vitest/coverage-v8": "^5.0.0",
     "concurrently": "^9.2.3",
     "cross-env": "^7.0.3",
     "electron": "^39.8.5",
     "electron-builder": "^26.15.3",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
-    "vitest": "^3.2.6",
+    "vitest": "^5.0.0",
     "wait-on": "^8.0.1"
   }
 }
